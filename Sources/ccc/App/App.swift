@@ -18,6 +18,7 @@ enum App {
     private var controller: PaneController?
     private var window: MainWindowController?
     private var statusItem: NSStatusItem?
+    private let updater = Updater()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -30,6 +31,7 @@ enum App {
             return
         }
         let controller = PaneController(cli: cli)
+        controller.remembersAttach = true
         self.controller = controller
         let window = MainWindowController(controller: controller)
         self.window = window
@@ -46,6 +48,13 @@ enum App {
         installStatusItem()
         window.showWindow(nil)
         NSApp.activate()
+        // A relaunch — Sparkle's, or ⌘Q and back — lands on the session the
+        // window was in, the way the agents view keeps its focus. After the
+        // first poll, so a session that ended meanwhile is not attached to.
+        Task { @MainActor [weak controller] in
+            await controller?.poller.tick()
+            controller?.reattachAfterRelaunch()
+        }
         // What sleeps is this Mac (docs/DESIGN.md §4b): on wake, drop every
         // remote ssh master and poll at once rather than let a 2 s tick
         // discover a stale socket the slow way. Same gesture as
@@ -95,6 +104,7 @@ enum App {
         let main = NSMenu()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About ccc", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(updater.menuItem())
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide ccc", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit ccc", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

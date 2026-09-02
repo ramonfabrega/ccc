@@ -3,29 +3,45 @@
 # stable path so LaunchServices tracks one identity) → ~/Applications, plus
 # `ccc` on PATH as a symlink INTO the bundle — one binary, two faces.
 #
-#   scripts/install          # → ~/Applications/ccc.app + ccc on PATH
+#   scripts/install          # → ~/Applications/ccc.app + ccc on PATH (ad-hoc, this Mac)
+#   scripts/install --dist   # install the last scripts/package cut instead (notarized)
+#
+# The dev lane. An ad-hoc signature is this Mac's alone; a release for every
+# Mac is scripts/package (RELEASES.md), and --dist is how studio runs that
+# release build too. A running app is quit and relaunched: this IS the update.
 set -e
 cd "$(dirname "$0")/.."
 
-echo "Building release…"
-swift build -c release 2>&1 | grep -E "error|warning: .*Sources/ccc|Compiling|Build complete" | tail -3
-
-scripts/make-bundle
-
-APP_SRC=".build/ccc.app"
+if [ "${1:-}" = "--dist" ]; then
+  APP_SRC=".build/dist/ccc.app"
+  [ -d "$APP_SRC" ] || { echo "no $APP_SRC — run scripts/package first" >&2; exit 1; }
+  V=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_SRC/Contents/Info.plist")
+  B=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_SRC/Contents/Info.plist")
+  echo "Installing the last cut: v$V build $B"
+else
+  echo "Building release…"
+  swift build -c release 2>&1 | grep -E "error|warning: .*Sources/ccc|Compiling|Build complete" | tail -3
+  scripts/make-bundle
+  APP_SRC=".build/ccc.app"
+  codesign --force --sign - "$APP_SRC"
+fi
 APP_DST="$HOME/Applications/ccc.app"
-codesign --force --sign - "$APP_SRC"
 
 mkdir -p "$HOME/Applications"
+WAS_RUNNING=0
 if pgrep -qx ccc; then
-  echo "ccc is running — quit it and re-run, or: pkill -x ccc" >&2
-  exit 1
+  WAS_RUNNING=1
+  echo "quitting the running ccc…"
+  osascript -e 'tell application id "com.ramonfabrega.ccc" to quit' 2>/dev/null || pkill -x ccc || true
+  for i in $(seq 1 20); do pgrep -qx ccc || break; sleep 0.25; done
+  pgrep -qx ccc && { echo "ccc would not quit" >&2; exit 1; }
 fi
 rm -rf "$APP_DST"
 cp -R "$APP_SRC" "$APP_DST"
 
 # CLI: prefer an existing PATH dir we can write. The symlink points into the
-# installed bundle so `ccc list` and the app are always the same build.
+# installed bundle so `ccc list` and the app are always the same build — and
+# it survives a Sparkle update, which replaces the bundle at the same path.
 CLI_SRC="$APP_DST/Contents/MacOS/ccc"
 for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
   if [ -d "$dir" ] && [ -w "$dir" ]; then
@@ -37,3 +53,7 @@ done
 
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DST"
 echo "installed: $APP_DST"
+if [ "$WAS_RUNNING" = "1" ]; then
+  open "$APP_DST"
+  echo "relaunched"
+fi

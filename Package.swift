@@ -10,6 +10,11 @@ let package = Package(
     platforms: [.macOS(.v26)],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0"),
+        // Earned 2026-09-02 (docs/DESIGN.md §6): self-update over the CDN
+        // appcast, the fleet's mux/disk release flow. Air cannot be pushed
+        // to (no Remote Login), so every update is a pull, and this is the
+        // pull. Only the app target links it; CCCKit and the tests never do.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
     ],
     targets: [
         // libghostty-vt, built from vendor/ghostty by scripts/build-vt (Zig is
@@ -28,7 +33,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "ccc",
-            dependencies: ["CCCKit"]
+            dependencies: ["CCCKit", .product(name: "Sparkle", package: "Sparkle")],
+            linkerSettings: [
+                // The bundle embeds Sparkle.framework in Contents/Frameworks;
+                // the bare SwiftPM binary needs the matching rpath baked in.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
         ),
         .testTarget(
             name: "CCCKitTests",

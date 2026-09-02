@@ -76,6 +76,10 @@ it should break while being awesome.**
   viewers; whether a secondary viewer renders the grid as-is instead of
   resizing it is slice 4's question.
 - **No tmux, ever.** The daemon is the multiplexer.
+- **Every Mac runs the release build.** Developer ID + notarized + Sparkle
+  over the CDN (`scripts/package`, RELEASES.md, docs/DESIGN.md §6) — the
+  fleet's mux/disk flow. Air can only pull, and an ad-hoc app never leaves
+  the Mac that signed it; `scripts/install` is the dev loop on studio only.
 
 ## Parity: the human and the agent are first-class over everything
 

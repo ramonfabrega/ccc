@@ -47,6 +47,11 @@ final class PaneController {
     private var lastRef: SessionRef?
     private var lastExitStatus: Int32?
     private var wokeAt: ContinuousClock.Instant?
+    /// The window face remembers what it was attached to across a relaunch
+    /// (Sparkle's, or the user's) in UserDefaults; the headless face never
+    /// does, or an agent's attach would steer the next window launch.
+    var remembersAttach = false
+    private static let rememberedRefKey = "ccc.lastAttachedRef"
 
     init(cli: ClaudeCLI, hosts: HostConfig.Loaded = HostConfig.load()) {
         self.cli = cli
@@ -111,14 +116,36 @@ final class PaneController {
             guard let self else { return }
             self.poller.attachedRef = nil
             self.lastExitStatus = status
+            // A clean exit is the user leaving (Ctrl+Z, or the session
+            // ending); anything else is the process dying under them and
+            // is worth coming back to.
+            if status == 0, self.remembersAttach {
+                UserDefaults.standard.removeObject(forKey: Self.rememberedRefKey)
+            }
             self.onSessionEnded?(status)
             self.reattachIfSleepKilledIt(ref: ref, status: status)
         }
         self.session = session
         self.lastRef = ref
         self.lastExitStatus = nil
+        if remembersAttach {
+            UserDefaults.standard.set(ref.description, forKey: Self.rememberedRefKey)
+        }
         poller.attachedRef = ref
         onSessionStarted?(session)
+    }
+
+    /// Attach to what the last run was attached to, if it is still in the
+    /// roster and attachable. Called by the window after its first poll.
+    func reattachAfterRelaunch() {
+        guard remembersAttach, session?.isRunning != true,
+              let stored = UserDefaults.standard.string(forKey: Self.rememberedRefKey),
+              let ref = SessionRef.parse(stored) else { return }
+        guard let row = poller.state.rows.first(where: { $0.ref == ref }), row.session.isAttachable else {
+            UserDefaults.standard.removeObject(forKey: Self.rememberedRefKey)
+            return
+        }
+        try? attach(ref: ref)
     }
 
     func detach() async {

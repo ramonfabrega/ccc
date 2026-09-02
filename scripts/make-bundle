@@ -1,9 +1,13 @@
 #!/bin/zsh
-# Assemble ccc.app from the release build (scry's pattern). Signing is the
-# caller's job: scripts/install ad-hoc signs for this Mac.
+# Assemble ccc.app from the release build (scry's pattern): binary, versioned
+# Info.plist, embedded Sparkle.framework. Signing is the caller's job:
+# scripts/install ad-hoc signs for this Mac (the dev lane), scripts/package
+# signs with Developer ID, notarizes, and cuts the Sparkle feed (RELEASES.md).
 #
 # Versioning: CFBundleShortVersionString from VERSION; CFBundleVersion is the
-# git commit count (monotonic, zero upkeep).
+# git commit count (monotonic, zero upkeep). Sparkle compares CFBundleVersion,
+# so a dev build (commits past the tag) always outranks the released zip and
+# is never offered a "downgrade".
 set -e
 cd "$(dirname "$0")/.."
 
@@ -11,9 +15,15 @@ VERSION=$(tr -d '[:space:]' < VERSION)
 BUILD=$(git rev-list --count HEAD)
 APP="${APP_OUT:-.build/ccc.app}"
 
+PRODUCTS=".build/release"
+[ -x "$PRODUCTS/ccc" ] || { echo "make-bundle: no ccc in $PRODUCTS — build first" >&2; exit 1; }
+[ -d "$PRODUCTS/Sparkle.framework" ] || { echo "make-bundle: no Sparkle.framework in $PRODUCTS" >&2; exit 1; }
+
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/ccc "$APP/Contents/MacOS/ccc"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
+cp "$PRODUCTS/ccc" "$APP/Contents/MacOS/ccc"
+# cp -R preserves the framework's internal Versions/ symlink structure.
+cp -R "$PRODUCTS/Sparkle.framework" "$APP/Contents/Frameworks/"
 [ -f Design/AppIcon.icns ] && cp Design/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<EOF
@@ -32,6 +42,11 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <!-- The same binary is the CLI; a GUI launch has no argv, a CLI one does. -->
+  <!-- Sparkle self-update: appcast on the CDN, the fleet's EdDSA public key
+       (the private half lives in the Studio's Keychain — generate_keys). -->
+  <key>SUFeedURL</key><string>https://cdn.ramonfabrega.com/ccc/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>uxO7dN1BcjeU4YqBP6Anf4LVVoIueNOkRVna1AjpEBQ=</string>
+  <key>SUEnableAutomaticChecks</key><true/>
 </dict>
 </plist>
 EOF

@@ -1,0 +1,128 @@
+#!/bin/zsh
+# Package a self-updating ccc.app zip for every Mac — the fleet's release
+# flow (disk/scripts/package, which is mux's), minus the universal build:
+# the fleet is Apple silicon only, and a universal cut would mean building
+# libghostty-vt for x86_64 through Zig as well.
+#
+# Default flow: Developer-ID-sign (hardened runtime + secure timestamp),
+# notarize with Apple, staple, zip → .build/dist/ccc-vX.Y.Z.zip — the
+# receiving Mac opens it with a double-click. Then regenerate the Sparkle
+# appcast so installed copies self-update. NOTARIZE=0 is a fast ad-hoc zip
+# (unnotarized; receiver must de-quarantine, no appcast) — for testing the
+# packaging, never for shipping across machines (docs/DESIGN.md §6).
+#
+# Requirements (this Studio has all three): a "Developer ID Application"
+# cert, a notarytool keychain profile (default `mux-notary` — profiles are
+# per-Apple-account, not per-app), and the fleet's Sparkle EdDSA key in the
+# Keychain (`generate_keys`; the public half is pinned in make-bundle).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+NOTARIZE="${NOTARIZE:-1}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-mux-notary}"
+SPARKLE_VER=2.9.4
+SPARKLE_BIN="$HOME/Library/Caches/mux-sparkle-tools/$SPARKLE_VER/bin"
+
+echo "Building release…"
+swift build -c release 2>&1 | grep -E "error|warning: .*Sources/ccc|Build complete" | tail -3
+OUT="$PWD/.build/dist"
+APP="$OUT/ccc.app"
+mkdir -p "$OUT"
+APP_OUT="$APP" ./scripts/make-bundle
+
+if [ "$NOTARIZE" = "1" ]; then
+    ID=$(security find-identity -v -p codesigning \
+        | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+    [ -n "$ID" ] || { echo "No 'Developer ID Application' cert in keychain — run with NOTARIZE=0."; exit 1; }
+    echo "Signing with: $ID"
+    SIGN=(codesign --force --timestamp --options runtime --sign "$ID")
+
+    # The EdDSA key in this Keychain must be the one the app trusts, or every
+    # shipped update would be rejected on the receiving end.
+    if [ -x "$SPARKLE_BIN/generate_keys" ]; then
+        PUB_KEYCHAIN=$("$SPARKLE_BIN/generate_keys" -p)
+        PUB_APP=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP/Contents/Info.plist")
+        [ "$PUB_KEYCHAIN" = "$PUB_APP" ] \
+            || { echo "SUPublicEDKey mismatch: Keychain $PUB_KEYCHAIN vs app $PUB_APP — aborting"; exit 1; }
+    fi
+else
+    echo "Signing ad-hoc (NOTARIZE=0 — app will be unnotarized)…"
+    SIGN=(codesign --force --sign -)
+fi
+
+# Sign inside-out: Sparkle's nested executables first (per its docs — the
+# Downloader XPC keeps its sandbox entitlements via preserve-metadata), then
+# the framework, then the app. Hardened runtime's library validation demands
+# every dylib carry OUR team id, which is why Sparkle gets re-signed at all.
+# libghostty-vt is a static library inside the binary: nothing to re-sign.
+SPARKLE_FW="$APP/Contents/Frameworks/Sparkle.framework"
+"${SIGN[@]}" "$SPARKLE_FW/Versions/B/XPCServices/Installer.xpc"
+"${SIGN[@]}" --preserve-metadata=entitlements "$SPARKLE_FW/Versions/B/XPCServices/Downloader.xpc"
+"${SIGN[@]}" "$SPARKLE_FW/Versions/B/Autoupdate"
+"${SIGN[@]}" "$SPARKLE_FW/Versions/B/Updater.app"
+"${SIGN[@]}" "$SPARKLE_FW"
+"${SIGN[@]}" "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
+
+VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
+ZIP="$OUT/ccc-v$VERSION.zip"
+rm -f "$ZIP"
+
+if [ "$NOTARIZE" = "1" ]; then
+    echo "Notarizing (uploads to Apple, waits for the ticket)…"
+    # --sequesterRsrc, or Archive Utility writes ._* files into the framework
+    # and Gatekeeper rejects "unsealed contents" (tv canon).
+    ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP" # notarytool takes a zip of the .app
+    xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+    echo "Stapling the ticket to the app…"
+    xcrun stapler staple "$APP"
+    stapler validate "$APP"
+    spctl -a -vvv --type execute "$APP" # Gatekeeper acceptance check
+    rm -f "$ZIP" # re-zip the *stapled* app so the ticket travels with it
+    ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+    echo "Packaged (notarized + stapled): $ZIP ($(du -h "$ZIP" | cut -f1))"
+
+    # --- Sparkle appcast (the mux stable-key pattern) ------------------------
+    # ccc/ on the CDN holds exactly two overwritten keys (appcast.xml +
+    # ccc-latest.zip) so it never grows; versioned zips accumulate locally in
+    # FEED_DIR (the signing archive) and on GitHub Releases (the record).
+    # Single-item feed, no deltas — the EdDSA signature covers content, so the
+    # stable filename is irrelevant to Sparkle.
+    if [ ! -x "$SPARKLE_BIN/generate_appcast" ]; then
+        echo "Fetching Sparkle $SPARKLE_VER tools…"
+        mkdir -p "$(dirname "$SPARKLE_BIN")"
+        curl -fsSL "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VER/Sparkle-$SPARKLE_VER.tar.xz" \
+            | tar -xJ -C "$(dirname "$SPARKLE_BIN")"
+    fi
+    FEED_DIR="$HOME/Library/Application Support/ccc-releases"
+    mkdir -p "$FEED_DIR/old_updates"
+    cp -f "$ZIP" "$FEED_DIR/"
+    # The feed MUST be single-item: every item's enclosure is rewritten to the
+    # SAME stable key, so only the newest item can describe what that key
+    # holds. generate_appcast merges into any appcast it finds and never drops
+    # an item because its zip is gone, so: archive every other zip AND
+    # regenerate from empty (disk learned this on v0.6.0).
+    find "$FEED_DIR" -maxdepth 1 -name 'ccc-v*.zip' ! -name "$(basename "$ZIP")" \
+        -exec mv {} "$FEED_DIR/old_updates/" \;
+    rm -f "$FEED_DIR/appcast.xml"
+    "$SPARKLE_BIN/generate_appcast" --maximum-versions 1 --maximum-deltas 0 \
+        --download-url-prefix "https://cdn.ramonfabrega.com/ccc/" "$FEED_DIR"
+    ITEMS=$(grep -c '<item>' "$FEED_DIR/appcast.xml")
+    [ "$ITEMS" = "1" ] || { echo "appcast has $ITEMS items, expected 1 — every item points at the same stable key, so only one can be truthful"; exit 1; }
+    sed -i '' -E \
+        's|(url="https://cdn\.ramonfabrega\.com/ccc/)ccc-v[^"]+\.zip|\1ccc-latest.zip|' \
+        "$FEED_DIR/appcast.xml"
+    echo
+    echo "Appcast updated: $FEED_DIR/appcast.xml"
+    # Publish = overwrite the two stable keys. Both --permanent (exempt from
+    # the CDN's 30-day sweep); uploads purge the edge cache and .xml gets a
+    # short cache by worker policy. Then verify the live feed (RELEASES.md).
+    echo "Publish the update (overwrites both stable keys):"
+    echo "  share \"$ZIP\" ccc/ccc-latest.zip --permanent"
+    echo "  share \"$FEED_DIR/appcast.xml\" ccc/appcast.xml --permanent"
+else
+    ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+    echo "Packaged (ad-hoc, unnotarized): $ZIP ($(du -h "$ZIP" | cut -f1))"
+    echo "Receiver: unzip, drag to ~/Applications, then:"
+    echo "  xattr -dr com.apple.quarantine ~/Applications/ccc.app"
+fi

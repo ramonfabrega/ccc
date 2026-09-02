@@ -292,6 +292,35 @@ it can do better — render the session's grid inside whatever window it has
 rather than resizing the PTY from a secondary viewer — and that is slice 4's
 question, a nice-to-have, not a blocker.
 
+## 6. Distribution: the fleet's release flow, Sparkle from day one (2026-09-02)
+
+The question was "build from source on air, copy a bundle, or package like
+mux and disk?" The answer was decided by two facts. Air refuses ssh, so
+nothing can be *pushed* to it: every update is a pull. And an ad-hoc
+signature is one Mac's alone — lore's canon from disk and mux is that an
+ad-hoc app on another machine churns its identity on every rebuild
+(Gatekeeper, TCC, and the login item, which is a locked decision here).
+
+So ccc is the third consumer of the mux release flow (disk's
+`scripts/package`, cloned minus the universal build: the fleet is Apple
+silicon only, and a universal cut would mean building libghostty-vt for
+x86_64 through Zig). Developer ID + hardened runtime, notarized and
+stapled, a single-item Sparkle appcast on the CDN under `ccc/`, two stable
+keys overwritten per release, the fleet's one EdDSA key. **Every Mac runs
+the release build**, studio included (`scripts/install --dist`); the ad-hoc
+`scripts/install` is only the dev loop on studio. RELEASES.md is the runbook.
+
+**Sparkle is the second earned dependency** (after SwiftTerm, which is on
+its way out). Earned by: air can only pull; the CDN half is already
+generalized by the fleet; the app side is one file and three plist keys;
+and the alternative is a hand-downloaded zip on every update. What it
+costs: a framework re-signed inside-out at package time (its XPC services
+must carry our team id under library validation), and one relaunch per
+update — which is why the window now remembers its attached session in
+UserDefaults and reattaches after a relaunch, the way the agents view keeps
+its focus. Lore's note that a third consumer is the extraction threshold
+for a shared release package is a fleet chore, recorded, not ccc's.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past
