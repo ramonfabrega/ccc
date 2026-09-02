@@ -19,6 +19,13 @@ PRODUCTS=".build/release"
 [ -x "$PRODUCTS/ccc" ] || { echo "make-bundle: no ccc in $PRODUCTS — build first" >&2; exit 1; }
 [ -d "$PRODUCTS/Sparkle.framework" ] || { echo "make-bundle: no Sparkle.framework in $PRODUCTS" >&2; exit 1; }
 
+# The minimum macOS comes from the binary, never typed here: Package.swift's
+# `platforms` is what the binary was built for, and v0.1.3 shipped a plist
+# saying 14.0 over a binary built for 26 (a bisect leftover), which Sparkle
+# on the Air refused with "requires macOS 26.0 or later".
+MINOS=$(otool -l "$PRODUCTS/ccc" | awk '/LC_BUILD_VERSION/{f=1} f && /minos/{print $2; exit}')
+[ -n "$MINOS" ] || { echo "make-bundle: could not read minos from $PRODUCTS/ccc" >&2; exit 1; }
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
 cp "$PRODUCTS/ccc" "$APP/Contents/MacOS/ccc"
@@ -40,7 +47,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSMinimumSystemVersion</key><string>$MINOS</string>
   <!-- The same binary is the CLI; a GUI launch has no argv, a CLI one does. -->
   <!-- Sparkle self-update: appcast on the CDN, the fleet's EdDSA public key
        (the private half lives in the Studio's Keychain — generate_keys). -->
@@ -51,4 +58,4 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-echo "bundle: $APP (v$VERSION build $BUILD)"
+echo "bundle: $APP (v$VERSION build $BUILD, macOS ≥ $MINOS)"
