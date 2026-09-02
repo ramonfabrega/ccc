@@ -20,9 +20,13 @@ true; do it again after every master sync or the branches re-diverge).
    `didWake` → same argv again) but has not seen a real sleep. First real
    use is on air, once ccc is installed there.
 3. **Air runs v0.1.1** (installed by hand 2026-09-02; studio is its host,
-   `ccc hosts check` → 315 ms, 21 sessions, 18 with a model). v0.1.3 is
-   on the CDN: air's first Sparkle update ("Check for Updates…") is the
-   proof that the feed works end to end. Studio runs v0.1.3 (build 51).
+   `ccc hosts check` → 315 ms, 21 sessions, 18 with a model). Its first
+   "Check for Updates…" was refused: v0.1.3's binary was built for
+   macOS 26 (a bisect leftover). v0.1.4 (build 53, macOS ≥ 14.0, verified
+   on the live feed) is on the CDN; air's update to it is the end-to-end
+   proof. Studio runs v0.1.4 and renders on screen (real screenshot).
+   Queue: the `SUFeedURL` gate belongs in the fleet's Updater template
+   (lore), and scry has the same bare-binary dev lane.
 4. **Shared size** (§4c) — slice 4. So is the host picker; seed it from
    `tailscale status --json` (MagicDNS names are the ssh destinations;
    Bonjour is link-local and never crosses the tailnet).
