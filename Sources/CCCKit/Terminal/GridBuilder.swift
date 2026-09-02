@@ -12,11 +12,14 @@ enum GridBuilder {
         var lines: [String] = []
         lines.reserveCapacity(dims.rows)
         for row in 0..<dims.rows {
-            // getLine is relative to the visible viewport when the user has
-            // not scrolled; use the buffer row so a scrolled-back view still
-            // renders what is on screen.
+            // getLine(row:) is the visible viewport: SwiftTerm adds yDisp
+            // itself. The scroll-invariant accessor needs a `linesTop`
+            // offset once the ring buffer has trimmed (past the scrollback
+            // limit), and without it every row came back nil — a blank grid
+            // after ~2000 lines of primary-screen output. Found by the stream
+            // fixture; the alt-screen recording could not see it.
             // Empty cells hold NUL in SwiftTerm's buffer; the grid is text.
-            let text = terminal.getScrollInvariantLine(row: top + row)?
+            let text = terminal.getLine(row: row)?
                 .translateToString(trimRight: false, characterProvider: { cell in
                     let ch = cell.getCharacter()
                     return ch == "\u{0}" ? " " : ch
