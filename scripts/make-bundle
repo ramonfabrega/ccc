@@ -40,7 +40,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
   <!-- The same binary is the CLI; a GUI launch has no argv, a CLI one does. -->
   <!-- Sparkle self-update: appcast on the CDN, the fleet's EdDSA public key
        (the private half lives in the Studio's Keychain — generate_keys). -->

@@ -95,7 +95,10 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   CDN under `ccc/`, GitHub Release v0.1.0 with the zip. Every Mac runs the
   release build; studio installed it with `scripts/install --dist`, air's
   first install is the zip from the CDN. The window reattaches to its last
-  session after a relaunch, since an update is one.
+  session after a relaunch, since an update is one. **v0.1.1, same day:**
+  the macOS 26 floor was the v0 skeleton's, not a need — nothing in the
+  code is 26-only, it builds clean at macOS 14 (the Observation floor) —
+  so the minimum is 14.0 and air need not update first.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
