@@ -3,10 +3,13 @@ import Foundation
 
 /// The command face. Each verb is a click's twin.
 ///
+///   ccc hosts [add|remove|check]      the machines ccc can reach
 ///   ccc list [--json]                 the roster, with the model column
-///   ccc attach <id> [--headless]      attach; headless drives a PTY and serves the socket
+///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
+///
+/// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
 ///   ccc snapshot [--json]             the pane's grid as text
-///   ccc send <text> | --key <name>…   type into the pane
+///   ccc send <text> | --key <name>… | --paste <text>   type into the pane
 ///   ccc detach                        detach the pane
 ///   ccc stats [--json]                memory, poll latency, PTY throughput
 ///   ccc replay <bytes> [--cols N --rows N]   render recorded bytes headlessly
@@ -23,13 +26,19 @@ enum CLI {
             case "help", "--help", "-h":
                 return usage(to: .standardOutput, status: 0)
             case "list":
-                return try await list(json: json)
+                return try await list(host: stringFlag("--host", rest), json: json)
+            case "hosts":
+                return try await hosts(rest, json: json)
             case "attach":
-                guard let id = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
-                if rest.contains("--headless") {
-                    return Headless.run(id: id, cols: intFlag("--cols", rest) ?? 120, rows: intFlag("--rows", rest) ?? 40)
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
                 }
-                return try request(.attach(id: id), json: json)
+                if rest.contains("--headless") {
+                    return Headless.run(ref: ref, cols: intFlag("--cols", rest) ?? 120, rows: intFlag("--rows", rest) ?? 40)
+                }
+                return try request(.attach(id: ref), json: json)
             case "snapshot":
                 return try request(.snapshot, json: json)
             case "send":
@@ -43,13 +52,21 @@ enum CLI {
                 return try request(.stats, json: json)
             case "peek":
                 return try peek(to: rest.first(where: { !$0.hasPrefix("--") }))
+            case "bench":
+                guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
+                                       repeats: intFlag("--repeat", rest) ?? 200, core: stringFlag("--core", rest), json: json)
             case "window":
-                guard let action = rest.first, ["show", "hide", "close"].contains(action) else { return usage() }
+                guard let action = rest.first, ["show", "hide", "close", "resize"].contains(action) else { return usage() }
+                if action == "resize" {
+                    guard rest.count == 3, Int(rest[1]) != nil, Int(rest[2]) != nil else { return usage() }
+                    return try request(.window(action: "resize \(rest[1]) \(rest[2])"), json: json)
+                }
                 return try request(.window(action: action), json: json)
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
-                                        bytes: intFlag("--bytes", rest), json: json)
+                                        bytes: intFlag("--bytes", rest), core: stringFlag("--core", rest) ?? "ghostty", json: json)
             default:
                 stderr("ccc: unknown command '\(verb)'")
                 return usage()
@@ -63,9 +80,25 @@ enum CLI {
     // MARK: verbs
 
     /// One poll, printed. Does not need a running app: the roster is the
-    /// harness's, not ours.
-    static func list(json: Bool) async throws -> Int32 {
-        let poller = RosterPoller()
+    /// harness's, not ours. `--host` polls one named host instead of this
+    /// Mac — the same `claude agents --json --all`, behind the ssh prefix.
+    /// (The app's poller is still one host; the fan-out is the next slice.)
+    static func list(host name: String?, json: Bool) async throws -> Int32 {
+        let poller: RosterPoller
+        if let name {
+            let loaded = HostConfig.load()
+            guard let host = loaded.config.host(named: name) else {
+                stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+                return 2
+            }
+            guard let cli = ClaudeCLI.of(host) else {
+                stderr("ccc: \(host.validate() ?? "claude not found for host '\(name)'")")
+                return 1
+            }
+            poller = RosterPoller(cli: cli)
+        } else {
+            poller = RosterPoller()
+        }
         await poller.tick()
         let state = poller.state
         if let error = state.error {
@@ -80,9 +113,117 @@ enum CLI {
         return state.issues.isEmpty ? 0 : 3
     }
 
+    /// The machines ccc can reach, and the gestures on that list. `check`
+    /// is the one that proves something: it runs the *real* poll command on
+    /// each host — `claude agents --json --all` behind the ssh prefix — and
+    /// reports what came back and how long it took. Run it twice and the
+    /// second is the multiplexed connection (`ControlPersist`) not paying a
+    /// handshake, which is the whole reason the master socket exists.
+    static func hosts(_ rest: [String], json: Bool) async throws -> Int32 {
+        let action = rest.first.flatMap { $0.hasPrefix("--") ? nil : $0 } ?? "list"
+        var loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        switch action {
+        case "list":
+            if json { printJSON(loaded.config.hosts); return 0 }
+            let width = loaded.config.hosts.map(\.name.count).max() ?? 0
+            for host in loaded.config.hosts {
+                let name = host.name.padding(toLength: width, withPad: " ", startingAt: 0)
+                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")")
+            }
+            print("\n\(HostConfig.defaultPath)")
+            return loaded.issues.isEmpty ? 0 : 3
+
+        case "add":
+            guard let name = rest.dropFirst().first, !name.hasPrefix("--") else {
+                stderr("ccc: usage: ccc hosts add <name> --ssh <destination> [--claude <absolute path>]")
+                return 2
+            }
+            let host = Host(name: name, ssh: stringFlag("--ssh", rest) ?? name,
+                            claude: stringFlag("--claude", rest) ?? "~/.local/bin/claude")
+            if let problem = host.validate() {
+                stderr("ccc: \(problem)")
+                return 2
+            }
+            loaded.config.hosts.removeAll { $0.name == name }
+            loaded.config.hosts.append(host)
+            try loaded.config.save()
+            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-")); `ccc hosts check \(name)` to prove it")
+            return 0
+
+        case "remove":
+            guard let name = rest.dropFirst().first else { return usage() }
+            guard name != Host.localName else {
+                stderr("ccc: local is this Mac and cannot be removed")
+                return 2
+            }
+            guard loaded.config.host(named: name) != nil else {
+                stderr("ccc: no host '\(name)'")
+                return 1
+            }
+            loaded.config.hosts.removeAll { $0.name == name }
+            try loaded.config.save()
+            print("removed \(name)")
+            return 0
+
+        case "check":
+            let wanted = rest.dropFirst().first
+            let targets = loaded.config.hosts.filter { wanted == nil || $0.name == wanted }
+            if targets.isEmpty {
+                stderr("ccc: no host '\(wanted ?? "")'")
+                return 1
+            }
+            struct Check: Encodable { var host: String; var ok: Bool; var ms: Double; var sessions: Int?; var error: String? }
+            var results: [Check] = []
+            for host in targets {
+                let started = ContinuousClock.now
+                guard let cli = ClaudeCLI.of(host) else {
+                    results.append(Check(host: host.name, ok: false, ms: 0, sessions: nil,
+                                         error: host.validate() ?? "claude not found"))
+                    continue
+                }
+                do {
+                    let data = try await cli.agentsJSON(all: true)
+                    let decoded = RosterDecoder.decode(data)
+                    results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started),
+                                         sessions: decoded.sessions.count,
+                                         error: decoded.issues.isEmpty ? nil : decoded.issues.map(\.description).joined(separator: "; ")))
+                } catch {
+                    results.append(Check(host: host.name, ok: false, ms: elapsedMs(since: started), sessions: nil, error: "\(error)"))
+                }
+            }
+            if json { printJSON(results) } else {
+                let width = results.map(\.host.count).max() ?? 0
+                for r in results {
+                    let name = r.host.padding(toLength: width, withPad: " ", startingAt: 0)
+                    let head = r.ok ? String(format: "ok   %5.0f ms  %d sessions", r.ms, r.sessions ?? 0)
+                                    : String(format: "FAIL %5.0f ms", r.ms)
+                    print("\(name)  \(head)\(r.error.map { "  \($0)" } ?? "")")
+                }
+            }
+            return results.allSatisfy(\.ok) ? 0 : 1
+
+        default:
+            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check)")
+            return 2
+        }
+    }
+
+    static func elapsedMs(since started: ContinuousClock.Instant) -> Double {
+        let d = started.duration(to: .now)
+        return Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
+    }
+
+    /// `--paste` takes one argument and goes through the host's paste path,
+    /// so the child sees it framed as a paste (bracketed under mode 2004) —
+    /// bare `<text>` is raw typing straight at the PTY. `-` reads stdin, so a
+    /// multi-line paste needs no shell quoting. Applied before `--key`, which
+    /// makes `send --paste "$(cat x)" --key enter` the scripted ⌘V + return.
     static func send(_ rest: [String], json: Bool) throws -> Int32 {
         var keys: [String] = []
         var text: [String] = []
+        var wheel: Int?
+        var paste: String?
         var i = 0
         while i < rest.count {
             if rest[i] == "--key", i + 1 < rest.count {
@@ -92,21 +233,45 @@ enum CLI {
                 }
                 keys.append(rest[i + 1])
                 i += 2
+            } else if rest[i] == "--wheel", i + 1 < rest.count, let n = Int(rest[i + 1]) {
+                wheel = n
+                i += 2
+            } else if rest[i] == "--paste", i + 1 < rest.count {
+                let argument = rest[i + 1]
+                if argument == "-" {
+                    let stdin = FileHandle.standardInput.readDataToEndOfFile()
+                    paste = String(decoding: stdin, as: UTF8.self)
+                } else {
+                    paste = argument
+                }
+                i += 2
             } else {
                 text.append(rest[i])
                 i += 1
             }
         }
-        guard !keys.isEmpty || !text.isEmpty else { return usage() }
-        return try request(.send(text: text.isEmpty ? nil : text.joined(separator: " "), keys: keys.isEmpty ? nil : keys), json: json)
+        guard !keys.isEmpty || !text.isEmpty || wheel != nil || paste != nil else { return usage() }
+        guard paste?.isEmpty != true else {
+            stderr("ccc: --paste got empty text")
+            return 2
+        }
+        return try request(.send(text: text.isEmpty ? nil : text.joined(separator: " "), keys: keys.isEmpty ? nil : keys,
+                                 wheel: wheel, paste: paste), json: json)
     }
 
     /// `--bytes N` replays only the first N bytes: a phase boundary from the
     /// recording's `.meta.json`, so a golden can be taken mid-session.
-    static func replay(path: String, cols: Int, rows: Int, bytes limit: Int?, json: Bool) async throws -> Int32 {
+    static func replay(path: String, cols: Int, rows: Int, bytes limit: Int?, core: String, json: Bool) async throws -> Int32 {
         var bytes = try Data(contentsOf: URL(filePath: path))
         if let limit, limit < bytes.count { bytes = bytes.prefix(limit) }
-        let host = HeadlessHost(cols: cols, rows: rows)
+        let host: TerminalHost
+        switch core {
+        case "ghostty": host = GhosttyHost(cols: cols, rows: rows)
+        case "swiftterm": host = HeadlessHost(cols: cols, rows: rows)
+        default:
+            stderr("ccc: unknown core '\(core)' (ghostty|swiftterm)")
+            return 2
+        }
         host.feed(bytes)
         let grid = host.snapshot()
         if json { printJSON(grid) } else { print(grid.rendered()) }
@@ -123,6 +288,83 @@ enum CLI {
         let out = path ?? NSTemporaryDirectory() + "ccc-peek-\(Int(Date().timeIntervalSince1970)).png"
         try png.write(to: URL(filePath: out))
         print(out)
+        return 0
+    }
+
+    /// Check 4 of docs/CHECKS.md: streaming throughput of a core. Feeds the
+    /// recording `repeats` times as the PTY would (chunk by chunk) and times
+    /// parse and snapshot separately. `--core` omitted runs both.
+    static func bench(path: String, cols: Int, rows: Int, repeats: Int, core: String?, json: Bool) async throws -> Int32 {
+        let bytes = try Data(contentsOf: URL(filePath: path))
+        let chunks: [Data] = {
+            // Prefer the recording's real chunking when its .events file sits beside it.
+            let events = URL(filePath: path).deletingPathExtension().appendingPathExtension("events")
+            if let text = try? String(contentsOf: events, encoding: .utf8) {
+                var out: [Data] = []
+                for line in text.split(separator: "\n") {
+                    let parts = line.split(separator: " ").compactMap { Int($0) }
+                    guard parts.count == 3, parts[1] + parts[2] <= bytes.count else { continue }
+                    out.append(bytes.subdata(in: parts[1]..<(parts[1] + parts[2])))
+                }
+                if !out.isEmpty { return out }
+            }
+            return stride(from: 0, to: bytes.count, by: 4096).map { bytes.subdata(in: $0..<min($0 + 4096, bytes.count)) }
+        }()
+        // Equal-work evidence beside the rate: what each core materialized
+        // (scrollback rows retained, grid text) and the footprint delta of
+        // running it. A parser that skips bookkeeping looks faster and is
+        // not comparable; these columns show whether both did the same job.
+        struct Result: Encodable {
+            var core: String; var bytes: Int; var repeats: Int
+            var parseMs: Double; var snapshotMs: Double; var mbPerSecond: Double
+            var footprintDeltaMB: Double; var scrollbackRows: Int; var gridDigest: String
+        }
+        // A recording made by scripts/record-stream carries a mid-stream
+        // resize; replaying it at the same byte offset is what makes reflow
+        // cost part of the measurement.
+        struct StreamMeta: Decodable { var cols: Int?; var rows: Int?; var resizeAtBytes: Int?; var resizedTo: [Int]? }
+        let metaURL = URL(filePath: path).deletingPathExtension().appendingPathExtension("meta.json")
+        let meta = (try? Data(contentsOf: metaURL)).flatMap { try? JSONDecoder().decode(StreamMeta.self, from: $0) }
+        let startCols = meta?.cols ?? cols, startRows = meta?.rows ?? rows
+        var results: [Result] = []
+        for name in (core.map { [$0] } ?? ["swiftterm", "ghostty"]) {
+            let before = ProcessStats.footprint(of: getpid()) ?? 0
+            let host: TerminalHost = name == "ghostty" ? GhosttyHost(cols: startCols, rows: startRows) : HeadlessHost(cols: startCols, rows: startRows)
+            let clock = ContinuousClock()
+            let parse = clock.measure {
+                for _ in 0..<repeats {
+                    host.resize(cols: startCols, rows: startRows)
+                    var offset = 0
+                    var resized = false
+                    for chunk in chunks {
+                        host.feed(chunk)
+                        offset += chunk.count
+                        if !resized, let at = meta?.resizeAtBytes, let to = meta?.resizedTo, to.count == 2, offset >= at {
+                            host.resize(cols: to[0], rows: to[1])
+                            resized = true
+                        }
+                    }
+                }
+            }
+            let snap = clock.measure { for _ in 0..<repeats { _ = host.snapshot() } }
+            let grid = host.snapshot()
+            let after = ProcessStats.footprint(of: getpid()) ?? 0
+            let parseMs = Double(parse.components.seconds) * 1000 + Double(parse.components.attoseconds) / 1e15
+            let snapMs = Double(snap.components.seconds) * 1000 + Double(snap.components.attoseconds) / 1e15
+            let total = Double(bytes.count * repeats)
+            let digest = String(grid.rendered().hashValue, radix: 16).suffix(8)
+            results.append(Result(core: name, bytes: bytes.count, repeats: repeats, parseMs: parseMs, snapshotMs: snapMs,
+                                  mbPerSecond: total / 1_048_576 / (parseMs / 1000),
+                                  footprintDeltaMB: Double(Int64(after) - Int64(before)) / 1_048_576,
+                                  scrollbackRows: grid.scrollbackRows, gridDigest: String(digest)))
+        }
+        if json { printJSON(results) } else {
+            for r in results {
+                print(String(format: "%-9@ parse %8.1f ms (%6.1f MB/s)   snapshot %5.2f ms/frame   Δfootprint %6.1f MB   scrollback %6d rows   grid %@",
+                             r.core as NSString, r.parseMs, r.mbPerSecond, r.snapshotMs / Double(max(1, repeats)),
+                             r.footprintDeltaMB, r.scrollbackRows, r.gridDigest as NSString))
+            }
+        }
         return 0
     }
 
@@ -156,16 +398,22 @@ enum CLI {
         }
         if rows.isEmpty { print("(no sessions)"); return }
         let width = rows.map { ($0.session.name ?? "").count }.max() ?? 0
+        // One Mac prints exactly what v1 printed; the column appears with
+        // the second host, and then every id is shown as the ref that
+        // `ccc attach` will take.
+        let showsHost = rows.contains { $0.host != Host.localName }
+        let hostWidth = rows.map(\.host.count).max() ?? 0
         for row in rows {
             let s = row.session
             let marker = row.attached ? "●" : " "
+            let host = showsHost ? row.host.padding(toLength: hostWidth, withPad: " ", startingAt: 0) + "  " : ""
             let state = s.state?.rawValue ?? (s.kind == .interactive ? "interactive" : "-")
             let live = s.pid != nil ? (s.status?.rawValue ?? "live") : ""
             let name = (s.name ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
             let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
             let model = row.model.map { shortModel($0) } ?? "-"
             let cwd = s.cwd.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
-            print("\(marker) \(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)")
+            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)")
         }
     }
 
@@ -194,6 +442,11 @@ enum CLI {
         return Int(args[i + 1])
     }
 
+    static func stringFlag(_ name: String, _ args: [String]) -> String? {
+        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
     static func stderr(_ message: String) {
         FileHandle.standardError.write(Data((message + "\n").utf8))
     }
@@ -202,16 +455,21 @@ enum CLI {
     static func usage(to handle: FileHandle = .standardError, status: Int32 = 2) -> Int32 {
         handle.write(Data("""
         usage: ccc                              open the app
-               ccc list [--json]
-               ccc attach <id> [--headless [--cols N --rows N]]
+               ccc hosts [list|check [<name>]]     the machines ccc can reach (check runs the real poll)
+               ccc hosts add <name> [--ssh <dest> --claude <path>] | remove <name>
+               ccc list [--host <name>] [--json]
+               ccc attach <ref> [--headless [--cols N --rows N]]
+                                                  <ref> is `id` (this Mac) or `host:id`
                ccc snapshot [--json]
-               ccc send <text> | --key <name>...
+               ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
+                                                              (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach
                ccc resize <cols> <rows>
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)
-               ccc window show|hide|close         the window's own gestures (close = Cmd-W)
-               ccc replay <bytes-file> [--cols N --rows N --bytes N] [--json]
+               ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
+               ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
+               ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
 
         """.utf8))
         return status

@@ -17,13 +17,61 @@ What it is not: no PTY (libghostty-pty is planned, does not exist), no
 rendering, no font shaping, no OS input capture.
 
 Stability: the header says the API is incomplete and will change. The
-engine underneath is Ghostty's production one. Pin a stable tag (≥ 1.3 — the
-scrollback-prune leak fix), pin the Zig it needs, bump deliberately, absorb
-breaks at compile time. Bindings exist for Rust, Node, Go; Swift wrappers
+engine underneath is Ghostty's production one. Pin one commit, pin the Zig
+it needs, bump deliberately, absorb breaks at compile time.
+**Vendored 2026-09-02 (v1 start):** the latest stable tag, v1.3.1, ships
+only `key`, `osc`, `sgr`, `paste`, `color` in `include/ghostty/vt/` — no
+terminal state at all. `terminal.h`, `screen.h`, `render.h`, `snapshot.h`,
+`selection.h`, `search.h`, `grid_ref.h`, `modes.h`, `mouse.h` (~30 headers)
+exist only on main, which needs Zig 0.16.0 (a real release, 2026-04-13). So
+`vendor/ghostty` is pinned at main `3c1ef5b` (2026-09-01) and `.zig/` at
+0.16.0 via `scripts/fetch-zig` (sha-pinned tarball, no Homebrew). main also
+builds a static `libghostty-vt`, which is what SwiftPM links. Bindings exist for Rust, Node, Go; Swift wrappers
 (`Lakr233/libghostty-spm`, `briannadoubt/GhosttyKit`) show the SwiftPM
 pattern. Hashimoto announced a pure-Swift Metal renderer + Swift bindings
 ("coming soon", unshipped as of 2026-09-02) — check `ghostty-org` before
 starting the renderer, and again before finishing it.
+
+### Calling conventions learned the hard way
+
+`docs/vt/surface.txt` proves what exists; this list proves how it is called.
+Each line cost a crash or a wrong byte before it was written down.
+
+- `ghostty_terminal_set`: pointer-typed values (userdata, every callback)
+  are passed **directly** as `value`; non-pointer values by pointer. The
+  doc is on the function, not on the enum. (SIGSEGV, 2026-09-02)
+- Render-state getters for pre-allocated handles (`ROW_ITERATOR`,
+  `ROW_DATA_CELLS`) take the **address of the handle variable** — the
+  generic "out points at a value of the type" rule, where the type is the
+  opaque pointer. Passing the handle itself yields an empty grid.
+- One render state per terminal: `ghostty_render_state_update` consumes
+  the terminal's dirty flags, so a second render state on the same
+  terminal sees nothing. The text snapshot reads the renderer's state
+  with `consume: false`.
+- `GhosttyCell` is a packed `uint64_t`, passed **by value** to
+  `ghostty_cell_get`.
+- **Sized structs — a library-wide convention, not a gotcha.** Every struct
+  with a leading `size_t size` (`GhosttyStyle`, `GhosttyRenderStateColors`,
+  `GhosttyPaste`, `GhosttyMouseEncoderSize`, …): set
+  `size = MemoryLayout<T>.size` before the call. **A zeroed one succeeds
+  and does nothing.** Swift's `T()` zero-initializes `size`. Instances so
+  far: default fg drawn black on black (misdiagnosed as a bold-glyph bug
+  for an hour); mouse encoder sized 1×1 so every position but (0,0)
+  encoded to silence.
+- `modes.h`'s `GHOSTTY_MODE_*` are macros over a static inline and do not
+  import into Swift; call `ghostty_mode_new(n, false)`.
+- `GhosttyKey.rawValue` imports as `Int32`.
+- A raw terminal handle held outside its host is a use-after-free under
+  ARC; wrappers retain the host.
+- Key bytes the core actually emits (protocol named): shift-enter without
+  kitty → `ESC[27;2;13~` (modifyOtherKeys CSI 27), not CR; with kitty
+  disambiguate → `ESC[13;2u`; backspace → `0x7f` (DECBKM off); home/end →
+  `CSI H/F`, following DECCKM; f1 under kitty → `CSI P`; cmd/super has no
+  encoding.
+- Paste: `ghostty_terminal_paste` wants a `GhosttyPaste` with `size` set,
+  one MIME entry and a `GhosttyMimeReader` whose callback streams the
+  bytes to the provided writer; the core frames per mode 2004 and writes
+  through `WRITE_PTY`. `GHOSTTY_PASTE_SOURCE_CLIPBOARD`, not `_PASTE`.
 
 ## Renderer: ours, Swift + Metal
 
@@ -33,6 +81,31 @@ an `NSView`. Estimate 800–1,800 lines. Precedents to read, not copy:
 `ocnc/spectty` (`TerminalMetalView` + CoreText atlas), `arach/Termini`
 (SwiftUI + Metal + forkpty). Paneflow's postmortem is the honest warning:
 the glyph atlas and box-drawing coverage are the long tail, not the PTY.
+
+**What Zed does (read 2026-09-02 at zed `97b1e64`, by a Sonnet spawn; take
+the technique, not the code).** Core is a Zed fork of `alacritty_terminal`;
+`terminal_element.rs` rebuilds the visible cells only when the terminal
+mutates, not per frame. Paint: per row, adjacent same-style cells are
+greedily merged into one shaped text run (font/fg/bg/underline/strike
+equal), so shaping is per run, not per cell; backgrounds are merged into
+per-row spans and drawn as quads; the cursor is a quad whose width is
+`max(shaped width, cell width)` so wide glyphs are not clipped; wide-char
+spacer cells skip text but keep their background; block/sextant glyphs are
+drawn as sub-cell quads on an 8×24 subgrid, never shaped. Frame pacing: no
+timer — the PTY loop handles the first event immediately for latency, then
+coalesces for 4 ms (cap 100 events, repeated wakeups collapsed) into one
+update and one repaint. Glyphs: CoreText into an 8-bit alpha atlas
+(`A8Unorm`) for monochrome and BGRA for color, 4 subpixel x-variants per
+glyph, shaped-line cache two frames deep. Scroll: integer line offset into
+the grid; trackpad pixels accumulate and emit whole lines; in the alt
+screen wheel becomes arrow keys (alternate-scroll mode) or SGR mouse
+reports. Bugs they fixed in the last year, which our renderer inherits as
+checks: resize jitter and flicker (twice), pixel-snapping cell rects (merged
+and reverted the same day), cursor stretching on wide glyphs, zero-width
+combining characters, sextant coverage. GPUI itself is not liftable into a
+Swift window — it owns the window and the language — but every item above
+maps onto libghostty-vt's render state (dirty rows, per-cell resolved
+colors, grapheme UTF-8) plus one `CAMetalLayer`.
 
 Scrollback policy is ours. Ghostty-the-app's footprint (10 MB per surface
 default, cells preallocated at full width, and the ≤1.2.3 leak) is not
@@ -86,6 +159,13 @@ when 2.0.0 tags — inside `SwiftTermHost`, nothing above the seam moves**) and
 swap, run against a recorded `claude attach` session: kitty keyboard /
 shift-enter, bracketed paste, mouse scroll in the transcript, streaming
 throughput on a long response, resize over `ssh -t`, detach keys.
+
+**Decided 2026-09-02: Ghostty took all six** (docs/CHECKS.md) and is now the
+default core; SwiftTerm is reachable only as `CCC_CORE=swiftterm`. That
+demotes the 2.0 break above from "absorb before shipping" to "absorb if we
+ever need the hatch again" — and makes deleting `SwiftTermHost` a real
+option once v2 stops wanting a second opinion on a rendering bug. Keep it
+through v2 for that reason alone; the seam costs nothing to leave in place.
 
 ## Headless from day one
 

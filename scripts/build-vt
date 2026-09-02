@@ -1,0 +1,17 @@
+#!/bin/zsh
+# Build the vendored libghostty-vt (static) with the pinned Zig.
+#
+#   scripts/build-vt            # → vendor/ghostty/zig-out/lib/libghostty-vt.a + headers
+#
+# Runs inside vendor/ghostty because Ghostty's build.zig resolves its own
+# paths relative to its cwd. ReleaseFast: the parser is the hot path and we
+# never debug the core from Swift.
+set -e
+cd "$(dirname "$0")/.."
+[ -x .zig/zig ] || scripts/fetch-zig
+ZIG="$PWD/.zig/zig"
+cd vendor/ghostty
+# main (3c1ef5b): the library is an emit option on the default install step
+# (v1.3.1 had a `lib-vt` step instead). emit-exe defaults to !emit-lib-vt.
+"$ZIG" build -Demit-lib-vt=true -Doptimize=ReleaseFast "$@"
+ls -la zig-out/lib/ 2>/dev/null || ls -la zig-out

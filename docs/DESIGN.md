@@ -100,6 +100,45 @@ pane is a contained module developed behind the seam and swapped in when it
 wins on six checks. Then ssh hosts, notifications, archive/grouping, spawn
 and drafts. Each milestone is comparable against the agents view on its own.
 
+## 4a. A session's address is `host:id` (v2, 2026-09-02)
+
+v0 and v1 addressed a session by the harness's short id alone. That only
+holds while one daemon is in view: each Mac runs its own, each mints its own
+ids, and nothing stops two from minting the same one. From v2 the address is
+`SessionRef` — `studio:a1b2`, and bare `a1b2` when the host is `local`, so
+everything a v1 hand or script already types keeps meaning what it meant and
+a one-Mac roster prints exactly as it did (verified: `ccc list` on this Mac
+is byte-identical in shape to v1 — no host column until a second host has
+rows).
+
+Three consequences worth naming, because each was a choice:
+
+- **The host lives on `SessionRow`, not `Session`.** `Session` is the
+  harness's shape, decoded leniently at the boundary; the daemon has no idea
+  other Macs exist. Which daemon answered is ccc's knowledge, so it sits on
+  ccc's side of the struct.
+- **The wire label stayed `id`.** A case label *is* the JSON key, and a v1
+  `ccc` on PATH sends `{"attach":{"id":"a1b2"}}`. `SessionRef` decodes from
+  that bare string as the local ref it always meant, so the older side keeps
+  working (`ControlWireTests`' rule) without a hand-written decoder for
+  eleven cases. `SessionRef` encodes as one string everywhere for the same
+  reason it reads well: an agent pastes what `--json` printed straight back
+  into `ccc attach`.
+- **One `ssh` prefix, one function.** `ClaudeCLI.argv(_:tty:)` is the only
+  place a host becomes a command, so the poll, the PTY's argv and the line
+  the roster offers to copy cannot drift. `-t` only for attach: a poll with
+  a tty would make `claude agents --json` negotiate a terminal and stop
+  being a clean pipe.
+
+**The model column over ssh — open.** `ModelProbe` joins the model by reading
+`~/.claude/projects/<mangled cwd>/<id>.jsonl`, which only works where the
+daemon and the filesystem are the same machine. A remote row therefore shows
+no model rather than this Mac's answer to a question about another one. The
+fix is a decision, not an oversight: a second ssh command per row would put a
+`tail` storm on a 2 s poll, so the candidates are one batched remote reader
+per tick, pushing the mangle to the far side, or accepting a slower cadence
+for the model column than for state. Settle it before the poll fans out.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past

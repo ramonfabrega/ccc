@@ -1,0 +1,303 @@
+import AppKit
+import Foundation
+
+/// The v1 pane: `GhosttyHost` (core) drawn by `MetalPaneView` (renderer),
+/// with the window's input routed through the core's own encoders. This is
+/// what replaces `SwiftTermHost` when it wins the six checks; until then
+/// `CCC_CORE=ghostty` selects it.
+///
+/// Frame pacing follows Zed: output is fed to the core immediately, and a
+/// frame is read and handed to the view at most once per 4 ms, so a burst
+/// of PTY writes costs one draw. The view then draws on the next display
+/// pass, so ten frames before a vsync still cost one encode.
+@MainActor
+public final class GhosttyPane: TerminalHost {
+    public let core: GhosttyHost
+    private let metalView: MetalPaneView
+    private let container: PaneInputView
+    private var frameScheduled = false
+    private var pendingFrame = false
+    /// Mouse encoding is the core's job too; the encoder retains `core` so
+    /// the terminal handle outlives it. Built once, options synced per event.
+    private lazy var mouse: GhosttyMouse = {
+        let mouse = GhosttyMouse(host: core)
+        mouse.setCellSize(width: Int(metrics.widthPixels), height: Int(metrics.heightPixels))
+        return mouse
+    }()
+    /// Sub-line trackpad pixels not yet spent on a whole line of scroll.
+    private var scrollRemainder: CGFloat = 0
+
+    public var onOutput: ((Data) -> Void)?
+    /// The grid changed because the view did (window resize); the owner
+    /// mirrors it onto the PTY. Same contract as `SwiftTermHost`.
+    public var onSizeChanged: ((Int, Int) -> Void)?
+    public var view: NSView? { container }
+    public var metrics: CellMetrics { metalView.metrics }
+
+    public init(frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600), font: NSFont? = nil) {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let metrics = CellMetrics(font: font ?? CellMetrics.defaultFont, scale: scale)
+        metalView = MetalPaneView(frame: CGRect(origin: .zero, size: frame.size), metrics: metrics)
+        let grid = metalView.gridSize()
+        core = GhosttyHost(cols: max(2, grid.cols), rows: max(1, grid.rows))
+        core.setCellSize(width: Int(metrics.widthPixels), height: Int(metrics.heightPixels))
+        container = PaneInputView(frame: frame)
+        container.addSubview(metalView)
+        metalView.autoresizingMask = [.width, .height]
+        container.pane = self
+
+        core.onOutput = { [weak self] bytes in self?.onOutput?(bytes) }
+        metalView.onResize = { [weak self] grid in
+            guard let self else { return }
+            self.core.resize(cols: grid.cols, rows: grid.rows)
+            self.onSizeChanged?(grid.cols, grid.rows)
+            self.scheduleFrame()
+        }
+        scheduleFrame()
+    }
+
+    // MARK: seam
+
+    public func feed(_ bytes: Data) {
+        core.feed(bytes)
+        scheduleFrame()
+    }
+
+    public func resize(cols: Int, rows: Int) {
+        core.resize(cols: cols, rows: rows)
+        scheduleFrame()
+    }
+
+    public func snapshot() -> Grid { core.snapshot() }
+
+    public func press(_ key: NamedKey) -> Bool { core.press(key) }
+
+    public func paste(_ text: String) -> Bool { core.paste(text) }
+
+    /// Pixels of the pane as drawn — `ccc peek` composites this over the
+    /// window capture, since a Metal layer is invisible to cacheDisplay.
+    public func snapshotImage() -> CGImage? {
+        if pendingFrame, let frame = core.frame() { metalView.render(frame) }
+        return metalView.snapshotImage()
+    }
+
+    public var size: (cols: Int, rows: Int) { metalView.gridSize() }
+
+    /// `ccc send --wheel N`: the wheel gesture's twin, at the pane's center.
+    /// Same path as a real wheel: the core's mouse encoder when the child
+    /// tracks the mouse, arrow keys in the alternate screen otherwise.
+    public func wheel(lines: Int) {
+        guard lines != 0 else { return }
+        let grid = metalView.gridSize()
+        let cell = (col: grid.cols / 2, row: grid.rows / 2)
+        let bytes = mouse.wheel(deltaLines: lines, col: cell.col, row: cell.row, mods: [])
+        if !bytes.isEmpty {
+            onOutput?(bytes)
+            return
+        }
+        guard mouse.wantsArrowFallback, let key = NamedKey(lines > 0 ? "up" : "down") else { return }
+        for _ in 0..<min(abs(lines), 5) { _ = core.press(key) }
+    }
+
+    // MARK: pacing
+
+    private func scheduleFrame() {
+        pendingFrame = true
+        guard !frameScheduled else { return }
+        frameScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(4)) { [weak self] in
+            guard let self else { return }
+            self.frameScheduled = false
+            self.pendingFrame = false
+            if let frame = self.core.frame() { self.metalView.render(frame) }
+        }
+    }
+
+    // MARK: input (called by the container view)
+
+    fileprivate func keyDown(_ event: NSEvent) {
+        if let key = Self.namedKey(for: event) {
+            if core.press(key) { return }
+        }
+        // Plain text (including composed/non-ASCII input): hand the bytes
+        // to the child as typed. Modifier-only or dead keys produce nothing.
+        if let text = event.characters, !text.isEmpty,
+           event.modifierFlags.intersection([.control, .command, .option]).isEmpty {
+            onOutput?(Data(text.utf8))
+        }
+    }
+
+    fileprivate func pasteFromPasteboard() {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
+        _ = core.paste(text)
+    }
+
+    fileprivate func scroll(_ event: NSEvent) {
+        // Zed's `determine_scroll_lines` shape: a trackpad reports fractional
+        // pixels, so they accumulate into a remainder and only whole lines
+        // are emitted. A classic wheel reports whole lines already.
+        let lines: Int
+        if event.hasPreciseScrollingDeltas {
+            scrollRemainder += event.scrollingDeltaY
+            let whole = (scrollRemainder / metrics.height).rounded(.towardZero)
+            scrollRemainder -= whole * metrics.height
+            lines = Int(whole)
+        } else {
+            scrollRemainder = 0
+            lines = Int(event.scrollingDeltaY.rounded())
+        }
+        guard lines != 0 else { return }
+
+        let cell = self.cell(for: event)
+        let bytes = mouse.wheel(deltaLines: lines, col: cell.col, row: cell.row, mods: Self.mods(for: event))
+        if !bytes.isEmpty {
+            onOutput?(bytes)
+            return
+        }
+        // The core declined and told us why: alternate screen + mode 1007 +
+        // no tracking. `GhosttyMouse.wheel` documents that alternate scroll
+        // lives above the library line, so the arrows are ours to send —
+        // through the key encoder, which applies DECCKM.
+        guard mouse.wantsArrowFallback, let key = NamedKey(lines > 0 ? "up" : "down") else { return }
+        for _ in 0..<min(abs(lines), 5) { _ = core.press(key) }
+    }
+
+    /// Cell under the pointer. The container is flipped, so the view's y
+    /// already grows downward like the grid's row index.
+    fileprivate func cell(for event: NSEvent) -> (col: Int, row: Int) {
+        let point = container.convert(event.locationInWindow, from: nil)
+        let grid = metalView.gridSize()
+        let col = Int((point.x / metrics.width).rounded(.down))
+        let row = Int((point.y / metrics.height).rounded(.down))
+        return (min(max(col, 0), max(grid.cols - 1, 0)), min(max(row, 0), max(grid.rows - 1, 0)))
+    }
+
+    /// Mouse button events → the core's encoder. When the child has not
+    /// enabled tracking the core emits nothing and we send nothing: that is
+    /// the correct answer, not a dropped event (local selection, which is
+    /// what a real terminal does with an untracked click, is not in v1).
+    fileprivate func mouseEvent(_ event: NSEvent, button: GhosttyMouse.Button?, action: GhosttyMouse.Action) {
+        let cell = self.cell(for: event)
+        let bytes = mouse.encode(button: button, action: action, col: cell.col, row: cell.row, mods: Self.mods(for: event))
+        guard !bytes.isEmpty else { return }
+        onOutput?(bytes)
+    }
+
+    private static func mods(for event: NSEvent) -> GhosttyMouse.Modifiers {
+        var mods: GhosttyMouse.Modifiers = []
+        let flags = event.modifierFlags
+        if flags.contains(.shift) { mods.insert(.shift) }
+        if flags.contains(.control) { mods.insert(.control) }
+        if flags.contains(.option) { mods.insert(.option) }
+        if flags.contains(.command) { mods.insert(.command) }
+        return mods
+    }
+
+    /// NSEvent → the key the encoder understands. Letters/digits/punctuation
+    /// with a modifier, and every special key, go through the core encoder;
+    /// unmodified printable text is sent as text by the caller.
+    static func namedKey(for event: NSEvent) -> NamedKey? {
+        var parts: [String] = []
+        let flags = event.modifierFlags
+        if flags.contains(.control) { parts.append("ctrl") }
+        if flags.contains(.option) { parts.append("opt") }
+        if flags.contains(.shift) { parts.append("shift") }
+        if flags.contains(.command) { parts.append("cmd") }
+        if let special = specialKeys[event.keyCode] {
+            return NamedKey((parts + [special]).joined(separator: "-"))
+        }
+        // Only route characters through the encoder when a modifier changes
+        // their meaning; plain typing is text.
+        guard !flags.intersection([.control, .option, .command]).isEmpty,
+              let chars = event.charactersIgnoringModifiers, chars.count == 1 else { return nil }
+        return NamedKey((parts + [String(chars)]).joined(separator: "-"))
+    }
+
+    /// macOS virtual key codes for the keys `NamedKey.Base` names.
+    private static let specialKeys: [UInt16: String] = [
+        36: "enter", 76: "enter", 53: "escape", 48: "tab", 51: "backspace", 117: "delete",
+        126: "up", 125: "down", 123: "left", 124: "right", 115: "home", 119: "end", 116: "pageup", 121: "pagedown",
+        122: "f1", 120: "f2", 99: "f3", 118: "f4", 96: "f5", 97: "f6", 98: "f7", 100: "f8", 101: "f9", 109: "f10", 103: "f11", 111: "f12",
+    ]
+}
+
+/// The NSView that owns focus and events for a Ghostty pane. Kept apart
+/// from `MetalPaneView` so the renderer stays free of input plumbing.
+@MainActor
+final class PaneInputView: NSView {
+    weak var pane: GhosttyPane?
+
+    override var acceptsFirstResponder: Bool { true }
+    override var isFlipped: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        pane?.keyDown(event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // ⌘V pastes through the core; everything else with ⌘ stays with AppKit.
+        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "v" {
+            pane?.pasteFromPasteboard()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        pane?.scroll(event)
+    }
+
+    // Buttons go to the core's mouse encoder. `makeFirstResponder` stays on
+    // the left press so a click still focuses the pane; everything else is
+    // pure encoding, and produces no bytes at all while tracking is off.
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        pane?.mouseEvent(event, button: .left, action: .press)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .left, action: .release)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .left, action: .motion)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .right, action: .press)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .right, action: .release)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .right, action: .motion)
+    }
+
+    // AppKit funnels every button past the second through `otherMouse*`;
+    // button number 2 is the middle button, and the rest have no place in
+    // the protocols we encode, so they are dropped.
+    override func otherMouseDown(with event: NSEvent) {
+        guard event.buttonNumber == 2 else { return }
+        pane?.mouseEvent(event, button: .middle, action: .press)
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        guard event.buttonNumber == 2 else { return }
+        pane?.mouseEvent(event, button: .middle, action: .release)
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        guard event.buttonNumber == 2 else { return }
+        pane?.mouseEvent(event, button: .middle, action: .motion)
+    }
+
+    // Button-less motion is only meaningful under any-event tracking (DEC
+    // 1003); the encoder drops it in every other mode, so no tracking-area
+    // is installed until a pane needs 1003 — this override exists for when
+    // one is.
+    override func mouseMoved(with event: NSEvent) {
+        pane?.mouseEvent(event, button: nil, action: .motion)
+    }
+}

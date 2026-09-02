@@ -9,10 +9,38 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   tail; headless mode + `ccc list|attach|snapshot`; one recorded session as
   the fixture; headless render test. Experiments 1 and 3.
 - **v1 — the SOTA pane.** libghostty-vt vendored and pinned; the Metal
-  renderer; forkpty; the six checks; swap when it wins.
+  renderer; forkpty; the six checks; swap when it wins. **Done 2026-09-02:**
+  six of six, swapped, SwiftTerm demoted to `CCC_CORE=swiftterm`.
 - **v2 — ssh hosts.** Host picker over the tailnet; one multiplexed ssh
   connection per host; roster, attach, spawn behind the prefix; TERM policy.
-  Experiment 2 (single attach across two Macs).
+  Experiment 2 (single attach across two Macs). Slices, in dependency order:
+  1. **Addressing — done 2026-09-02.** `SessionRef` (`host:id`, bare when
+     local, docs/DESIGN.md §4a), the host list (`ccc hosts` + its `add` /
+     `remove` / `check` twins, `~/Library/Application Support/ccc/hosts.json`),
+     and the one ssh prefix in `ClaudeCLI.argv(_:tty:)`. Proved against
+     `localhost` as a host named `loop` — the tactic experiment 3 opened, so
+     the hop has evidence before a second Mac exists:
+     - `ccc hosts check` — local 149 ms / loop 320 ms cold, 257–267 ms warm,
+       **17 sessions both ways** (the same roster, once direct and once
+       through ssh). `ssh -O check` confirms one shared master
+       (`ControlPersist`), socket 0600 in a 0700 dir.
+     - `ccc list --host loop` — the roster with a host column, and the model
+       column correctly blank on remote rows (§4a, "open").
+     - `ccc attach loop:1622e5f0 --headless` → `ccc snapshot` rendered the
+       full Claude Code TUI through the hop into libghostty-vt; `ccc detach`
+       answered `detached loop:1622e5f0`, exit 0, and the session was still
+       `done · idle` in the roster after. Ctrl+Z crosses the hop.
+     - `ccc list` with no remote host is unchanged from v1: no host column,
+       model column populated.
+  2. **Poll fan-out.** One poller per host, merged; a sleeping host degrades
+     to a stale/offline row (never a blank roster, never the shape banner);
+     per-host issues. Carries one known display bug from slice 1: both
+     roster faces shorten a cwd by substituting *this* Mac's home path, which
+     is wrong for a host whose username differs (invisible against `loop`,
+     since it is the same machine).
+  3. **The model column over ssh.** The open decision in docs/DESIGN.md §4a.
+  4. **Host picker + TERM policy**, and experiment 2 while a remote attach
+     is cheap to run.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.

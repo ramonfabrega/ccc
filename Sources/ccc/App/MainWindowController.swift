@@ -34,7 +34,7 @@ final class MainWindowController: NSWindowController {
         build()
         controller.makeHost = { [weak self] cols, rows in
             let bounds = self?.paneContainer.bounds ?? CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows)
-            return SwiftTermHost(frame: bounds)
+            return PaneController.makeDefaultHost(frame: bounds)
         }
         controller.onSessionStarted = { [weak self] session in self?.mount(session) }
         controller.onSessionEnded = { [weak self] _ in self?.unmount() }
@@ -76,10 +76,12 @@ final class MainWindowController: NSWindowController {
 
         split.isVertical = true
         split.dividerStyle = .thin
-        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, attach: { [weak self] id in
-            self?.attach(id)
+        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, attach: { [weak self] ref in
+            self?.attach(ref)
         }, detach: { [weak self] in
             self?.detachAction(nil)
+        }, attachCommandLine: { [weak self] ref in
+            self?.controller.attachCommandLine(for: ref) ?? "claude attach \(ref.id)"
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -159,8 +161,13 @@ final class MainWindowController: NSWindowController {
             // hears the size it actually got, not the pre-mount estimate.
             let dims = host.size
             session.viewResized(cols: dims.cols, rows: dims.rows)
+        } else if let pane = session.host as? GhosttyPane {
+            pane.onSizeChanged = { [weak session] cols, rows in session?.viewResized(cols: cols, rows: rows) }
+            let dims = pane.size
+            pane.resize(cols: dims.cols, rows: dims.rows)
+            session.viewResized(cols: dims.cols, rows: dims.rows)
         }
-        window?.title = "ccc — \(session.id)"
+        window?.title = "ccc — \(session.ref)"
     }
 
     private func unmount() {
@@ -169,10 +176,10 @@ final class MainWindowController: NSWindowController {
         window?.title = "ccc"
     }
 
-    private func attach(_ id: String) {
+    private func attach(_ ref: SessionRef) {
         controller.defaultSize = gridSize()
         do {
-            try controller.attach(id: id)
+            try controller.attach(ref: ref)
         } catch {
             showNotice("\(error)")
         }
@@ -188,12 +195,21 @@ final class MainWindowController: NSWindowController {
         NSApp.activate()
     }
 
-    /// The socket's window verbs; `close` is literally ⌘W.
+    /// The socket's window verbs; `close` is literally ⌘W, `resize W H`
+    /// is the user dragging the corner (check 5's twin: the pane and the
+    /// child must follow the new grid).
     func windowAction(_ action: String) -> Bool {
-        switch action {
+        let parts = action.split(separator: " ").map(String.init)
+        switch parts.first {
         case "show": showAction(nil)
         case "hide": window?.orderOut(nil)
         case "close": window?.performClose(nil)
+        case "resize":
+            guard parts.count == 3, let w = Double(parts[1]), let h = Double(parts[2]), let window else { return false }
+            var frame = window.frame
+            frame.origin.y += frame.height - h
+            frame.size = NSSize(width: w, height: h)
+            window.setFrame(frame, display: true, animate: false)
         default: return false
         }
         return true
@@ -210,6 +226,19 @@ final class MainWindowController: NSWindowController {
         guard let window, let content = window.contentView,
               let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return nil }
         content.cacheDisplay(in: content.bounds, to: rep)
+        // A Metal layer is invisible to cacheDisplay; composite the pane's
+        // own offscreen render into its place so peek shows the v1 pane too.
+        if let pane = controller.session?.host as? GhosttyPane, let view = pane.view, let image = pane.snapshotImage(),
+           let context = NSGraphicsContext(bitmapImageRep: rep) {
+            let frameInContent = view.convert(view.bounds, to: content)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            // cacheDisplay draws in the content view's coordinate space (flipped or not);
+            // NSBitmapImageRep contexts are bottom-left, so flip y for a non-flipped content view.
+            let y = content.isFlipped ? content.bounds.height - frameInContent.maxY : frameInContent.minY
+            context.cgContext.draw(image, in: CGRect(x: frameInContent.minX, y: y, width: frameInContent.width, height: frameInContent.height))
+            NSGraphicsContext.restoreGraphicsState()
+        }
         return rep.representation(using: .png, properties: [:])
     }
 }

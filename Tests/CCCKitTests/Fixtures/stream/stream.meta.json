@@ -1,0 +1,46 @@
+{
+  "command": [
+    "/bin/sh",
+    "-c",
+    "seq 1 60000; for i in $(seq 1 300); do printf '%s\\n' 'Gr\u00fc\u00dfe aus Z\u00fcrich \u2014 \u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8, combining e\\u0301, tabs\\tand\\ttabs, and a long line that will certainly wrap when the terminal is one hundred columns wide because it just keeps going and going'; done; ls -la --color=always /usr/bin | head -400; printf '\\033[1;31mbold red\\033[0m \\033[4munderline\\033[0m \\033[3mitalic\\033[0m\\n'; sleep 0.5"
+  ],
+  "cols": 100,
+  "rows": 30,
+  "resizeAtBytes": 150000,
+  "resizedTo": [
+    140,
+    40
+  ],
+  "bytes": 504383,
+  "phases": [
+    {
+      "name": "before-resize",
+      "atMs": 25,
+      "bytes": 150020,
+      "size": [
+        100,
+        30
+      ]
+    },
+    {
+      "name": "resize",
+      "atMs": 25,
+      "bytes": 150020,
+      "size": [
+        140,
+        40
+      ]
+    },
+    {
+      "name": "end",
+      "atMs": 581,
+      "bytes": 504383,
+      "size": [
+        140,
+        40
+      ]
+    }
+  ],
+  "recordedAt": "2026-09-02T04:25:52-0500",
+  "sha256": "0738adc851250fd174df9959ea73026e8fa9f9c1ba39f9bc061a0bf3b74f2c20"
+}

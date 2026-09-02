@@ -12,9 +12,19 @@ let package = Package(
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0"),
     ],
     targets: [
+        // libghostty-vt, built from vendor/ghostty by scripts/build-vt (Zig is
+        // the build step and nothing else). Run that once after clone; the
+        // xcframework is gitignored build output.
+        .binaryTarget(
+            name: "GhosttyVt",
+            path: "vendor/ghostty/zig-out/lib/ghostty-vt.xcframework"
+        ),
         .target(
             name: "CCCKit",
-            dependencies: [.product(name: "SwiftTerm", package: "SwiftTerm")]
+            dependencies: [
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                "GhosttyVt",
+            ]
         ),
         .executableTarget(
             name: "ccc",

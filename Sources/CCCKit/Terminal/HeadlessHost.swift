@@ -40,6 +40,7 @@ public final class HeadlessHost: TerminalHost {
     /// The bare core has no key encoder we can reach; `ccc attach --headless`
     /// uses `SwiftTermHost` off-screen for exactly this reason.
     public func press(_ key: NamedKey) -> Bool { false }
+    public func paste(_ text: String) -> Bool { false }
 
     // The terminal talks back through its delegate; we forward the two
     // things the seam cares about (bytes to the child, cursor visibility).

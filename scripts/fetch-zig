@@ -1,0 +1,39 @@
+#!/bin/zsh
+# Fetch the pinned Zig into .zig/ (gitignored). Zig is the build step for the
+# vendored core and nothing else (CLAUDE.md: "Zig only as the build step").
+# Pinned by version AND sha256 — the version Ghostty's build.zig.zon at the
+# vendored commit declares as minimum. No Homebrew: brew's zig is unpinned.
+#
+#   scripts/fetch-zig            # → .zig/zig, prints the version
+set -e
+cd "$(dirname "$0")/.."
+
+VERSION="0.16.0"
+ARCH="aarch64-macos"
+SHA256="b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489"
+URL="https://ziglang.org/download/$VERSION/zig-$ARCH-$VERSION.tar.xz"
+
+if [ -x ".zig/zig" ] && [ "$(.zig/zig version)" = "$VERSION" ]; then
+  echo "zig $VERSION already at .zig/zig"
+  exit 0
+fi
+
+WANT=$(grep -oE 'minimum_zig_version = "[^"]+"' vendor/ghostty/build.zig.zon | cut -d'"' -f2)
+if [ -n "$WANT" ] && [ "$WANT" != "$VERSION" ]; then
+  echo "warning: vendor/ghostty wants zig $WANT, this script pins $VERSION — update VERSION/SHA256 together" >&2
+fi
+
+TMP=$(mktemp -d)
+echo "fetching $URL"
+curl -fsSL "$URL" -o "$TMP/zig.tar.xz"
+GOT=$(shasum -a 256 "$TMP/zig.tar.xz" | cut -d' ' -f1)
+if [ "$GOT" != "$SHA256" ]; then
+  echo "sha256 mismatch: got $GOT want $SHA256" >&2
+  rm -rf "$TMP"
+  exit 1
+fi
+rm -rf .zig
+mkdir -p .zig
+tar -xJf "$TMP/zig.tar.xz" -C .zig --strip-components=1
+rm -rf "$TMP"
+echo "zig $(.zig/zig version) → .zig/zig"

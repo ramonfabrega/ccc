@@ -1,0 +1,19 @@
+#!/bin/zsh
+# Print the public surface of the vendored libghostty-vt: header list and
+# every ghostty_* function name. Committed as docs/vt/surface.txt so a bump
+# of vendor/ghostty is a diff of the contract, not a re-derivation (a claim
+# about a library's API is incomplete without the ref it was read at).
+#
+#   scripts/vt-surface > docs/vt/surface.txt
+set -e
+cd "$(dirname "$0")/.."
+SHA=$(git -C vendor/ghostty rev-parse --short HEAD)
+DATE=$(git -C vendor/ghostty log -1 --format=%cs)
+echo "# libghostty-vt public surface at vendor/ghostty $SHA ($DATE)"
+echo "# regenerate: scripts/vt-surface > docs/vt/surface.txt ; diff on every bump"
+echo
+echo "## headers"
+(cd vendor/ghostty/include/ghostty && find . -name '*.h' | sort)
+echo
+echo "## functions"
+grep -rhoE "ghostty_[a-z0-9_]+\(" vendor/ghostty/include/ghostty/ | sort -u | sed 's/($//'

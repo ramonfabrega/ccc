@@ -34,6 +34,27 @@ behind `ssh`.
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.
+- **Done sessions leave the roster when their worker is recycled, never by
+  time.** `roster.json` is `workers` keyed by worker id (pid, procStart,
+  the sessionId currently bound). The daemon keeps spare worker
+  processes; `bg claimed-spare <id>` in daemon.log hands a spare to a new
+  session and spawns a replacement. A done session's row survives until
+  its worker is claimed by a *new* background session, at which point the
+  row is overwritten. Observed 2026-09-02 (lore, from the store's shape and
+  daemon.log): `1b1140d9` (settled 08:12:51Z) vanished at 09:08:23Z when
+  its worker pid 85972 was claimed by `78bb5bd1`; `78bb5bd1` then survived
+  a further spawn (it claimed the replenishment spare) and was still
+  listed 73 minutes after settling. Five mechanisms were proposed and
+  falsified first — process exit, daemon restart, attach/detach, drop on
+  rewrite, an age threshold — the last one built on a rounded timestamp
+  ("gone by 04:05"; the overwrite was 04:08:23). Two rules from that:
+  record a rounded time as an interval, and read the data structure before
+  theorising about its behaviour. Consequences for ccc: roster memory is
+  bounded by dispatch churn (seconds on a busy fleet, hours on an idle
+  one); a target seen last tick may be gone this tick; `claude attach` on
+  a forgotten id prints "No job matching" and exits, which the pane shows
+  as its first row; and the roster's `id`/`sessionId` are the stable
+  handles — worker identity is not.
 
 **`claude attach <id>`** — no flags. Fullscreen TUI. Detach: `←` on an empty
 prompt, `/exit`, `Ctrl+Z` (back to where you started), double `Ctrl+C` or
@@ -126,7 +147,11 @@ is the sanctioned inbound surface (not investigated).
    screen left (`?1049l`), kitty keyboard popped (`CSI <u`), "Connection to
    localhost closed", ssh exit status 0, session still alive in the roster.
    Remote command must be the absolute path (`~/.local/bin/claude`);
-   non-interactive ssh has no `claude` on PATH. Detach byte tail:
+   non-interactive ssh has no `claude` on PATH — now enforced by
+   `Host.validate`, which refuses a remote host without one and says this.
+   **Mechanized 2026-09-02 (v2 slice 1):** `ccc hosts check <name>` runs the
+   real poll command on a host and reports what came back, so the hop is a
+   command anyone can re-run instead of a one-off Python pty script. Detach byte tail:
    `ESC 7 ESC 8 ESC [<u ESC [>4m`.
 4. Find how the TUI's peek/reply reaches the daemon (`rendezvousSock` /
    `ptySock` in the roster) — a v2 exploration, not a v0 dependency.

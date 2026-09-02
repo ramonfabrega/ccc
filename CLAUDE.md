@@ -29,10 +29,14 @@ it should break while being awesome.**
 - **libghostty-vt is the terminal core** — the embeddable VT parser + screen
   state Ghostty extracted for exactly this, MIT, C ABI, with a render-state API
   for custom renderers and a key encoder (kitty keyboard protocol included).
-  Vendored as a git submodule **pinned to the latest stable Ghostty tag** (≥1.3:
-  the scrollback leak fix) with the Zig version it needs pinned alongside;
-  never tracks main. Its API is pre-1.0 and says so; breaks surface at compile
-  time and are absorbed per bump.
+  Vendored as a git submodule **pinned to one explicit commit** with the Zig
+  version it needs pinned alongside (`scripts/fetch-zig`); never tracks a
+  branch. Amended 2026-09-02 from "latest stable tag": the terminal, screen,
+  render-state and snapshot headers exist only past v1.3.1 — the release
+  ships key encoder, OSC/SGR parsers, paste and color alone — so v1 pins
+  main commit `3c1ef5b` (2026-09-01, Zig 0.16.0) and moves to a tag when one
+  contains `terminal.h`. Its API is pre-1.0 and says so; breaks surface at
+  compile time and are absorbed per bump.
 - **Our own Metal cell-grid renderer in Swift** (CoreText glyph atlas, render
   state deltas → GPU buffers, cursor/selection overlay). Estimated 800–1,800
   lines. If upstream ships its announced Swift Metal renderer first, evaluate
@@ -44,7 +48,10 @@ it should break while being awesome.**
   resize, snapshot). v0 may fill it with SwiftTerm's stock view to unblock the
   roster work; the libghostty-vt + Metal pane replaces it when it wins on:
   kitty keyboard / shift-enter, bracketed paste, mouse scroll, streaming
-  throughput, resize over ssh, detach keys.
+  throughput, resize over ssh, detach keys. **Settled 2026-09-02: it won all
+  six (docs/CHECKS.md) and is the default; `CCC_CORE=swiftterm` is the
+  escape hatch.** The seam stays — it is what made the swap a one-line
+  change and what a third core would enter through.
 - **PTY is always local; remote is the same command behind `ssh -t`.** Roster
   poll, attach, spawn: one prefix per host, one multiplexed ssh connection per
   host. Folders, git, worktrees fall out as cwd choices. No daemon of our own.

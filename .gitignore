@@ -3,3 +3,6 @@
 .build-*/
 *.xcodeproj
 .swiftpm/
+.zig/
+vendor/ghostty/zig-out/
+vendor/ghostty/.zig-cache/
