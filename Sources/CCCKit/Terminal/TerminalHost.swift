@@ -28,6 +28,12 @@ public protocol TerminalHost: AnyObject {
     /// this host cannot encode keys (the pure replay host).
     @discardableResult
     func press(_ key: NamedKey) -> Bool
+    /// Paste text the way the child negotiated: bracketed (mode 2004) when
+    /// on, raw when off, kitty clipboard event when that protocol is live.
+    /// The host does the framing — never hand-roll `ESC[200~`. Returns
+    /// false when this host cannot paste or nothing was written.
+    @discardableResult
+    func paste(_ text: String) -> Bool
 }
 
 /// The keys `ccc send --key` accepts. Spelled the way a human types them:

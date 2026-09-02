@@ -32,6 +32,39 @@ pattern. Hashimoto announced a pure-Swift Metal renderer + Swift bindings
 ("coming soon", unshipped as of 2026-09-02) — check `ghostty-org` before
 starting the renderer, and again before finishing it.
 
+### Calling conventions learned the hard way
+
+`docs/vt/surface.txt` proves what exists; this list proves how it is called.
+Each line cost a crash or a wrong byte before it was written down.
+
+- `ghostty_terminal_set`: pointer-typed values (userdata, every callback)
+  are passed **directly** as `value`; non-pointer values by pointer. The
+  doc is on the function, not on the enum. (SIGSEGV, 2026-09-02)
+- Render-state getters for pre-allocated handles (`ROW_ITERATOR`,
+  `ROW_DATA_CELLS`) take the **address of the handle variable** — the
+  generic "out points at a value of the type" rule, where the type is the
+  opaque pointer. Passing the handle itself yields an empty grid.
+- One render state per terminal: `ghostty_render_state_update` consumes
+  the terminal's dirty flags, so a second render state on the same
+  terminal sees nothing. The text snapshot reads the renderer's state
+  with `consume: false`.
+- `GhosttyCell` is a packed `uint64_t`, passed **by value** to
+  `ghostty_cell_get`.
+- `modes.h`'s `GHOSTTY_MODE_*` are macros over a static inline and do not
+  import into Swift; call `ghostty_mode_new(n, false)`.
+- `GhosttyKey.rawValue` imports as `Int32`.
+- A raw terminal handle held outside its host is a use-after-free under
+  ARC; wrappers retain the host.
+- Key bytes the core actually emits (protocol named): shift-enter without
+  kitty → `ESC[27;2;13~` (modifyOtherKeys CSI 27), not CR; with kitty
+  disambiguate → `ESC[13;2u`; backspace → `0x7f` (DECBKM off); home/end →
+  `CSI H/F`, following DECCKM; f1 under kitty → `CSI P`; cmd/super has no
+  encoding.
+- Paste: `ghostty_terminal_paste` wants a `GhosttyPaste` with `size` set,
+  one MIME entry and a `GhosttyMimeReader` whose callback streams the
+  bytes to the provided writer; the core frames per mode 2004 and writes
+  through `WRITE_PTY`. `GHOSTTY_PASTE_SOURCE_CLIPBOARD`, not `_PASTE`.
+
 ## Renderer: ours, Swift + Metal
 
 A cell-grid renderer over the render-state deltas: a CoreText glyph atlas,

@@ -92,6 +92,48 @@ public final class GhosttyHost: TerminalHost {
         return true
     }
 
+    /// Paste through the core: it frames per mode 2004 (or emits a kitty
+    /// clipboard event) and streams the result to WRITE_PTY → onOutput.
+    /// Text the core deems unsafe (newlines, the bracketed-paste end
+    /// sequence) is pasted anyway — `allow_unsafe` is true — because the
+    /// caller here is `ccc send`, whose operator chose the text; the GUI
+    /// pane confirms with the user first and passes it back through here.
+    public func paste(_ text: String) -> Bool {
+        guard let terminal, !text.isEmpty else { return false }
+        let bytes = Array(text.utf8)
+        let mime = Array("text/plain".utf8)
+        return bytes.withUnsafeBufferPointer { body -> Bool in
+            mime.withUnsafeBufferPointer { mimeBuf -> Bool in
+                var mimes = [GhosttyString(ptr: mimeBuf.baseAddress, len: mimeBuf.count)]
+                // The reader hands the writer our bytes; `userdata` carries
+                // the buffer pointer, valid for the duration of the call.
+                var payload = (ptr: body.baseAddress, len: body.count)
+                let read: GhosttyMimeReaderFn = { userdata, _, writer in
+                    guard let userdata else { return false }
+                    let payload = userdata.assumingMemoryBound(to: (ptr: UnsafePointer<UInt8>?, len: Int).self).pointee
+                    guard let ptr = payload.ptr, payload.len > 0, let write = writer.write else { return true }
+                    return write(writer.userdata, ptr, payload.len)
+                }
+                return withUnsafeMutablePointer(to: &payload) { payloadPtr in
+                    mimes.withUnsafeMutableBufferPointer { mimesBuf in
+                        var paste = GhosttyPaste()
+                        paste.size = MemoryLayout<GhosttyPaste>.size
+                        paste.location = GHOSTTY_CLIPBOARD_LOCATION_STANDARD
+                        paste.source = GHOSTTY_PASTE_SOURCE_CLIPBOARD
+                        paste.mimes = UnsafePointer(mimesBuf.baseAddress)
+                        paste.mimes_len = 1
+                        paste.reader = GhosttyMimeReader(read: read, userdata: UnsafeMutableRawPointer(payloadPtr))
+                        paste.allow_unsafe = true
+                        var written = false
+                        let result = ghostty_terminal_paste(terminal, &paste, &written)
+                        if result != GHOSTTY_SUCCESS { lastError = "ghostty_terminal_paste: \(result.rawValue)" }
+                        return result == GHOSTTY_SUCCESS && written
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: frames (the renderer's input)
 
     private var frameReader: FrameReader?

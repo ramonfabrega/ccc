@@ -156,26 +156,40 @@ enum CLI {
             }
             return stride(from: 0, to: bytes.count, by: 4096).map { bytes.subdata(in: $0..<min($0 + 4096, bytes.count)) }
         }()
-        struct Result: Encodable { var core: String; var bytes: Int; var repeats: Int; var parseMs: Double; var snapshotMs: Double; var mbPerSecond: Double; var footprintMB: Double }
+        // Equal-work evidence beside the rate: what each core materialized
+        // (scrollback rows retained, grid text) and the footprint delta of
+        // running it. A parser that skips bookkeeping looks faster and is
+        // not comparable; these columns show whether both did the same job.
+        struct Result: Encodable {
+            var core: String; var bytes: Int; var repeats: Int
+            var parseMs: Double; var snapshotMs: Double; var mbPerSecond: Double
+            var footprintDeltaMB: Double; var scrollbackRows: Int; var gridDigest: String
+        }
         var results: [Result] = []
         for name in (core.map { [$0] } ?? ["swiftterm", "ghostty"]) {
+            let before = ProcessStats.footprint(of: getpid()) ?? 0
             let host: TerminalHost = name == "ghostty" ? GhosttyHost(cols: cols, rows: rows) : HeadlessHost(cols: cols, rows: rows)
             let clock = ContinuousClock()
             let parse = clock.measure {
                 for _ in 0..<repeats { for chunk in chunks { host.feed(chunk) } }
             }
             let snap = clock.measure { for _ in 0..<repeats { _ = host.snapshot() } }
+            let grid = host.snapshot()
+            let after = ProcessStats.footprint(of: getpid()) ?? 0
             let parseMs = Double(parse.components.seconds) * 1000 + Double(parse.components.attoseconds) / 1e15
             let snapMs = Double(snap.components.seconds) * 1000 + Double(snap.components.attoseconds) / 1e15
             let total = Double(bytes.count * repeats)
+            let digest = String(grid.rendered().hashValue, radix: 16).suffix(8)
             results.append(Result(core: name, bytes: bytes.count, repeats: repeats, parseMs: parseMs, snapshotMs: snapMs,
                                   mbPerSecond: total / 1_048_576 / (parseMs / 1000),
-                                  footprintMB: Double(ProcessStats.footprint(of: getpid()) ?? 0) / 1_048_576))
+                                  footprintDeltaMB: Double(Int64(after) - Int64(before)) / 1_048_576,
+                                  scrollbackRows: grid.scrollbackRows, gridDigest: String(digest)))
         }
         if json { printJSON(results) } else {
             for r in results {
-                print(String(format: "%-9@ parse %8.1f ms (%6.1f MB/s)   snapshot %7.2f ms/frame   footprint %.1f MB",
-                             r.core as NSString, r.parseMs, r.mbPerSecond, r.snapshotMs / Double(max(1, repeats)), r.footprintMB))
+                print(String(format: "%-9@ parse %8.1f ms (%6.1f MB/s)   snapshot %5.2f ms/frame   Δfootprint %6.1f MB   scrollback %6d rows   grid %@",
+                             r.core as NSString, r.parseMs, r.mbPerSecond, r.snapshotMs / Double(max(1, repeats)),
+                             r.footprintDeltaMB, r.scrollbackRows, r.gridDigest as NSString))
             }
         }
         return 0

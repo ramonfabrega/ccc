@@ -73,6 +73,12 @@ public final class SwiftTermHost: TerminalHost {
         terminalView.getTerminal().getDims()
     }
 
+    /// SwiftTerm frames pastes inside its own NSResponder `paste:` path from
+    /// the pasteboard; there is no text-in API that applies mode 2004, so
+    /// this host cannot paste programmatically. Check 2 runs on the Ghostty
+    /// host only until that changes.
+    public func paste(_ text: String) -> Bool { false }
+
     /// Synthesizes the NSEvent the user's keypress would produce and hands
     /// it to SwiftTerm's `keyDown`, so `ccc send --key ctrl-z` takes the
     /// same path — kitty encoding included — as a finger on the keyboard.

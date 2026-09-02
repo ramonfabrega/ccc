@@ -26,6 +26,22 @@ import Testing
         #expect(replies == Data("\u{1b}[1;1R".utf8), "got \(Array(replies))")
     }
 
+    /// Check 2 of docs/CHECKS.md: the core frames a paste per mode 2004.
+    @Test @MainActor func pasteIsBracketedOnlyWhenTheChildAskedForIt() {
+        let host = GhosttyHost(cols: 40, rows: 4)
+        var out = Data()
+        host.onOutput = { out.append($0) }
+        #expect(host.paste("plain\nmulti") == true)
+        // Unbracketed: the core rewrites LF to CR, as a typed Return would
+        // arrive (xterm behaviour); the child never sees a bare \n.
+        #expect(out == Data("plain\rmulti".utf8), "raw-with-CR when mode 2004 is off; got \(Array(out))")
+        out.removeAll()
+        host.feed(Data("\u{1b}[?2004h".utf8))            // child enables bracketed paste
+        #expect(host.paste("plain\nmulti") == true)
+        #expect(out == Data("\u{1b}[200~plain\nmulti\u{1b}[201~".utf8), "bracketed when on; got \(Array(out))")
+        #expect(host.paste("") == false)
+    }
+
     @Test @MainActor func everyPhaseMatchesTheSwiftTermGolden() throws {
         let meta = try ReplayTests.meta()
         let bytes = try Fixtures.data("attach/attach.bin")
