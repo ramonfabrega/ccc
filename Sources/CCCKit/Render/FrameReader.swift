@@ -38,7 +38,11 @@ final class FrameReader {
         ghostty_render_state_free(renderState)
     }
 
-    func read() -> Frame {
+    /// `consume: false` (the text snapshot) leaves the render state's dirty
+    /// flags in place so the next consuming read still sees every change:
+    /// the terminal's own dirty state is taken by `update` either way, so
+    /// there must be exactly one render state per terminal, this one.
+    func read(consume: Bool = true) -> Frame {
         _ = ghostty_render_state_update(renderState, terminal)
 
         var cols: UInt16 = 0, rows: UInt16 = 0
@@ -104,7 +108,7 @@ final class FrameReader {
                                   wideTail: wideTail, color: hasCursorColor ? rgb(cursorColor) : nil)
         }
 
-        _ = ghostty_render_state_clean(renderState)
+        if consume { _ = ghostty_render_state_clean(renderState) }
 
         return Frame(cols: Int(cols), rows: frameRows, cursor: cursor,
                      background: rgb(colors.background), foreground: rgb(colors.foreground), dirty: dirty)

@@ -15,9 +15,6 @@ public final class GhosttyHost: TerminalHost {
     /// touches the raw handle.
     private(set) var terminal: GhosttyTerminal?
     private var keys: GhosttyKeys?
-    private var renderState: GhosttyRenderState?
-    private var rowIterator: GhosttyRenderStateRowIterator?
-    private var rowCells: GhosttyRenderStateRowCells?
     private var cellSize: (width: UInt32, height: UInt32) = (8, 17)
 
     public var onOutput: ((Data) -> Void)?
@@ -48,19 +45,11 @@ public final class GhosttyHost: TerminalHost {
             MainActor.assumeIsolated { host.onOutput?(bytes) }
         }
         _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_WRITE_PTY, unsafeBitCast(writePty, to: UnsafeRawPointer.self))
-
-        var rs: GhosttyRenderState?
-        if ghostty_render_state_new(nil, &rs) == GHOSTTY_SUCCESS { renderState = rs }
-        var it: GhosttyRenderStateRowIterator?
-        if ghostty_render_state_row_iterator_new(nil, &it) == GHOSTTY_SUCCESS { rowIterator = it }
-        var cells: GhosttyRenderStateRowCells?
-        if ghostty_render_state_row_cells_new(nil, &cells) == GHOSTTY_SUCCESS { rowCells = cells }
     }
 
     isolated deinit {
-        if let rowCells { ghostty_render_state_row_cells_free(rowCells) }
-        if let rowIterator { ghostty_render_state_row_iterator_free(rowIterator) }
-        if let renderState { ghostty_render_state_free(renderState) }
+        frameReader = nil          // its render state must go before the terminal
+        keys = nil
         if let terminal { ghostty_terminal_free(terminal) }
     }
 
@@ -103,68 +92,47 @@ public final class GhosttyHost: TerminalHost {
         return true
     }
 
+    // MARK: frames (the renderer's input)
+
+    private var frameReader: FrameReader?
+
+    /// The resolved viewport for the renderer, as a delta since the last
+    /// call (see `FrameReader`). Separate from `snapshot()`, which is the
+    /// text oracle and must not consume dirty state.
+    public func frame() -> Frame? {
+        guard let terminal else { return nil }
+        if frameReader == nil { frameReader = FrameReader(terminal: terminal) }
+        return frameReader?.read()
+    }
+
     // MARK: snapshot
 
+    /// The text oracle. Derived from the same `FrameReader` the renderer
+    /// uses (one render state per terminal), without consuming dirty flags.
     public func snapshot() -> Grid {
-        guard let terminal, let renderState, let rowIterator, let rowCells else {
+        guard let terminal else {
             return Grid(cols: 0, rows: 0, lines: [], cursor: .init(col: 0, row: 0, visible: false))
         }
-        _ = ghostty_render_state_update(renderState, terminal)
-
-        var cols: UInt16 = 0, rows: UInt16 = 0
-        _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_COLS, &cols)
-        _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_ROWS, &rows)
-
-        var lines: [String] = []
-        lines.reserveCapacity(Int(rows))
-        // ROW_ITERATOR / ROW_DATA_CELLS populate a PRE-ALLOCATED handle; the
-        // getters follow the "out points at a value of the type" rule, so
-        // the out pointer is the address of the handle variable.
-        var iterator = rowIterator
-        _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &iterator)
-        var utf8 = [UInt8](repeating: 0, count: 64)
-        while ghostty_render_state_row_iterator_next(iterator) {
-            var cells = rowCells
-            _ = ghostty_render_state_row_get(iterator, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &cells)
-            var line = ""
-            line.reserveCapacity(Int(cols))
-            var x = 0
-            while ghostty_render_state_row_cells_next(cells), x < Int(cols) {
-                var buffer = GhosttyBuffer()
-                utf8.withUnsafeMutableBufferPointer { buf in
-                    buffer.ptr = buf.baseAddress
-                    buffer.cap = buf.count
-                    buffer.len = 0
-                    let result = ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_UTF8, &buffer)
-                    if result == GHOSTTY_SUCCESS, buffer.len > 0 {
-                        line += String(decoding: UnsafeRawBufferPointer(start: buf.baseAddress, count: Int(buffer.len)), as: UTF8.self)
-                    } else if result != GHOSTTY_SUCCESS && buffer.len > 0 {
-                        line += "?"   // grapheme longer than 64 bytes; grow later
-                    } else {
-                        line += " "
-                    }
-                }
-                x += 1
-            }
-            lines.append(line)
+        if frameReader == nil { frameReader = FrameReader(terminal: terminal) }
+        guard let frame = frameReader?.read(consume: false) else {
+            return Grid(cols: 0, rows: 0, lines: [], cursor: .init(col: 0, row: 0, visible: false))
         }
-        while lines.count < Int(rows) { lines.append(String(repeating: " ", count: Int(cols))) }
-
-        var hasCursor = false, visible = false
-        var cx: UInt16 = 0, cy: UInt16 = 0
-        _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &hasCursor)
-        _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &visible)
-        if hasCursor {
-            _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cx)
-            _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cy)
+        let lines = frame.rows.map { row -> String in
+            var line = ""
+            line.reserveCapacity(frame.cols)
+            for cell in row.cells {
+                // One String element per column: a wide glyph followed by a
+                // space for its spacer tail keeps text positions aligned with
+                // the grid (and with the SwiftTerm goldens).
+                line += cell.text.isEmpty ? " " : cell.text
+            }
+            return pad(line, to: frame.cols)
         }
         var scrollback: Int = 0
         _ = ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS, &scrollback)
-
         return Grid(
-            cols: Int(cols), rows: Int(rows),
-            lines: lines.map { pad($0, to: Int(cols)) },
-            cursor: .init(col: Int(cx), row: Int(cy), visible: visible && hasCursor),
+            cols: frame.cols, rows: frame.rows.count, lines: lines,
+            cursor: .init(col: frame.cursor?.x ?? 0, row: frame.cursor?.y ?? 0, visible: frame.cursor?.visible ?? false),
             scrollbackRows: scrollback
         )
     }
