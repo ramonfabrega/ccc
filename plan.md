@@ -77,11 +77,16 @@ and the terminal clips a little at its bounds.
    `scripts/package` + `make-bundle` + `Updater.swift` + half of
    `BuildInfo.swift` with `ota bundle` / `ota release` and an `OTA`
    package. Its seam question — OTA must split so CCCKit never links
-   Sparkle — got this session's recommendation (split; `name` on
-   OTA.BuildInfo; a patch to review, pinned to a revision until ota tags),
-   with the user's word still owed: a new dependency is earned in
-   docs/DESIGN.md (CLAUDE.md), and this one replaces the release lane.
-   Nothing in ccc changes until the patch lands and is reviewed.
+   Sparkle — was split as asked, and the patch is **reviewed and ready:
+   `origin/ota-migration-v017` (9d7ce79), one commit directly on v0.1.7,
+   a fast-forward for `worktree-v2`.** Reviewed 2026-09-02: merges clean,
+   174 tests, zero Sparkle in the test bundle, ota pinned to a GitHub
+   revision, typealiases instead of `@_exported`. Two things gate the
+   landing, both the user's: install `ota` on studio (`~/code/fun/ota`,
+   its `scripts/install`; the branch's scripts refuse without it), and
+   §6a's proof — a real `scripts/package` through `ota release` that
+   air's Sparkle installs — before the old lane retires. The superseded
+   `origin/ota-migration` (d475fb8) can be deleted.
 
 `scripts/attach-probe` is the tool for anything attach-shaped: hold, type,
 resize, SIGUSR1 to report mid-hold.
