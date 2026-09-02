@@ -21,6 +21,7 @@ public final class HeadlessHost: TerminalHost {
         options.rows = rows
         options.scrollback = scrollback
         terminal = Terminal(delegate: bridge, options: options)
+        terminal.silentLog = true   // debug builds print "Info: Unhandled …" to stdout otherwise
         bridge.host = self
     }
 
@@ -35,6 +36,10 @@ public final class HeadlessHost: TerminalHost {
     public func snapshot() -> Grid {
         GridBuilder.grid(from: terminal, cursorVisible: cursorVisible)
     }
+
+    /// The bare core has no key encoder we can reach; `ccc attach --headless`
+    /// uses `SwiftTermHost` off-screen for exactly this reason.
+    public func press(_ key: NamedKey) -> Bool { false }
 
     // The terminal talks back through its delegate; we forward the two
     // things the seam cares about (bytes to the child, cursor visibility).

@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Record one real `claude attach <id>` as the replay fixture.
+
+    scripts/record-attach <session-id> [out-dir]
+
+Drives `claude attach` in a pty at 100x30, waits for the TUI to settle,
+types a probe string, waits, then detaches with Ctrl+Z. Writes:
+
+    <out>/attach.bin       raw bytes from the child, in order
+    <out>/attach.events    one line per chunk: "<ms-since-start> <byte-offset> <len>"
+    <out>/attach.meta.json size, session id, cli version, phases
+    <out>/attach.golden.txt is written by `ccc replay` (headless render), not here
+
+The fixture is the oracle every renderer change is judged against
+(CLAUDE.md "Recorded sessions are fixtures"). Strips CLAUDE* from the
+child's environment so the attach client is not treated as a child session.
+"""
+import json, os, pty, select, signal, subprocess, sys, time, fcntl, termios, struct
+
+if len(sys.argv) < 2:
+    sys.exit(__doc__)
+session = sys.argv[1]
+out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), "..", "Tests", "CCCKitTests", "Fixtures", "attach")
+os.makedirs(out, exist_ok=True)
+COLS, ROWS = 100, 30
+version = subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout.strip()
+
+pid, fd = pty.fork()
+if pid == 0:
+    for k in [k for k in os.environ if k.startswith("CLAUDE")]:
+        del os.environ[k]
+    os.environ["TERM"] = "xterm-256color"
+    os.execvp("claude", ["claude", "attach", session])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+
+t0 = time.monotonic()
+raw = open(os.path.join(out, "attach.bin"), "wb")
+events = open(os.path.join(out, "attach.events"), "w")
+offset = 0
+phases = []
+
+def drain(seconds):
+    global offset
+    end = time.monotonic() + seconds
+    eof = False
+    while time.monotonic() < end:
+        r, _, _ = select.select([fd], [], [], 0.1)
+        if not r:
+            continue
+        try:
+            chunk = os.read(fd, 65536)
+        except OSError:
+            eof = True; break
+        if not chunk:
+            eof = True; break
+        raw.write(chunk)
+        events.write(f"{int((time.monotonic() - t0) * 1000)} {offset} {len(chunk)}\n")
+        offset += len(chunk)
+    return eof
+
+def phase(name, seconds, keys=None):
+    if keys is not None:
+        os.write(fd, keys)
+    eof = drain(seconds)
+    phases.append({"name": name, "atMs": int((time.monotonic() - t0) * 1000), "bytes": offset, "eof": eof})
+    print(f"{name:>14}: {offset} bytes{' (eof)' if eof else ''}")
+    return eof
+
+eof = phase("startup", 10)
+if not eof: eof = phase("type", 2, b"ccc fixture probe")
+if not eof: eof = phase("erase", 2, b"\x15")            # ctrl-u clears the line
+if not eof: eof = phase("detach", 5, b"\x1a")           # ctrl-z
+if not eof:
+    os.kill(pid, signal.SIGHUP)
+    drain(1)
+raw.close(); events.close()
+os.waitpid(pid, 0)
+json.dump({"session": session, "cliVersion": version, "cols": COLS, "rows": ROWS,
+           "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "bytes": offset, "phases": phases},
+          open(os.path.join(out, "attach.meta.json"), "w"), indent=2)
+print("wrote", out)

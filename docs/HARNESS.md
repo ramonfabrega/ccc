@@ -115,7 +115,26 @@ is the sanctioned inbound surface (not investigated).
    simultaneously; record the refusal text and what the first client sees.
 3. **[state-changing]** `ssh -t localhost claude attach <id>`: fullscreen,
    resize, and `Ctrl+Z` semantics through a PTY hop.
+   **Answered 2026-09-02 (2.1.258) against session `1b1140d9`, driven from
+   a Python pty at 100×30.** All three work. Startup: alt screen
+   (`?1049h`), kitty keyboard push (`CSI >`), bracketed paste (`?2004h`),
+   SGR mouse (`?1006h`) all negotiated through the hop; the TUI rendered the
+   transcript, the `ccc-exp3` name bar, and the status line within 12 s.
+   Resize: `TIOCSWINSZ` on our master → ssh forwards SIGWINCH → a full
+   redraw at 140 columns arrived within 5 s (separator rules grew from
+   100 to 140 cells). Typing echoed. **`Ctrl+Z` detaches cleanly**: alt
+   screen left (`?1049l`), kitty keyboard popped (`CSI <u`), "Connection to
+   localhost closed", ssh exit status 0, session still alive in the roster.
+   Remote command must be the absolute path (`~/.local/bin/claude`);
+   non-interactive ssh has no `claude` on PATH. Detach byte tail:
+   `ESC 7 ESC 8 ESC [<u ESC [>4m`.
 4. Find how the TUI's peek/reply reaches the daemon (`rendezvousSock` /
    `ptySock` in the roster) — a v2 exploration, not a v0 dependency.
 5. Type in an attached pane, kill the terminal, reattach: does the draft
    survive via the queued-reply path or only via peek?
+   **Answered incidentally 2026-09-02:** yes for `Ctrl+Z`. Experiment 3
+   typed `hello from exp3` into the prompt over ssh and detached with
+   `Ctrl+Z`; the next `claude attach` (local, the fixture recording, 8 min
+   later) rendered the prompt as `❯ hello from exp3` before any new input.
+   The draft lives with the session, not the client. Killing the terminal
+   outright (SIGHUP, no `Ctrl+Z`) is still untested.

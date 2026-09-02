@@ -27,6 +27,25 @@ public enum WellPath {
         directory(forCwd: cwd, claudeHome: claudeHome).appending(path: "\(sessionId).jsonl")
     }
 
+    /// The transcript a session actually has. The roster's `cwd` is where
+    /// the session runs now; the transcript follows the well the harness
+    /// chose, and worktree isolation moves it (lore's re-derived finding:
+    /// entering a worktree mid-session relocates the whole file to the
+    /// worktree's well). Tries the direct path, then every well under
+    /// `projects/` — one `stat` per well, ~100 on this machine.
+    public static func locateTranscript(sessionId: String, cwd: String, claudeHome: URL = defaultClaudeHome) -> URL? {
+        let direct = transcript(sessionId: sessionId, cwd: cwd, claudeHome: claudeHome)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: direct.path) { return direct }
+        let projects = claudeHome.appending(path: "projects")
+        guard let wells = try? fm.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil) else { return nil }
+        for well in wells {
+            let candidate = well.appending(path: "\(sessionId).jsonl")
+            if fm.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+
     public static var defaultClaudeHome: URL {
         if let override = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"], !override.isEmpty {
             return URL(filePath: override)

@@ -1,0 +1,34 @@
+{
+  "session": "1b1140d9",
+  "cliVersion": "2.1.258 (Claude Code)",
+  "cols": 100,
+  "rows": 30,
+  "recordedAt": "2026-09-02T02:34:22-0500",
+  "bytes": 3701,
+  "phases": [
+    {
+      "name": "startup",
+      "atMs": 10047,
+      "bytes": 3345,
+      "eof": false
+    },
+    {
+      "name": "type",
+      "atMs": 12098,
+      "bytes": 3447,
+      "eof": false
+    },
+    {
+      "name": "erase",
+      "atMs": 14167,
+      "bytes": 3603,
+      "eof": false
+    },
+    {
+      "name": "detach",
+      "atMs": 14667,
+      "bytes": 3701,
+      "eof": true
+    }
+  ]
+}

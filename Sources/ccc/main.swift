@@ -7,5 +7,5 @@ let arguments = Array(CommandLine.arguments.dropFirst())
 if arguments.isEmpty {
     App.main()
 } else {
-    exit(CLI.run(arguments))
+    exit(await CLI.run(arguments))
 }

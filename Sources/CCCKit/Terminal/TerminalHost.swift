@@ -22,6 +22,64 @@ public protocol TerminalHost: AnyObject {
     func snapshot() -> Grid
     /// The AppKit view, if this host renders. Headless hosts return nil.
     var view: NSView? { get }
+    /// Press a named key. The host encodes it (kitty protocol, application
+    /// cursor mode, whatever the child negotiated) exactly as it would for
+    /// the user — CLAUDE.md "Keys are the core's job". Returns false when
+    /// this host cannot encode keys (the pure replay host).
+    @discardableResult
+    func press(_ key: NamedKey) -> Bool
+}
+
+/// The keys `ccc send --key` accepts. Spelled the way a human types them:
+/// `enter`, `shift-enter`, `ctrl-c`, `ctrl-z`, `escape`, `tab`, `up`, `f1`.
+public struct NamedKey: Sendable, Equatable, CustomStringConvertible {
+    public enum Base: String, Sendable, CaseIterable {
+        case enter, escape, tab, backspace, delete, space
+        case up, down, left, right, home, end, pageup, pagedown
+        case f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12
+    }
+    public var base: Base?
+    /// A single printable character when `base` is nil (`ctrl-c` → "c").
+    public var character: Character?
+    public var shift = false
+    public var control = false
+    public var option = false
+    public var command = false
+
+    public init?(_ text: String) {
+        var parts = text.lowercased().split(separator: "-").map(String.init)
+        guard let last = parts.popLast() else { return nil }
+        for modifier in parts {
+            switch modifier {
+            case "shift", "s": shift = true
+            case "ctrl", "control", "c": control = true
+            case "opt", "option", "alt", "a", "meta", "m": option = true
+            case "cmd", "command", "super": command = true
+            default: return nil
+            }
+        }
+        if let base = Base(rawValue: last) {
+            self.base = base
+        } else if last.count == 1, let ch = last.first {
+            self.character = ch
+        } else if last == "return" {
+            self.base = .enter
+        } else if last == "esc" {
+            self.base = .escape
+        } else {
+            return nil
+        }
+    }
+
+    public var description: String {
+        var s: [String] = []
+        if control { s.append("ctrl") }
+        if option { s.append("opt") }
+        if shift { s.append("shift") }
+        if command { s.append("cmd") }
+        s.append(base?.rawValue ?? String(character ?? "?"))
+        return s.joined(separator: "-")
+    }
 }
 
 /// A rendered terminal grid: rows of text, cursor, size. Deliberately plain —

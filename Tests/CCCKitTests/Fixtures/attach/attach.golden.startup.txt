@@ -1,0 +1,30 @@
+
+ ▐▛███▛█   Claude Code v2.1.258
+▝▜██████▀  Opus 5 (1M context) with high effort · Claude Max
+  ▝▝ ▝▝    ~/cc-test
+
+
+❯ Reply with exactly the word ok and nothing else.
+
+⏺ ok
+
+✻ Churned for 2s · done 2:26 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+───────────────────────────────────────────────────────────────────────────────────────── ccc-exp3 ─
+❯ hello from exp3
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~/cc-test • Opus 5 high • 41k (4%) • 7d: 36% (3d)                                            /rc
+  ⏵⏵ auto mode on (shift+tab to cycle)

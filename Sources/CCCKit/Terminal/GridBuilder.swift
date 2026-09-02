@@ -15,8 +15,12 @@ enum GridBuilder {
             // getLine is relative to the visible viewport when the user has
             // not scrolled; use the buffer row so a scrolled-back view still
             // renders what is on screen.
+            // Empty cells hold NUL in SwiftTerm's buffer; the grid is text.
             let text = terminal.getScrollInvariantLine(row: top + row)?
-                .translateToString(trimRight: false) ?? ""
+                .translateToString(trimRight: false, characterProvider: { cell in
+                    let ch = cell.getCharacter()
+                    return ch == "\u{0}" ? " " : ch
+                }) ?? ""
             lines.append(pad(text, to: dims.cols))
         }
         let cursor = terminal.getCursorLocation()
