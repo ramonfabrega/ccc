@@ -40,12 +40,46 @@ import Testing
                 .lastPathComponent)
     }
 
-    /// Unverified territory, pinned so a future widening of the rule is a
-    /// deliberate change: no cwd on this machine contains `_` or a space, so
-    /// we leave them alone rather than guess.
-    @Test func otherPunctuationIsLeftAlone() {
+    /// The probe lore minted to settle the rule: `_`, space, `~`, `+`, `@`
+    /// all collapse to `-` (CLI 2.1.258; the well is still on disk as the
+    /// evidence).
+    @Test func everyNonAlphanumericCollapses() {
+        #expect(
+            WellPath.directory(forCwd: "/Users/rf-studio/cc-test/probe_a b/c~d+e@f", claudeHome: Self.home)
+                .lastPathComponent == "-Users-rf-studio-cc-test-probe-a-b-c-d-e-f")
         #expect(
             WellPath.directory(forCwd: "/tmp/my_project dir", claudeHome: Self.home)
-                .lastPathComponent == "-tmp-my_project dir")
+                .lastPathComponent == "-tmp-my-project-dir")
+    }
+
+    /// lore's corpus of real wells (`~/.claude/projects`, cwd taken from the
+    /// transcript records, never reverse-derived). `strict` wells come from a
+    /// session whose every record carries one cwd, so that cwd is the shard
+    /// key exactly; the rest only promise that some observed cwd encodes to
+    /// the well (sessions cd around, worktree relocation drags records).
+    @Test func realWellCorpusEncodes() throws {
+        struct Row: Decodable {
+            var well: String
+            var cwd: String
+            var strict: Bool
+            var cwds: [String]
+        }
+        let text = try String(contentsOf: Fixtures.url("wells/wells.jsonl"), encoding: .utf8)
+        let lines = text.split(separator: "\n").dropFirst()   // line 1 is the header
+        var strict = 0, loose = 0
+        for line in lines {
+            let row = try JSONDecoder().decode(Row.self, from: Data(line.utf8))
+            func encode(_ cwd: String) -> String {
+                WellPath.directory(forCwd: cwd, claudeHome: Self.home).lastPathComponent
+            }
+            if row.strict {
+                #expect(encode(row.cwd) == row.well, "strict well \(row.well) from cwd \(row.cwd)")
+                strict += 1
+            } else {
+                #expect(row.cwds.contains { encode($0) == row.well }, "no observed cwd encodes to \(row.well)")
+                loose += 1
+            }
+        }
+        #expect(strict == 43 && loose == 45, "corpus shape changed: \(strict) strict, \(loose) loose")
     }
 }

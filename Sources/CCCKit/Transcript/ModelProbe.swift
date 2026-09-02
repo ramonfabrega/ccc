@@ -1,24 +1,26 @@
 import Foundation
 
 /// The well directory for a cwd: `~/.claude/projects/<mangled cwd>`, where
-/// the harness mangles `/` and `.` to `-` (observed on disk 2026-09-02:
-/// `/Users/x/code/fun/ccc/.claude/worktrees/v0` →
-/// `-Users-x-code-fun-ccc--claude-worktrees-v0`). Read-only; ccc never
-/// writes under `~/.claude`.
+/// the harness replaces **every character that is not ASCII alphanumeric**
+/// with `-`. Read-only; ccc never writes under `~/.claude`.
 ///
-/// Evidence for other characters: all 107 directories in
-/// `~/.claude/projects` on this machine match `[A-Za-z0-9-]+` only, and no
-/// project cwd on this machine contains `_`, a space, or other punctuation
-/// (checked 2026-09-02), so whether the harness also mangles those is
-/// **unverified**. We mangle only `/` and `.` and leave everything else
-/// alone; when a path with `_` or a space shows up, compare against the
-/// directory the harness actually creates before widening the rule.
+/// Measured, not assumed (2026-09-02, CLI 2.1.258): a probe session in
+/// `~/cc-test/probe_a b/c~d+e@f` was sharded to
+/// `-Users-rf-studio-cc-test-probe-a-b-c-d-e-f` — `_`, space, `~`, `+`, `@`
+/// all collapse, and so do `/` and `.` (`/.claude/worktrees/v0` →
+/// `--claude-worktrees-v0`). The rule is pinned by
+/// `Fixtures/wells/wells.jsonl`, a corpus lore generated from the real
+/// `~/.claude/projects` (88 wells; cwd read from transcript records), and
+/// lore's own encoder is the same regex `[^a-zA-Z0-9]` → `-`. The first
+/// version of this function mangled only `/` and `.`; it was wrong for any
+/// cwd with `_` or a space, and the well-scan fallback hid it as a miss.
 public enum WellPath {
     public static func directory(forCwd cwd: String, claudeHome: URL = defaultClaudeHome) -> URL {
         var mangled = ""
         mangled.reserveCapacity(cwd.count)
         for character in cwd {
-            mangled.append(character == "/" || character == "." ? "-" : character)
+            let keep = character.isASCII && (character.isLetter || character.isNumber)
+            mangled.append(keep ? character : "-")
         }
         return claudeHome.appending(path: "projects").appending(path: mangled)
     }
