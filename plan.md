@@ -6,17 +6,19 @@ is on the feed and air runs it. Studio runs the dev lane
 (`scripts/install`; `--dist` puts the cut back). This file carries only
 what is *not* settled.
 
-Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 165 tests green.
+Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 173 tests green.
 `master` fast-forwards to it (a merge of master into this branch keeps that
 true; do it again after every master sync or the branches re-diverge).
-**v0.1.5 (build 61) is cut and on the feed** (2026-09-02); origin master
-is at the tag — the main checkout wants a `git pull --ff-only`. Studio
-stays on the dev lane (build > 61, never offered a downgrade);
-`scripts/install --dist` puts the cut back. **Air is on v0.1.5** with
-its command linked (`ccc install-cli`, for air's own `ccc list` /
-`watch`); air polls studio, never the reverse (no Remote Login on
-air). Left there: answer the notification permission banner once,
-`ccc stats` on air says `authorized` when done.
+**v0.1.6 (build 68) is cut and on the feed** (2026-09-02, tag pushed,
+GitHub Release up); **origin master is still at v0.1.5** — the main
+checkout wants `git merge --ff-only worktree-v2` on master and a push,
+which this session left to a hand (it never pushes master). Studio runs
+the cut (`scripts/install --dist`). **Air is on v0.1.5** and will be
+offered v0.1.6 by Sparkle; that update is what gives air the v4 verbs
+and the icon. Left there: answer the notification permission banner
+once, `ccc stats` on air says `authorized` when done; then `ccc hosts
+check air` from studio is not possible (no Remote Login), so air's own
+`ccc version` is the proof.
 
 ## Current: v4, the roster ours
 
@@ -31,8 +33,8 @@ Delete alert have not been clicked by a hand yet. **Air's ccc predates
 the verbs** (v0.1.5 has no `archive`), so until a cut lands there:
 studio's marks on studio's sessions cross to air's roster (they ride
 `ccc list --json`, which air already reads), but `ccc archive studio:x`
-from air would exit 2 there — nothing on air can make a mark yet. A cut
-is owed for that, together with plan item 3 below.
+from air would exit 2 there — nothing on air can make a mark until air
+takes the v0.1.6 update.
 
 Slice 2 landed the same day: group (none/host/repo/state) and sort
 (activity/name/started/folder) — View menu, the header's menu, and
@@ -63,10 +65,9 @@ and the terminal clips a little at its bounds.
    (`PaneController.reattachIfSleepKilledIt`: ssh exit 255 within 20 s of
    `didWake` → same argv again) but has not seen a real sleep. First real
    use is on air.
-3. **When a cut is next owed**, air gets install polish and the v4 verbs
-   with it: `ccc install-cli` there makes `/opt/homebrew/bin/ccc`, which
-   is where `ccc hosts add` looks, and `hosts check` from studio then
-   reads air's build.
+3. **Air's v0.1.6 update** (Sparkle, from the feed) brings the v4 verbs
+   and the icon; its command is already linked (`/opt/homebrew/bin/ccc`
+   into the bundle), so nothing else is owed there.
 4. **Shared size** (§4c) — slice 4's remainder. So is the host picker;
    seed it from `tailscale status --json` (MagicDNS names are the ssh
    destinations; Bonjour is link-local and never crosses the tailnet).

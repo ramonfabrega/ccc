@@ -128,6 +128,12 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   v3 slice 1, `ccc rm`. Notarized first submission; feed verified
   (length 3182607 both sides); master fast-forwarded to the tag. The
   first release whose `hosts check` can read the far side's build.
+  **v0.1.6, same day (build 68):** v4 slices 1 and 2 (the overlay,
+  archive/pin/Delete, group and sort) and the app icon
+  (`scripts/make-icon`, from the ccc-site session; the first cut with
+  anything in `Contents/Resources`). Notarized first submission; feed
+  verified (length 4494378 both sides), one item. Air's Sparkle update
+  to it is what gives air the v4 verbs.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
