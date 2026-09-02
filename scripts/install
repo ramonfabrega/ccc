@@ -9,8 +9,14 @@
 # The dev lane. An ad-hoc signature is this Mac's alone; a release for every
 # Mac is scripts/package (RELEASES.md), and --dist is how studio runs that
 # release build too. A running app is quit and relaunched: this IS the update.
+#
+# Bundle assembly is `ota bundle` (docs/DESIGN.md §6); everything else here
+# — quitting the running app, ~/Applications, the PATH symlink, lsregister,
+# the relaunch — is ccc's and stays.
 set -e
 cd "$(dirname "$0")/.."
+
+command -v ota >/dev/null || { echo "ota is not on PATH — install it from ~/code/fun/ota (scripts/install)"; exit 1; }
 
 if [ "${1:-}" = "--dist" ]; then
   APP_SRC=".build/dist/ccc.app"
@@ -21,8 +27,15 @@ if [ "${1:-}" = "--dist" ]; then
 else
   echo "Building release…"
   swift build -c release 2>&1 | grep -E "error|warning: .*Sources/ccc|Compiling|Build complete" | tail -3
-  scripts/make-bundle
+  # No --feed: the dev lane, and that absence is its only definition. No
+  # SUFeedURL means the app never constructs Sparkle, never polls the CDN,
+  # and `ccc version` says dev.
+  ota bundle --name ccc --bundle-id com.ramonfabrega.ccc \
+      --display-name "Claude Code Command" \
+      --icon Design/AppIcon.icns \
+      --out .build/ccc.app
   APP_SRC=".build/ccc.app"
+  # Ad-hoc, so LaunchServices and TCC see one stable identity for this Mac.
   codesign --force --sign - "$APP_SRC"
 fi
 APP_DST="$HOME/Applications/ccc.app"

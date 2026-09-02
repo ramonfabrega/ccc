@@ -55,7 +55,10 @@ public struct ControlClient: Sendable {
             received.append(contentsOf: buffer[..<n])
             if received.last == UInt8(ascii: "\n") { break }
         }
-        guard let response = try? JSONDecoder().decode(ControlResponse.self, from: received) else {
+        // `.ccc`, not a bare decoder: the response carries the server's
+        // BuildInfo, and a server older than v0.1.6 sends no `name` — this
+        // side ran the command, so this side is what supplies it.
+        guard let response = try? JSONDecoder.ccc.decode(ControlResponse.self, from: received) else {
             throw Error.malformedResponse
         }
         return response

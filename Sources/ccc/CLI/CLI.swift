@@ -516,7 +516,7 @@ enum CLI {
             return 1
         }
         do {
-            let result = try CLIInstall.install(executable: me.executablePath, directory: directory, force: force)
+            let result = try CLIInstall.ccc.install(executable: me.executablePath, directory: directory, force: force)
             if json {
                 printJSON(["path": result.path, "replaced": result.replaced ?? "", "build": me.short])
             } else {

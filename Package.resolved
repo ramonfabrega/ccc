@@ -1,6 +1,14 @@
 {
-  "originHash" : "1f3151d2de8b971e5e79716c9f3bd1ecc783b899f17616c1db1a5f5e715b2167",
+  "originHash" : "6c4bda8818bab3bc12a876b48122a119db3d713cf8b14d4b8811325346fe2574",
   "pins" : [
+    {
+      "identity" : "ota",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ramonfabrega/ota",
+      "state" : {
+        "revision" : "45f3a63c752622e7d9002324d2cc461f25711c58"
+      }
+    },
     {
       "identity" : "sparkle",
       "kind" : "remoteSourceControl",
