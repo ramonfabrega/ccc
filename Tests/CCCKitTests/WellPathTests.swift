@@ -61,7 +61,7 @@ import Testing
                 .lastPathComponent == "-Users-rf-studio-cc-test-prob--caf---n-code----dir")
         let nfd = "/Users/rf-studio/cc-test/cafe\u{0301}-nfd"      // e + combining acute, as APFS returns it
         let nfc = "/Users/rf-studio/cc-test/caf\u{00E9}-nfd"
-        #expect(nfd != nfc)
+        #expect(nfd.utf8.count == nfc.utf8.count + 1)   // Swift String == is canonical; the bytes differ
         #expect(WellPath.directory(forCwd: nfd, claudeHome: Self.home).lastPathComponent == "-Users-rf-studio-cc-test-caf--nfd")
         #expect(WellPath.directory(forCwd: nfc, claudeHome: Self.home).lastPathComponent == "-Users-rf-studio-cc-test-caf--nfd")
     }
