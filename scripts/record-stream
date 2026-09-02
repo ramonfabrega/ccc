@@ -67,8 +67,10 @@ while True:
 phases.append({"name": "end", "atMs": int((time.monotonic() - t0) * 1000), "bytes": offset, "size": [140, 40] if resized else [100, 30]})
 raw.close(); events.close()
 os.waitpid(pid, 0)
+import hashlib
+sha = hashlib.sha256(open(os.path.join(out, "stream.bin"), "rb").read()).hexdigest()
 json.dump({"command": cmd, "cols": 100, "rows": 30, "resizeAtBytes": RESIZE_AT if resized else None,
-           "resizedTo": [140, 40] if resized else None, "bytes": offset, "phases": phases,
+           "resizedTo": [140, 40] if resized else None, "bytes": offset, "sha256": sha, "phases": phases,
            "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z")},
           open(os.path.join(out, "stream.meta.json"), "w"), indent=2)
 print(f"wrote {offset} bytes to {out}; resized at {RESIZE_AT if resized else 'never'}")

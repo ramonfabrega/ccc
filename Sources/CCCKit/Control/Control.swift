@@ -18,7 +18,8 @@ public enum ControlRequest: Codable, Sendable {
     /// Bytes to the child: `text` is UTF-8 as typed; `keys` are named keys
     /// (`enter`, `escape`, `ctrl-c`, `ctrl-z`, `up`, `shift-enter`, …) that
     /// the terminal host encodes — never hand-rolled escape sequences.
-    case send(text: String?, keys: [String]?)
+    /// `wheel`: scroll lines (positive = up) through the host's mouse path.
+    case send(text: String?, keys: [String]?, wheel: Int? = nil)
     /// Resize the pane's grid (headless only; the window resizes itself).
     case resize(cols: Int, rows: Int)
     /// Memory, poll latency, PTY throughput — how we're doing.

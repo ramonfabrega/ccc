@@ -91,6 +91,7 @@ enum CLI {
     static func send(_ rest: [String], json: Bool) throws -> Int32 {
         var keys: [String] = []
         var text: [String] = []
+        var wheel: Int?
         var i = 0
         while i < rest.count {
             if rest[i] == "--key", i + 1 < rest.count {
@@ -100,13 +101,16 @@ enum CLI {
                 }
                 keys.append(rest[i + 1])
                 i += 2
+            } else if rest[i] == "--wheel", i + 1 < rest.count, let n = Int(rest[i + 1]) {
+                wheel = n
+                i += 2
             } else {
                 text.append(rest[i])
                 i += 1
             }
         }
-        guard !keys.isEmpty || !text.isEmpty else { return usage() }
-        return try request(.send(text: text.isEmpty ? nil : text.joined(separator: " "), keys: keys.isEmpty ? nil : keys), json: json)
+        guard !keys.isEmpty || !text.isEmpty || wheel != nil else { return usage() }
+        return try request(.send(text: text.isEmpty ? nil : text.joined(separator: " "), keys: keys.isEmpty ? nil : keys, wheel: wheel), json: json)
     }
 
     /// `--bytes N` replays only the first N bytes: a phase boundary from the
@@ -302,7 +306,7 @@ enum CLI {
                ccc list [--json]
                ccc attach <id> [--headless [--cols N --rows N]]
                ccc snapshot [--json]
-               ccc send <text> | --key <name>...
+               ccc send <text> | --key <name>... | --wheel N   (N>0 scrolls up; ghostty pane)
                ccc detach
                ccc resize <cols> <rows>
                ccc stats [--json]

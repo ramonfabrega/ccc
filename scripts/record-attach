@@ -75,7 +75,9 @@ if not eof:
     drain(1)
 raw.close(); events.close()
 os.waitpid(pid, 0)
+import hashlib
+sha = hashlib.sha256(open(os.path.join(out, "attach.bin"), "rb").read()).hexdigest()
 json.dump({"session": session, "cliVersion": version, "cols": COLS, "rows": ROWS,
-           "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "bytes": offset, "phases": phases},
+           "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "bytes": offset, "sha256": sha, "phases": phases},
           open(os.path.join(out, "attach.meta.json"), "w"), indent=2)
 print("wrote", out)

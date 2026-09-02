@@ -112,12 +112,16 @@ final class PaneController {
         case .snapshot:
             guard let session else { return .snapshot(SnapshotInfo(attachedTo: nil, grid: nil)) }
             return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.id : nil, grid: session.host.snapshot()))
-        case .send(let text, let keys):
+        case .send(let text, let keys, let wheel):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             if let text { session.send(text: text) }
             for name in keys ?? [] {
                 guard let key = NamedKey(name) else { return .error("unknown key '\(name)'") }
                 guard session.press(key) else { return .error("host cannot encode '\(name)'") }
+            }
+            if let wheel, wheel != 0 {
+                guard let pane = session.host as? GhosttyPane else { return .error("wheel needs the ghostty pane (CCC_CORE=ghostty)") }
+                pane.wheel(lines: wheel)
             }
             return .ok("sent")
         case .resize(let cols, let rows):

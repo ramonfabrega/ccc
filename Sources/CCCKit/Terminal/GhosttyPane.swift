@@ -83,6 +83,22 @@ public final class GhosttyPane: TerminalHost {
 
     public var size: (cols: Int, rows: Int) { metalView.gridSize() }
 
+    /// `ccc send --wheel N`: the wheel gesture's twin, at the pane's center.
+    /// Same path as a real wheel: the core's mouse encoder when the child
+    /// tracks the mouse, arrow keys in the alternate screen otherwise.
+    public func wheel(lines: Int) {
+        guard lines != 0 else { return }
+        let grid = metalView.gridSize()
+        let cell = (col: grid.cols / 2, row: grid.rows / 2)
+        let bytes = mouse.wheel(deltaLines: lines, col: cell.col, row: cell.row, mods: [])
+        if !bytes.isEmpty {
+            onOutput?(bytes)
+            return
+        }
+        guard mouse.wantsArrowFallback, let key = NamedKey(lines > 0 ? "up" : "down") else { return }
+        for _ in 0..<min(abs(lines), 5) { _ = core.press(key) }
+    }
+
     // MARK: pacing
 
     private func scheduleFrame() {
