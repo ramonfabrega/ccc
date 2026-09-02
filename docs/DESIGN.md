@@ -64,9 +64,14 @@ spawns, verified, ledgered in the lore wiki):
   were Sonnets reading the web (GitHub issue #202, 2022), not the code. This
   does not reopen the decision — the reasons libghostty-vt wins are the core
   (parser, render-state deltas, key encoding), not the paint — but the v0
-  stand-in is materially stronger than the canon claimed: `SwiftTermHost`
-  turns Metal on by default, so v0 already has a GPU path while our renderer
-  is written, and the six checks run against that baseline.
+  stand-in is materially stronger than the canon claimed, and the six checks
+  should run against it with Metal on (`CCC_METAL=1`).
+  **Measured the same day:** SwiftTerm's Metal path costs ~250 MB of
+  phys_footprint in ccc (287 MB attached vs 40 MB with CoreGraphics; 26 MB
+  idle), and its `MTKView` is invisible to the cacheDisplay capture behind
+  `ccc peek`. So v0 ships Metal **opt-in**, and this number is the first
+  entry on the v1 scoreboard: our renderer has to beat 40 MB attached, not
+  287.
 - **native-sdk.dev — not for us, but a validation.** Vercel Labs' TS+Zig
   desktop toolkit (custom Metal renderer, pre-1.0, four months old) ships a
   `<terminal>` element whose core is libghostty-vt with their own PTY and

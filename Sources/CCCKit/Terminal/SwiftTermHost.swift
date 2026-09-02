@@ -19,10 +19,13 @@ public final class SwiftTermHost: TerminalHost {
     public var view: NSView? { terminalView }
 
     /// `metal`: SwiftTerm 1.20's public Metal path (docs/DESIGN.md §3
-    /// finding). On by default; falls back to CoreGraphics if the device or
-    /// the shader load refuses, and `usingMetal` says which we got.
+    /// finding). Opt-in via `CCC_METAL=1`: measured 2026-09-02, the Metal
+    /// renderer costs ~250 MB of phys_footprint (287 MB vs 40 MB attached),
+    /// and cacheDisplay-based `ccc peek` cannot capture an MTKView. Falls
+    /// back to CoreGraphics if the device or shader load refuses;
+    /// `usingMetal` says which we got.
     public init(frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600), font: NSFont? = nil,
-                metal: Bool = true) {
+                metal: Bool = ProcessInfo.processInfo.environment["CCC_METAL"] != nil) {
         bridge = Bridge()
         terminalView = TerminalView(frame: frame, font: font)
         terminalView.terminalDelegate = bridge
@@ -37,13 +40,30 @@ public final class SwiftTermHost: TerminalHost {
     public private(set) var metalError: String?
     public var usingMetal: Bool { terminalView.isUsingMetalRenderer }
 
+    /// Cell size at SwiftTerm's default font, for sizing a grid to a view
+    /// before the view exists.
+    public static func estimatedCellSize() -> CGSize {
+        let font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        let width = ("W" as NSString).size(withAttributes: [.font: font]).width
+        let height = font.ascender - font.descender + font.leading
+        return CGSize(width: ceil(width), height: ceil(height))
+    }
+
     public func feed(_ bytes: Data) {
         terminalView.feed(byteArray: ArraySlice([UInt8](bytes)))
     }
 
+    /// Programmatic resize (headless, `ccc resize`). In a window the view
+    /// owns its grid size and reports changes through `onSizeChanged`;
+    /// SwiftTerm's `resize` also soft-resets the terminal, so never call it
+    /// for a size we already have or from inside its own size callback.
     public func resize(cols: Int, rows: Int) {
+        let current = terminalView.getTerminal().getDims()
+        guard !inSizeCallback, current.cols != cols || current.rows != rows else { return }
         terminalView.resize(cols: cols, rows: rows)
     }
+
+    private var inSizeCallback = false
 
     public func snapshot() -> Grid {
         GridBuilder.grid(from: terminalView.getTerminal(), cursorVisible: cursorVisible)
@@ -140,6 +160,8 @@ public final class SwiftTermHost: TerminalHost {
     }
 
     fileprivate func sizeChanged(cols: Int, rows: Int) {
+        inSizeCallback = true
+        defer { inSizeCallback = false }
         onSizeChanged?(cols, rows)
     }
 

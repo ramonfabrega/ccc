@@ -22,6 +22,8 @@ final class PaneController {
     }
     /// Sizes the window (or nothing, headless) wants the next attach to use.
     var defaultSize: (cols: Int, rows: Int) = (120, 40)
+    /// The window's PNG, when there is a window.
+    var peekProvider: (@MainActor () -> Data?)?
 
     init(cli: ClaudeCLI) {
         self.cli = cli
@@ -112,6 +114,9 @@ final class PaneController {
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             session.resize(cols: cols, rows: rows)
             return .ok("resized to \(cols)x\(rows)")
+        case .peek:
+            guard let peekProvider, let png = peekProvider() else { return .error("no window to peek (headless)") }
+            return .peek(png: png)
         case .stats:
             if let session {
                 return .stats(session.stats(pollState: poller.state))

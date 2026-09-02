@@ -1,0 +1,39 @@
+#!/bin/zsh
+# Assemble ccc.app from the release build (scry's pattern). Signing is the
+# caller's job: scripts/install ad-hoc signs for this Mac.
+#
+# Versioning: CFBundleShortVersionString from VERSION; CFBundleVersion is the
+# git commit count (monotonic, zero upkeep).
+set -e
+cd "$(dirname "$0")/.."
+
+VERSION=$(tr -d '[:space:]' < VERSION)
+BUILD=$(git rev-list --count HEAD)
+APP="${APP_OUT:-.build/ccc.app}"
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp .build/release/ccc "$APP/Contents/MacOS/ccc"
+[ -f Design/AppIcon.icns ] && cp Design/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
+cat > "$APP/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>ccc</string>
+  <key>CFBundleIdentifier</key><string>com.ramonfabrega.ccc</string>
+  <key>CFBundleName</key><string>ccc</string>
+  <key>CFBundleDisplayName</key><string>Claude Code Command</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <!-- The same binary is the CLI; a GUI launch has no argv, a CLI one does. -->
+</dict>
+</plist>
+EOF
+
+echo "bundle: $APP (v$VERSION build $BUILD)"

@@ -69,8 +69,15 @@ public final class AttachSession {
         host.press(key)
     }
 
+    /// Programmatic resize: grid and PTY together.
     public func resize(cols: Int, rows: Int) {
         host.resize(cols: cols, rows: rows)
+        pty.resize(.init(cols: cols, rows: rows))
+    }
+
+    /// The view already changed its grid (window resize); only the child
+    /// needs to hear about it.
+    public func viewResized(cols: Int, rows: Int) {
         pty.resize(.init(cols: cols, rows: rows))
     }
 

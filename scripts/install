@@ -1,0 +1,39 @@
+#!/bin/zsh
+# Local install for daily driving: release build → ccc.app (ad-hoc signed,
+# stable path so LaunchServices tracks one identity) → ~/Applications, plus
+# `ccc` on PATH as a symlink INTO the bundle — one binary, two faces.
+#
+#   scripts/install          # → ~/Applications/ccc.app + ccc on PATH
+set -e
+cd "$(dirname "$0")/.."
+
+echo "Building release…"
+swift build -c release 2>&1 | grep -E "error|warning: .*Sources/ccc|Compiling|Build complete" | tail -3
+
+scripts/make-bundle
+
+APP_SRC=".build/ccc.app"
+APP_DST="$HOME/Applications/ccc.app"
+codesign --force --sign - "$APP_SRC"
+
+mkdir -p "$HOME/Applications"
+if pgrep -qx ccc; then
+  echo "ccc is running — quit it and re-run, or: pkill -x ccc" >&2
+  exit 1
+fi
+rm -rf "$APP_DST"
+cp -R "$APP_SRC" "$APP_DST"
+
+# CLI: prefer an existing PATH dir we can write. The symlink points into the
+# installed bundle so `ccc list` and the app are always the same build.
+CLI_SRC="$APP_DST/Contents/MacOS/ccc"
+for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+  if [ -d "$dir" ] && [ -w "$dir" ]; then
+    ln -sf "$CLI_SRC" "$dir/ccc"
+    echo "cli: $dir/ccc → $CLI_SRC"
+    break
+  fi
+done
+
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DST"
+echo "installed: $APP_DST"

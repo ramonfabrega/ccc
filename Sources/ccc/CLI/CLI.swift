@@ -41,6 +41,8 @@ enum CLI {
                 return try request(.resize(cols: cols, rows: rows), json: json)
             case "stats":
                 return try request(.stats, json: json)
+            case "peek":
+                return try peek(to: rest.first(where: { !$0.hasPrefix("--") }))
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
@@ -108,6 +110,19 @@ enum CLI {
         return 0
     }
 
+    /// The window as PNG, written to `path` (default: a temp file), path printed.
+    static func peek(to path: String?) throws -> Int32 {
+        let response = try ControlClient().send(.peek)
+        guard case .peek(let png) = response else {
+            if case .error(let m) = response { stderr("ccc: \(m)") }
+            return 1
+        }
+        let out = path ?? NSTemporaryDirectory() + "ccc-peek-\(Int(Date().timeIntervalSince1970)).png"
+        try png.write(to: URL(filePath: out))
+        print(out)
+        return 0
+    }
+
     /// Everything that needs the pane goes over the socket to whoever holds it.
     static func request(_ request: ControlRequest, json: Bool) throws -> Int32 {
         let response = try ControlClient().send(request)
@@ -123,6 +138,9 @@ enum CLI {
             if json { printJSON(info) } else if let grid = info.grid { print(grid.rendered()) } else { print("(nothing attached)") }
         case .stats(let stats):
             if json { printJSON(stats) } else { printStats(stats) }
+        case .peek:
+            stderr("ccc: unexpected peek response")
+            return 1
         }
         return 0
     }
@@ -188,7 +206,8 @@ enum CLI {
                ccc detach
                ccc resize <cols> <rows>
                ccc stats [--json]
-               ccc replay <bytes-file> [--cols N --rows N] [--json]
+               ccc peek [out.png]                 PNG of the app window (no screen permission)
+               ccc replay <bytes-file> [--cols N --rows N --bytes N] [--json]
 
         """.utf8))
         return status

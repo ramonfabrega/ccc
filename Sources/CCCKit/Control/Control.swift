@@ -23,12 +23,17 @@ public enum ControlRequest: Codable, Sendable {
     case resize(cols: Int, rows: Int)
     /// Memory, poll latency, PTY throughput — how we're doing.
     case stats
+    /// A PNG of the app window drawn from our own view hierarchy (no
+    /// screen-recording permission, works while another app has focus).
+    /// Headless servers have no window and answer with an error.
+    case peek
 }
 
 public enum ControlResponse: Codable, Sendable {
     case list([SessionRow])
     case snapshot(SnapshotInfo)
     case stats(StatsInfo)
+    case peek(png: Data)
     case ok(String)
     case error(String)
 }
