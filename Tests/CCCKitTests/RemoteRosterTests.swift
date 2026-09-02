@@ -91,6 +91,35 @@ import Testing
         #expect(row.ref.description == "studio:a1b2")
     }
 
+    // MARK: the probe
+
+    /// The first real host (2026-09-02) found `claude` where its installer
+    /// puts it and `ccc` where ccc's install script puts it — two different
+    /// directories. The probe asks; the parser reads what it said.
+    @Test func theProbeReadsWhatTheHostAnswered() {
+        let probe = ClaudeCLI.Probe.parse("""
+        home=/Users/rf-studio
+        claude=/Users/rf-studio/.local/bin/claude
+        ccc=/opt/homebrew/bin/ccc
+        """)
+        #expect(probe == ClaudeCLI.Probe(home: "/Users/rf-studio", claude: "/Users/rf-studio/.local/bin/claude",
+                                         ccc: "/opt/homebrew/bin/ccc"))
+        // A missing binary is simply absent; a missing home is no answer.
+        #expect(ClaudeCLI.Probe.parse("home=/Users/x\n")?.ccc == nil)
+        #expect(ClaudeCLI.Probe.parse("claude=/c\n") == nil)
+        // Shell noise (a motd, a warning) does not confuse it.
+        #expect(ClaudeCLI.Probe.parse("Last login: today\nhome=/Users/x\nzsh: warning=foo\n")?.home == "/Users/x")
+    }
+
+    /// The words go through the remote login shell unquoted, so every
+    /// candidate `~` expands there — and none of them may carry a quote.
+    @Test func theProbeWordsAreShellSafeAndExpandTilde() {
+        let words = ClaudeCLI.Probe.words
+        #expect(words.contains("~/.local/bin/claude"))
+        #expect(words.contains("/opt/homebrew/bin/ccc"))
+        #expect(!words.contains { $0.contains("'") || $0.contains("\"") })
+    }
+
     @Test func aCCCPathNeedingQuotesIsRefusedLikeTheClaudeOne() {
         let host = Host(name: "studio", ssh: "studio", claude: "/c", ccc: "/opt/my ccc/bin/ccc")
         #expect(host.validate()?.contains("ccc path") == true)

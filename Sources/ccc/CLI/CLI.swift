@@ -152,30 +152,40 @@ enum CLI {
                 stderr("ccc: usage: ccc hosts add <name> --ssh <destination> [--claude <absolute path>]")
                 return 2
             }
-            // ccc on the far side is what gets the model column over ssh
-            // (docs/DESIGN.md §4a), so it is the default rather than an
-            // opt-in; `--no-ccc` falls back to the harness reader.
-            let remoteCCC = rest.contains("--no-ccc") ? nil : (stringFlag("--ccc", rest) ?? "~/.local/bin/ccc")
-            var host = Host(name: name, ssh: stringFlag("--ssh", rest) ?? name,
-                            claude: stringFlag("--claude", rest) ?? "~/.local/bin/claude",
-                            ccc: remoteCCC)
+            // Ask the host where things are — home, claude, ccc — in one
+            // ssh, rather than guess (`ClaudeCLI.Probe`). Flags override
+            // what it says; `--no-ccc` reads the harness instead of the far
+            // side's ccc (a correct roster with a blank model column).
+            let ssh = stringFlag("--ssh", rest) ?? name
+            var notes: [String] = []
+            var probed: ClaudeCLI.Probe?
+            do {
+                probed = try await ClaudeCLI(executable: "claude", host: Host(name: name, ssh: ssh)).probe()
+            } catch {
+                notes.append("could not reach \(ssh) to look for claude and ccc (\(error))")
+            }
+            let claude = stringFlag("--claude", rest) ?? probed?.claude
+            guard let claude else {
+                stderr("ccc: no claude found on \(name) at \(ClaudeCLI.Probe.claudeCandidates.joined(separator: ", ")); pass --claude <absolute path>"
+                       + (notes.isEmpty ? "" : " (\(notes.joined(separator: "; ")))"))
+                return 1
+            }
+            let remoteCCC = rest.contains("--no-ccc") ? nil : (stringFlag("--ccc", rest) ?? probed?.ccc)
+            if remoteCCC == nil, !rest.contains("--no-ccc") {
+                notes.append("no ccc on \(name) (looked in \(ClaudeCLI.Probe.cccCandidates.joined(separator: ", "))): roster via claude agents, no model column; install ccc there and re-add")
+            }
+            let host = Host(name: name, ssh: ssh, claude: claude, ccc: remoteCCC, home: probed?.home)
             if let problem = host.validate() {
                 stderr("ccc: \(problem)")
                 return 2
-            }
-            // The far side's home, so its cwds shorten with *its* `~`. One
-            // ssh now; a host that is down is still added, and `check`
-            // learns it later.
-            var homeNote = ""
-            if let cli = ClaudeCLI.of(host) {
-                do { host.home = try await cli.home() } catch { homeNote = "; home unknown (\(error)), `ccc hosts check` will learn it" }
             }
             loaded.config.hosts.removeAll { $0.name == name }
             loaded.config.hosts.append(host)
             try loaded.config.save()
             let reader = host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)"
-            let home = host.home.map { ", home \($0)" } ?? ""
-            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)\(home))\(homeNote); `ccc hosts check \(name)` to prove it")
+            let home = host.home.map { ", home \($0)" } ?? ", home unknown (`ccc hosts check` learns it)"
+            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)\(home)); `ccc hosts check \(name)` to prove it")
+            for note in notes { stderr("ccc: \(note)") }
             return 0
 
         case "reconnect":
@@ -580,7 +590,8 @@ enum CLI {
         handle.write(Data("""
         usage: ccc                              open the app
                ccc hosts [list|check [<name>]]     the machines ccc can reach (check runs the real poll)
-               ccc hosts add <name> [--ssh <dest> --claude <path>] | remove <name>
+               ccc hosts add <name> [--ssh <dest>] [--claude <path>] [--ccc <path>|--no-ccc] | remove <name>
+                                                  (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
                ccc list [--host <name>] [--json]  every host's roster; --host narrows to one
                ccc attach <ref> [--headless [--cols N --rows N]]

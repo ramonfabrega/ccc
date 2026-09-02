@@ -170,6 +170,71 @@ public struct ClaudeCLI: Sendable {
     /// what makes `~/code` mean the right thing on a host whose username
     /// differs (air is `rf-air`, studio is `rf-studio`). Local answers
     /// without a process.
+    /// What one ssh can learn about a host before it is configured: its
+    /// home, and where `claude` and `ccc` actually are. Asked rather than
+    /// assumed, because two conventions collided on the first real host —
+    /// `claude`'s installer uses `~/.local/bin`, ccc's own install script
+    /// prefers Homebrew's bin — and a default that guesses one of them is
+    /// wrong for the other. The candidate order is each installer's.
+    public struct Probe: Sendable, Equatable {
+        public var home: String
+        public var claude: String?
+        public var ccc: String?
+
+        public static let claudeCandidates = ["~/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
+        public static let cccCandidates = ["/opt/homebrew/bin/ccc", "/usr/local/bin/ccc", "~/.local/bin/ccc"]
+
+        /// The remote words. Sent unquoted, one word per argv element, so
+        /// the remote login shell expands every `~` (the same rule as every
+        /// other remote path here).
+        static var words: [String] {
+            // `~` as its own word: a shell does not expand it after `=`
+            // (`home=~` prints literally — measured), so the value arrives
+            // with a leading space the parser trims.
+            var out = ["echo", "home=", "~", ";"]
+            for (label, candidates) in [("claude", claudeCandidates), ("ccc", cccCandidates)] {
+                out += ["for", "p", "in"] + candidates + [";", "do", "test", "-x", "$p", "&&", "echo", "\(label)=$p", "&&", "break", ";", "done", ";"]
+            }
+            return out
+        }
+
+        /// `home=/Users/x`, `claude=/…`, `ccc=/…` lines, in any order; a
+        /// binary that was not found simply has no line.
+        public static func parse(_ text: String) -> Probe? {
+            var home: String?, claude: String?, ccc: String?
+            for line in text.split(separator: "\n") {
+                let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+                guard parts.count == 2, parts[1].hasPrefix("/") else { continue }
+                switch parts[0] {
+                case "home": home = parts[1]
+                case "claude": claude = parts[1]
+                case "ccc": ccc = parts[1]
+                default: break
+                }
+            }
+            guard let home else { return nil }
+            return Probe(home: home, claude: claude, ccc: ccc)
+        }
+    }
+
+    /// Run the probe on this host. Local answers from the filesystem.
+    public func probe() async throws -> Probe {
+        guard let destination = host.ssh else {
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            func first(_ candidates: [String]) -> String? {
+                candidates.map { $0.replacingOccurrences(of: "~", with: home) }
+                    .first { FileManager.default.isExecutableFile(atPath: $0) }
+            }
+            return Probe(home: home, claude: first(Probe.claudeCandidates), ccc: first(Probe.cccCandidates))
+        }
+        try prepareControlDirectory()
+        let out = try await run(sshPrefix(tty: false, destination: destination) + Probe.words)
+        guard let probe = Probe.parse(String(decoding: out, as: UTF8.self)) else {
+            throw RunError(status: 0, stderr: "the probe on \(host.name) answered nothing usable", host: host.name)
+        }
+        return probe
+    }
+
     public func home() async throws -> String {
         guard let destination = host.ssh else {
             return FileManager.default.homeDirectoryForCurrentUser.path
