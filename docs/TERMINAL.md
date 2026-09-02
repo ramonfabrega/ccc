@@ -17,9 +17,16 @@ What it is not: no PTY (libghostty-pty is planned, does not exist), no
 rendering, no font shaping, no OS input capture.
 
 Stability: the header says the API is incomplete and will change. The
-engine underneath is Ghostty's production one. Pin a stable tag (≥ 1.3 — the
-scrollback-prune leak fix), pin the Zig it needs, bump deliberately, absorb
-breaks at compile time. Bindings exist for Rust, Node, Go; Swift wrappers
+engine underneath is Ghostty's production one. Pin one commit, pin the Zig
+it needs, bump deliberately, absorb breaks at compile time.
+**Vendored 2026-09-02 (v1 start):** the latest stable tag, v1.3.1, ships
+only `key`, `osc`, `sgr`, `paste`, `color` in `include/ghostty/vt/` — no
+terminal state at all. `terminal.h`, `screen.h`, `render.h`, `snapshot.h`,
+`selection.h`, `search.h`, `grid_ref.h`, `modes.h`, `mouse.h` (~30 headers)
+exist only on main, which needs Zig 0.16.0 (a real release, 2026-04-13). So
+`vendor/ghostty` is pinned at main `3c1ef5b` (2026-09-01) and `.zig/` at
+0.16.0 via `scripts/fetch-zig` (sha-pinned tarball, no Homebrew). main also
+builds a static `libghostty-vt`, which is what SwiftPM links. Bindings exist for Rust, Node, Go; Swift wrappers
 (`Lakr233/libghostty-spm`, `briannadoubt/GhosttyKit`) show the SwiftPM
 pattern. Hashimoto announced a pure-Swift Metal renderer + Swift bindings
 ("coming soon", unshipped as of 2026-09-02) — check `ghostty-org` before
