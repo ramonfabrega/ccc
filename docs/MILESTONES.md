@@ -133,7 +133,11 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   (`scripts/make-icon`, from the ccc-site session; the first cut with
   anything in `Contents/Resources`). Notarized first submission; feed
   verified (length 4494378 both sides), one item. Air's Sparkle update
-  to it is what gives air the v4 verbs.
+  to it is what gives air the v4 verbs. **v0.1.7, same night:** air's
+  first hand on v0.1.6 found the banner never clears a notice —
+  "Install ‘ccc’ Command…" stayed up for good, and every archive/pin
+  answer from slice 1 would have too. Notices are transient now (8 s,
+  or a click); the socket-held-elsewhere notice stays, as a condition.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.

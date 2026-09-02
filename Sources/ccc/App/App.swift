@@ -43,7 +43,7 @@ enum App {
         } catch {
             // Another ccc (or a headless attach) holds the socket. The window
             // still works; the CLI just talks to the other one.
-            window.showNotice("\(error)")
+            window.showNotice("\(error)", for: nil)
         }
         controller.poller.start()
         // The poll is the first notifier (v3): one banner per transition,

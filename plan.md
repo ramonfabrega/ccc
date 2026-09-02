@@ -9,15 +9,14 @@ what is *not* settled.
 Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 173 tests green.
 `master` fast-forwards to it (a merge of master into this branch keeps that
 true; do it again after every master sync or the branches re-diverge).
-**v0.1.6 (build 68) is cut and on the feed** (2026-09-02, tag pushed,
-GitHub Release up); origin master fast-forwarded to the branch the same
-evening (bc52554), so the two are level again. Studio runs
-the cut (`scripts/install --dist`). **Air is on v0.1.5** and will be
-offered v0.1.6 by Sparkle; that update is what gives air the v4 verbs
-and the icon. Left there: answer the notification permission banner
-once, `ccc stats` on air says `authorized` when done; then `ccc hosts
-check air` from studio is not possible (no Remote Login), so air's own
-`ccc version` is the proof.
+**v0.1.7 is cut and on the feed** (2026-09-02 night: v0.1.6 carried v4
+and the icon, v0.1.7 the banner fix air found within the hour). Origin
+master was level at v0.1.6's docs commit; it wants another
+`git merge --ff-only worktree-v2` for v0.1.7. Studio runs the cut
+(`scripts/install --dist`). **Air took v0.1.6 by hand** and linked its
+command from the menu; v0.1.7 reaches it through Sparkle. Left there:
+answer the notification permission banner once, `ccc stats` on air says
+`authorized` when done.
 
 ## Current: v4, the roster ours
 
@@ -64,9 +63,10 @@ and the terminal clips a little at its bounds.
    (`PaneController.reattachIfSleepKilledIt`: ssh exit 255 within 20 s of
    `didWake` → same argv again) but has not seen a real sleep. First real
    use is on air.
-3. **Air's v0.1.6 update** (Sparkle, from the feed) brings the v4 verbs
-   and the icon; its command is already linked (`/opt/homebrew/bin/ccc`
-   into the bundle), so nothing else is owed there.
+3. **Air's v0.1.7 update** (Sparkle, from the feed) is the first update
+   air takes on a build with the v4 verbs; its command is linked
+   (`/opt/homebrew/bin/ccc` into the bundle), so nothing else is owed
+   there. The banner fix has not been seen by a hand on air yet.
 4. **Shared size** (§4c) — slice 4's remainder. So is the host picker;
    seed it from `tailscale status --json` (MagicDNS names are the ssh
    destinations; Bonjour is link-local and never crosses the tailnet).

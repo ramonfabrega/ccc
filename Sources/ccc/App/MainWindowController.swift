@@ -15,6 +15,7 @@ final class MainWindowController: NSWindowController {
     private let bannerBox = NSView()
     private var bannerTask: Task<Void, Never>?
     private var noticeText: String?
+    private var noticeTask: Task<Void, Never>?
 
     init(controller: PaneController) {
         self.controller = controller
@@ -71,6 +72,10 @@ final class MainWindowController: NSWindowController {
             banner.trailingAnchor.constraint(equalTo: bannerBox.trailingAnchor, constant: -12),
         ])
         bannerBox.isHidden = true
+        // A click dismisses a notice; the host and shape lines are
+        // conditions and stay until they clear themselves.
+        bannerBox.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(bannerClicked(_:))))
+        bannerBox.toolTip = "Click to dismiss"
         root.addArrangedSubview(bannerBox)
         bannerBox.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
 
@@ -144,8 +149,32 @@ final class MainWindowController: NSWindowController {
         bannerBox.isHidden = text.isEmpty
     }
 
-    func showNotice(_ text: String) {
+    /// A sentence on the banner. Transient by default: it goes away on
+    /// its own, or on a click, because "installed …" and "archived a1b2"
+    /// are answers, not conditions. Found on air 2026-09-02 when the
+    /// first notice a hand ever triggered ("Install ‘ccc’ Command…")
+    /// stayed up for good — before this, nothing ever cleared it.
+    /// `for: nil` keeps one up until the next notice or a click: the
+    /// socket held by another process is a condition worth staring at.
+    func showNotice(_ text: String, for duration: Duration? = .seconds(8)) {
         noticeText = text
+        noticeTask?.cancel()
+        noticeTask = nil
+        refreshBanner()
+        guard let duration else { return }
+        noticeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled, let self, self.noticeText == text else { return }
+            self.noticeText = nil
+            self.refreshBanner()
+        }
+    }
+
+    @objc private func bannerClicked(_ sender: Any?) {
+        guard noticeText != nil else { return }
+        noticeText = nil
+        noticeTask?.cancel()
+        noticeTask = nil
         refreshBanner()
     }
 
