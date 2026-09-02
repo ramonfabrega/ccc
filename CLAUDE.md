@@ -67,9 +67,14 @@ it should break while being awesome.**
   `state: blocked` and `waitingFor`; a 2 s poll on every host is
   "it's your turn" on every Mac with no hook. The Notification hook (dotfiles
   #49, banked) supplements only what the roster cannot show.
-- **Single attach.** The harness refuses a second attach to a session; the
-  cross-device "my typed text survived" is the peek/queued-reply path. Show the
-  refusal clearly; multi-device semantics are an experiment, not a feature.
+- **Every viewer attaches; the daemon mirrors.** Amended 2026-09-02 from
+  "single attach, refused": measured (docs/DESIGN.md §4c), a second
+  `claude attach` is accepted, output is broadcast to every viewer and input
+  from any viewer goes in. So the pane on any Mac is `claude attach <id>`,
+  behind `ssh -t` when remote, and no ccc ever depends on another ccc. The
+  draft lives with the session. The shared PTY is last-resize-wins across
+  viewers; whether a secondary viewer renders the grid as-is instead of
+  resizing it is slice 4's question.
 - **No tmux, ever.** The daemon is the multiplexer.
 
 ## Parity: the human and the agent are first-class over everything

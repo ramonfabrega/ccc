@@ -225,12 +225,71 @@ wedged shape at all, or whether macOS tears the socket down cleanly (in
 which case the `kill -9` row above is the true everyday path and there is
 almost nothing to do).
 
+**Measured with a real lid 2026-09-02** (air → studio over the tailnet,
+`~/lidtest.py` on air: the exact ssh prefix above around
+`claude agents --json --all` every 2 s; an attach held through the same
+master in a second terminal):
+
+| case | result |
+|---|---|
+| cold start | 791 ms, then 210–300 ms warm |
+| lid closed 1 min 54 s, reopened | **first poll 2136 ms, exit 0; next poll 352 ms; no error, no eviction needed.** The master survived the sleep |
+| the attach through the same master | still live after wake; typing continued |
+
+So a short sleep on the tailnet is the *clean* case — better than the
+`kill -9` row, since nothing even reconnected. The wedged shape has not been
+seen in reality yet. Open: a long sleep (thirty minutes, overnight), which
+is the everyday case and the one where the user's plain `ssh studio` does
+die. Until that is measured, eviction-on-degraded-poll stays in the slice as
+insurance (it is twenty lines and a false eviction costs one handshake), and
+the wake notification's immediate re-poll is worth having regardless — it
+turns "up to 2 s of tick plus 2.1 s" into 2.1 s.
+
+## 4c. The daemon multiplexes viewers (v2, 2026-09-02)
+
+The v2 design nearly grew a second layer. With "single attach" taken as
+fact, a two-Mac roster forced a choice: either each ccc attaches on its own
+and fights for the lock (model A — reattach on wake races sshd reaping the
+dead client, and walking to the other Mac means detaching first), or the
+always-on studio ccc holds the one attach and air mirrors *studio's ccc*
+through a new stream verb on the control socket (model B — the DX of two
+`claude agents` views, at the cost of one ccc depending on another). B was
+chosen on paper. Then `scripts/attach-probe` measured what the daemon
+actually does (docs/HARNESS.md experiment 2):
+
+- A second `claude attach` is **accepted**. Output is broadcast to every
+  viewer, input from any viewer goes in, and a viewer whose terminal dies
+  is gone within a second with nothing to clean up.
+- Every viewer talks to the daemon's `control.sock`; the daemon holds the
+  one connection to each session's pty host and proxies the pane. The
+  daemon *is* the multiplexer — the CLAUDE.md line meant more than we knew.
+
+So the fork collapses to **A's mechanics with B's semantics, and nothing
+of ours in between.** ccc on air runs `ssh -t studio claude attach <id>`;
+ccc on studio runs the same words locally; both are viewers of one PTY.
+No ccc depends on another ccc, independent focus per Mac is free, and
+"server" versus "client" is nothing but the host list: every ccc serves the
+sessions its own daemon runs and reads every host it lists. Should studio
+die, sessions started on air are air's and a third device lists air.
+
+The one cost the harness hands us is **size**. The shared PTY takes the
+last resize from any viewer and never shrinks back, so a laptop and a big
+monitor on the same session redraw each other. Two agents views behave
+identically today; the user lives with it. Because ccc owns its renderer
+it can do better — render the session's grid inside whatever window it has
+rather than resizing the PTY from a secondary viewer — and that is slice 4's
+question, a nice-to-have, not a blocker.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past
   "unknown fields preserved". → lenient decoding, a banner on shape change.
 - "Two attaches to one session are fine." Documented as refused. → single
   attach; one experiment records the exact behavior across two Macs.
+  **Reversed by measurement 2026-09-02 (§4c):** the daemon accepts every
+  attach and mirrors one PTY to all of them. The negation held the wrong
+  way round — "refused" was the assumption, and it cost a whole model (B's
+  stream verb) before the probe was run.
 - "More notifications is better." Remote Control push + ntfy + an app notifier
   is three buzzes. → Mac first; RC push stays until the app earns the phone.
 - "The agents view's hooks keep firing." `agent_needs_input` and

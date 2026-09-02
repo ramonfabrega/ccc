@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Attach to a session from a pty and report what the harness did.
+
+    scripts/attach-probe <session-id> [--hold SECONDS] [--settle SECONDS]
+
+Experiment 2 (docs/HARNESS.md): what a second `claude attach <id>` sees
+while a first one holds the session, and whether killing the holder
+without Ctrl+Z releases it. Drives `claude attach` in a 100x30 pty, drains
+for `--settle` seconds (default 6), prints a plain-text view of the last
+screen lines and whether the child is still running, then:
+
+    default        detaches with Ctrl+Z and reports the exit status
+    --hold N       keeps the attach open for N seconds without detaching,
+                   then exits WITHOUT Ctrl+Z (kill it earlier with SIGKILL
+                   to simulate a dead terminal: the pty closes and the
+                   child gets SIGHUP, the lid-close shape)
+
+Strips CLAUDE* from the child's environment so the attach client is not
+treated as a child session (experiment 1).
+"""
+import argparse, os, pty, re, select, signal, struct, sys, termios, fcntl, time
+
+ap = argparse.ArgumentParser()
+ap.add_argument("session")
+ap.add_argument("--hold", type=float, default=None)
+ap.add_argument("--settle", type=float, default=6.0)
+ap.add_argument("--type", default=None, help="after settling, type this, wait 3 s, report, then erase it")
+ap.add_argument("--cols", type=int, default=100)
+ap.add_argument("--rows", type=int, default=30)
+args = ap.parse_args()
+COLS, ROWS = args.cols, args.rows
+
+pid, fd = pty.fork()
+if pid == 0:
+    for k in [k for k in os.environ if k.startswith("CLAUDE")]:
+        del os.environ[k]
+    os.environ["TERM"] = "xterm-256color"
+    os.execvp("claude", ["claude", "attach", args.session])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+
+t0 = time.monotonic()
+buf = bytearray()
+exited = None
+
+def pump(seconds):
+    """Read for `seconds`; returns True on EOF."""
+    global exited
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        r, _, _ = select.select([fd], [], [], 0.1)
+        if r:
+            try:
+                chunk = os.read(fd, 65536)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                return True
+            buf.extend(chunk)
+        done, status = os.waitpid(pid, os.WNOHANG)
+        if done:
+            exited = status
+            return True
+    return False
+
+ESC = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[@-Z\\-_]|\x1b[()][A-Za-z0-9]")
+
+def plain(data, lines=12):
+    text = ESC.sub(b"", data).replace(b"\r", b"\n").decode("utf-8", "replace")
+    out = [ln.rstrip() for ln in text.split("\n") if ln.strip()]
+    widest = max((len(ln) for ln in out), default=0)
+    return f"[widest line {widest} cells]\n" + "\n".join(out[-lines:])
+
+def report(label):
+    ms = int((time.monotonic() - t0) * 1000)
+    print(f"--- {label} at {ms} ms: {len(buf)} bytes, child {'exited' if exited is not None else 'running'}")
+    print(plain(bytes(buf)))
+    sys.stdout.flush()
+
+# SIGUSR1 prints what has arrived so far, so a holder can be asked
+# mid-hold whether it saw another client's keystrokes echo.
+signal.signal(signal.SIGUSR1, lambda *_: report("on SIGUSR1"))
+
+eof = pump(args.settle)
+report("after settle")
+if eof:
+    st = exited if exited is not None else os.waitpid(pid, 0)[1]
+    print(f"child exit status {os.waitstatus_to_exitcode(st) if hasattr(os, 'waitstatus_to_exitcode') else st}")
+    sys.exit(0)
+
+if args.type:
+    os.write(fd, args.type.encode())
+    eof = pump(3)
+    report(f"after typing {args.type!r}")
+    os.write(fd, b"\x7f" * len(args.type))
+    eof = pump(2) or eof
+
+if args.hold is not None:
+    print(f"--- holding for {args.hold} s (pid {os.getpid()}, child {pid}); SIGKILL me to simulate a dead terminal")
+    sys.stdout.flush()
+    eof = pump(args.hold)
+    report("after hold")
+    if not eof:
+        print("--- exiting without Ctrl+Z")
+    sys.exit(0)
+
+os.write(fd, b"\x1a")
+before = len(buf)
+eof = pump(5)
+print(f"--- after Ctrl+Z: {len(buf) - before} more bytes, eof={eof}")
+print(plain(bytes(buf[before:]), lines=6))
+if exited is None:
+    try:
+        _, exited = os.waitpid(pid, 0)
+    except ChildProcessError:
+        pass
+print(f"child exit status {os.waitstatus_to_exitcode(exited) if exited is not None else '?'}")

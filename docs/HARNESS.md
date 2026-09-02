@@ -142,6 +142,22 @@ is the sanctioned inbound surface (not investigated).
    child environment; the experiment script does.
 2. **[state-changing]** `claude attach <same-id>` from studio and from air
    simultaneously; record the refusal text and what the first client sees.
+   **Answered 2026-09-02 (2.1.258), `scripts/attach-probe` against an idle
+   session, both clients on studio (a second Mac changes nothing: every
+   attach lands on the same daemon).** There is no refusal. The second
+   attach is accepted and receives the full screen; a client typing `xyz`
+   sees the echo and so does the client that was already attached — the
+   daemon broadcasts one PTY to every viewer and merges their input. No
+   client ever touches the session's `ptySock`: `lsof` shows exactly one
+   connection per pty host, the daemon's, and each viewer holds a second
+   connection to `control.sock` through which the daemon proxies the pane.
+   Killing a viewer's terminal (`SIGKILL` the pty owner) ends its
+   `claude attach` child within a second and the daemon's connection count
+   drops at once — nothing to reap. **Size is last-writer-wins:** a
+   140-column client joining a 100-column holder resized the shared PTY,
+   the holder was redrawn at 140, and when the wide client left the PTY
+   stayed at 140. That is how two `claude agents` views already behave
+   (docs/DESIGN.md §4c).
 3. **[state-changing]** `ssh -t localhost claude attach <id>`: fullscreen,
    resize, and `Ctrl+Z` semantics through a PTY hop.
    **Answered 2026-09-02 (2.1.258) against session `1b1140d9`, driven from

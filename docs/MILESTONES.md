@@ -43,7 +43,17 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      the socket restores it). Carries one known display bug from slice 1:
      both roster faces shorten a cwd by substituting *this* Mac's home path,
      which is wrong for a host whose username differs (invisible against
-     `loop`, since it is the same machine).
+     `loop`, since it is the same machine; real now — air's user is
+     `rf-air`, studio's is `rf-studio`). **Measured with a real lid
+     2026-09-02 (docs/DESIGN.md §4b):** a two-minute sleep on the tailnet
+     is clean — the master survives, first poll 2.1 s, no eviction needed.
+     Eviction stays as insurance until a long sleep is measured; the
+     wake-notification re-poll is worth having either way. **Experiment 2
+     is answered (docs/DESIGN.md §4c):** the daemon accepts every attach
+     and mirrors one PTY to all viewers, so the pane over ssh is plain
+     `ssh -t <host> claude attach <id>` on every Mac, with no ccc-to-ccc
+     dependency — the fork between "each ccc attaches" and "air mirrors
+     studio's ccc" collapsed.
   3. **The model column over ssh — done 2026-09-02.** Settled by
      measurement (docs/DESIGN.md §4a): the local join is 9 ms of a 199 ms
      poll, so its cadence is left alone; the remote host is read by its own
@@ -57,8 +67,10 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      warning, not a failure), and `ccc list --json` reported issues through
      the exit code alone — it now writes them to stderr, and they cross the
      hop into the local banner.
-  4. **Host picker + TERM policy**, and experiment 2 while a remote attach
-     is cheap to run.
+  4. **Host picker + TERM policy**, and the shared-size question: the
+     daemon's PTY is last-resize-wins across viewers (§4c), so decide
+     whether a secondary viewer renders the session's grid as-is instead
+     of resizing it. Nice-to-have; the agents view has the same wart.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
