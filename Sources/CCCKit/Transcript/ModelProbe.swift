@@ -39,7 +39,16 @@ public enum WellPath {
         if fm.fileExists(atPath: direct.path) { return direct }
         let projects = claudeHome.appending(path: "projects")
         guard let wells = try? fm.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil) else { return nil }
-        for well in wells {
+        // Likely branch first (lore canon b438011: a mid-session worktree
+        // entry moves the whole transcript into the worktree's well, which
+        // is named `<parent well>--claude-worktrees-<name>`), then the rest.
+        let parentWell = directory(forCwd: cwd, claudeHome: claudeHome).lastPathComponent
+        let ordered = wells.sorted { a, b in
+            let ra = a.lastPathComponent.hasPrefix(parentWell + "--claude-worktrees-")
+            let rb = b.lastPathComponent.hasPrefix(parentWell + "--claude-worktrees-")
+            return ra && !rb
+        }
+        for well in ordered {
             let candidate = well.appending(path: "\(sessionId).jsonl")
             if fm.fileExists(atPath: candidate.path) { return candidate }
         }
