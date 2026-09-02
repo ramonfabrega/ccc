@@ -2,10 +2,11 @@ import CCCKit
 import SwiftUI
 
 /// The roster: what `claude agents` shows, plus the model column and our
-/// marks (v4). Sorted pinned → blocked → working → failed → done/stopped,
-/// newest first within a rank; archived rows are folded away behind the
-/// header's count unless they are asking for input. Enter or double-click
-/// attaches; the attached row is marked.
+/// marks (v4). Grouped and sorted by the View menu's choices (`RosterGroup`,
+/// `RosterSort`, persisted in UserDefaults — `ccc list --group/--sort` are
+/// the twins); pinned rows first under every sort; archived rows folded
+/// away behind the header's count unless they are asking for input. Enter
+/// or double-click attaches; the attached row is marked.
 struct RosterView: View {
     let poller: RosterPoller
     /// For shortening a row's cwd with the home of the host that answered
@@ -24,19 +25,31 @@ struct RosterView: View {
     /// The harness's `rm`, behind a confirmation the controller owns.
     let delete: (SessionRef) -> Void
     @State private var selection: SessionRef?
-    @State private var showsArchived = false
+    @AppStorage(RosterPrefs.archivedKey) private var showsArchived = false
+    @AppStorage(RosterPrefs.groupKey) private var groupName = RosterGroup.none.rawValue
+    @AppStorage(RosterPrefs.sortKey) private var sortName = RosterSort.activity.rawValue
+
+    private var group: RosterGroup { RosterGroup(rawValue: groupName) ?? .none }
+    private var sort: RosterSort { RosterSort(rawValue: sortName) ?? .activity }
+
+    private var sections: [RosterSection] {
+        poller.state.sections(group: group, sort: sort, archived: showsArchived) { cwd, host in
+            hosts.shortCwd(cwd, host: host)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            List(showsArchived ? poller.state.sorted : poller.state.visible, selection: $selection) { row in
-                RosterRow(row: row, showsHost: showsHost, shortCwd: hosts.shortCwd(row.session.cwd, host: row.host),
-                          stale: poller.state.host(row.host)?.isStale ?? false)
-                    .tag(row.ref)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { attach(row.ref) }
-                    .contextMenu { menu(for: row) }
+            List(selection: $selection) {
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(section.rows) { row in rowView(row) }
+                    } header: {
+                        if !section.title.isEmpty { Text(section.title).font(.caption.monospaced()) }
+                    }
+                }
             }
             .listStyle(.inset)
             .onKeyPress(.return) {
@@ -53,6 +66,16 @@ struct RosterView: View {
             footer
         }
         .frame(minWidth: 320)
+    }
+
+    private func rowView(_ row: SessionRow) -> some View {
+        RosterRow(row: row, showsHost: showsHost && group != .host,
+                  shortCwd: hosts.shortCwd(row.session.cwd, host: row.host),
+                  stale: poller.state.host(row.host)?.isStale ?? false)
+            .tag(row.ref)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { attach(row.ref) }
+            .contextMenu { menu(for: row) }
     }
 
     private var selectedRow: SessionRow? {
@@ -100,7 +123,7 @@ struct RosterView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 10) {
             Text("Sessions").font(.headline)
             Spacer()
             let blocked = poller.state.rows.filter { $0.session.state == .blocked }.count
@@ -121,6 +144,22 @@ struct RosterView: View {
                 .foregroundStyle(showsArchived ? .primary : .secondary)
                 .help(showsArchived ? "Hide archived sessions" : "Show archived sessions")
             }
+            // Group and sort, the View menu's twin in the roster itself.
+            Menu {
+                Picker("Group By", selection: $groupName) {
+                    ForEach(RosterGroup.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                }
+                Picker("Sort By", selection: $sortName) {
+                    ForEach(RosterSort.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                }
+            } label: {
+                Image(systemName: group == .none && sort == .activity ? "line.3.horizontal.decrease.circle"
+                                                                        : "line.3.horizontal.decrease.circle.fill")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Group and sort")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
     }

@@ -35,7 +35,23 @@ enum CLI {
             case "install-cli":
                 return installCLI(directory: stringFlag("--dir", rest), force: rest.contains("--force"), json: json)
             case "list":
-                return try await list(host: stringFlag("--host", rest), archived: rest.contains("--archived"), json: json)
+                var group = RosterGroup.none, sort = RosterSort.activity
+                if let word = stringFlag("--group", rest) {
+                    guard let g = RosterGroup(rawValue: word) else {
+                        stderr("ccc: unknown group '\(word)' (\(RosterGroup.allCases.map(\.rawValue).joined(separator: "|")))")
+                        return 2
+                    }
+                    group = g
+                }
+                if let word = stringFlag("--sort", rest) {
+                    guard let s = RosterSort(rawValue: word) else {
+                        stderr("ccc: unknown sort '\(word)' (\(RosterSort.allCases.map(\.rawValue).joined(separator: "|")))")
+                        return 2
+                    }
+                    sort = s
+                }
+                return try await list(host: stringFlag("--host", rest), archived: rest.contains("--archived"),
+                                      group: group, sort: sort, json: json)
             case "watch":
                 return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2, json: json)
             case "hosts":
@@ -118,8 +134,10 @@ enum CLI {
     /// folds them; `--archived` shows them. `--json` always carries every
     /// row with its `archived` / `pinned` flags: it is data, it is what the
     /// far side reads to build *its* roster, and a machine filters for
-    /// itself.
-    static func list(host name: String?, archived: Bool = false, json: Bool) async throws -> Int32 {
+    /// itself. `--group` and `--sort` are the View menu's twins; grouping
+    /// is presentation and never reaches `--json`, the sort does.
+    static func list(host name: String?, archived: Bool = false, group: RosterGroup = .none,
+                     sort: RosterSort = .activity, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
         let poller: RosterPoller
@@ -144,14 +162,17 @@ enum CLI {
         guard state.anyHostAnswered else { return 1 }
         for note in state.notes { stderr("ccc: \(note)") }
         if json {
-            printJSON(state.sorted)
+            printJSON(state.rows(sortedBy: sort))
             // stdout stays pure JSON, but the banner must not vanish just
             // because a machine is reading: exit 3 alone told a caller
             // *that* something changed and never *what*. This is also what
             // crosses the ssh hop when another ccc polls this one.
             for issue in state.issues { stderr("⚠ roster shape changed: \(issue.description)") }
         } else {
-            printRoster(archived ? state.sorted : state.visible, issues: state.issues, hosts: loaded.config)
+            let sections = state.sections(group: group, sort: sort, archived: archived) { cwd, host in
+                loaded.config.shortCwd(cwd, host: host)
+            }
+            printRoster(sections, issues: state.issues, hosts: loaded.config)
             let hidden = state.hiddenCount
             if !archived, hidden > 0 { print("(\(hidden) archived; --archived shows them)") }
         }
@@ -692,9 +713,17 @@ enum CLI {
     // MARK: rendering
 
     static func printRoster(_ rows: [SessionRow], issues: [RosterShapeIssue], hosts: HostConfig) {
+        printRoster(rows.isEmpty ? [] : [RosterSection(title: "", rows: rows)], issues: issues, hosts: hosts)
+    }
+
+    /// Sections print as a heading line each (none when untitled); the
+    /// columns are sized across the whole roster so headings never shift
+    /// them.
+    static func printRoster(_ sections: [RosterSection], issues: [RosterShapeIssue], hosts: HostConfig) {
         if !issues.isEmpty {
             print("⚠ roster shape changed: \(issues.map(\.description).joined(separator: "; "))")
         }
+        let rows = sections.flatMap(\.rows)
         if rows.isEmpty { print("(no sessions)"); return }
         let width = rows.map { ($0.session.name ?? "").count }.max() ?? 0
         // One Mac prints exactly what v1 printed; the column appears with
@@ -702,7 +731,9 @@ enum CLI {
         // `ccc attach` will take.
         let showsHost = rows.contains { $0.host != Host.localName }
         let hostWidth = rows.map(\.host.count).max() ?? 0
-        for row in rows {
+        for (i, section) in sections.enumerated() {
+        if !section.title.isEmpty { print("\(i == 0 ? "" : "\n")── \(section.title)") }
+        for row in section.rows {
             let s = row.session
             // The attached mark, else the pin: one column, the pin is what
             // sorts a row to the top and this is why it is there.
@@ -716,6 +747,7 @@ enum CLI {
             let model = row.model.map { shortModel($0) } ?? "-"
             let cwd = hosts.shortCwd(s.cwd, host: row.host)
             print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)\(archived)")
+        }
         }
     }
 
@@ -800,8 +832,9 @@ enum CLI {
                ccc hosts add <name> [--ssh <dest>] [--claude <path>] [--ccc <path>|--no-ccc] | remove <name>
                                                   (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
-               ccc list [--host <name>] [--archived] [--json]   every host's roster; --host narrows to one,
-                                                  --archived shows the folded rows (--json always has every row)
+               ccc list [--host <name>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--json]
+                                                  every host's roster; --host narrows to one, --archived shows the
+                                                  folded rows (--json always has every row, sorted, never grouped)
                ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host
                                                   (archived rows fold away unless blocked; pinned sort first)
                ccc watch [--host <name>] [--interval S] [--json]   one line per transition (blocked, done, failed, stopped)

@@ -191,6 +191,34 @@ enum App {
         editItem.submenu = edit
         main.addItem(editItem)
 
+        // Group / sort / the fold (v4): the same UserDefaults keys the
+        // roster's own menu reads through `@AppStorage`, so a pick here is
+        // on screen at once, and `ccc list --group/--sort` are the twins.
+        let view = NSMenu(title: "View")
+        view.delegate = self
+        let groupMenu = NSMenu(title: "Group By")
+        for group in RosterGroup.allCases {
+            let item = groupMenu.addItem(withTitle: group.label, action: #selector(pickGroup(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = group.rawValue
+        }
+        let groupItem = view.addItem(withTitle: "Group By", action: nil, keyEquivalent: "")
+        groupItem.submenu = groupMenu
+        let sortMenu = NSMenu(title: "Sort By")
+        for sort in RosterSort.allCases {
+            let item = sortMenu.addItem(withTitle: sort.label, action: #selector(pickSort(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = sort.rawValue
+        }
+        let sortItem = view.addItem(withTitle: "Sort By", action: nil, keyEquivalent: "")
+        sortItem.submenu = sortMenu
+        view.addItem(.separator())
+        let archived = view.addItem(withTitle: "Show Archived", action: #selector(toggleArchived(_:)), keyEquivalent: "A")
+        archived.target = self
+        let viewItem = NSMenuItem()
+        viewItem.submenu = view
+        main.addItem(viewItem)
+
         let windowMenu = NSMenu(title: "Window")
         // Targeted at the delegate: with the window closed, the responder
         // chain has no window controller to find.
@@ -203,5 +231,44 @@ enum App {
         main.addItem(windowItem)
         NSApp.windowsMenu = windowMenu
         NSApp.mainMenu = main
+    }
+
+    // MARK: the View menu
+
+    @objc private func pickGroup(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(sender.representedObject as? String, forKey: RosterPrefs.groupKey)
+    }
+
+    @objc private func pickSort(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(sender.representedObject as? String, forKey: RosterPrefs.sortKey)
+    }
+
+    @objc private func toggleArchived(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(!UserDefaults.standard.bool(forKey: RosterPrefs.archivedKey), forKey: RosterPrefs.archivedKey)
+    }
+}
+
+/// The roster's persisted view choices: keys shared by the View menu (which
+/// writes them) and `RosterView` (which reads them through `@AppStorage`).
+enum RosterPrefs {
+    static let groupKey = "roster.group"
+    static let sortKey = "roster.sort"
+    static let archivedKey = "roster.showsArchived"
+}
+
+extension AppDelegate: NSMenuDelegate {
+    /// Checkmarks follow the defaults each time the View menu opens, so a
+    /// pick made in the roster's own menu shows here too.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        let defaults = UserDefaults.standard
+        let group = defaults.string(forKey: RosterPrefs.groupKey) ?? RosterGroup.none.rawValue
+        let sort = defaults.string(forKey: RosterPrefs.sortKey) ?? RosterSort.activity.rawValue
+        for item in menu.items {
+            if item.title == "Show Archived" { item.state = defaults.bool(forKey: RosterPrefs.archivedKey) ? .on : .off }
+            for sub in item.submenu?.items ?? [] {
+                let chosen = item.title == "Group By" ? group : sort
+                sub.state = (sub.representedObject as? String) == chosen ? .on : .off
+            }
+        }
     }
 }

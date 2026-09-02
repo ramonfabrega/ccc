@@ -34,9 +34,13 @@ studio's marks on studio's sessions cross to air's roster (they ride
 from air would exit 2 there — nothing on air can make a mark yet. A cut
 is owed for that, together with plan item 3 below.
 
-Slice 2 candidates, none started: group and sort options; the fold as
-sections (live / finished / archived) instead of a toggle; the main
-menu's Session items for archive/pin (the context menu has them).
+Slice 2 landed the same day: group (none/host/repo/state) and sort
+(activity/name/started/folder) — View menu, the header's menu, and
+`ccc list --group/--sort`. The app icon from the ccc-site session
+(`worktree-icon`, `scripts/make-icon`, `Design/AppIcon.icns`) is merged;
+`make-bundle` already copies it, so the next cut carries it. Left for a
+later slice: the main menu's Session items for archive/pin (the context
+menu has them); a sort by model.
 
 v3 slice 2 candidates, none started: a session stopped by your own hand
 still banners ("stopped") — decided 2026-09-02 to leave it until it annoys,

@@ -195,9 +195,32 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   the row and showed the pin a tick after each shell verb; its header's
   "1 archived" toggle is on a real `screencapture` and **absent from
   `ccc peek`** — the composite drops SwiftUI buttons the way it drops
-  materials (§7 again: the screen is the oracle). Open for slice 2:
-  group and sort options; the fold as sections (live / finished /
-  archived) rather than a toggle.
+  materials (§7 again: the screen is the oracle).
+  **Slice 2 — done 2026-09-02: group and sort.** `RosterSort`
+  (activity — the v0 order and the default — name, started, folder) and
+  `RosterGroup` (none, host, repo, state), one definition in CCCKit
+  (`State.sections(group:sort:archived:)`) behind three faces: the View
+  menu (Group By / Sort By / Show Archived ⇧⌘A, checkmarks read off
+  UserDefaults), the roster header's own menu (`@AppStorage` on the same
+  keys, so either face's pick is on screen at once), and
+  `ccc list --group … --sort …`. Pinned rows lead under every sort.
+  `repo` folds the harness's worktrees (`<repo>/.claude/worktrees/<n>`)
+  into their repository, so a project's eight worktree sessions sit under
+  one heading; sections follow the sort (under activity, the repo with a
+  blocked row leads), except `host` keeps local first and `state` is
+  fixed waiting / working / finished / archived. Grouping is
+  presentation: `--json` is flat, in the requested sort. Proved live on
+  the CLI (`--group repo` put the blocked ota session's repo first and
+  ten cuanto rows under one heading; `--group state --sort name` read as
+  written; `--sort bogus` exited 2 naming the words; `--json --sort
+  started` came back newest first) and in the window by a real
+  screencapture: repo headings over the same rows after `defaults write
+  … roster.group repo` and a relaunch — an external `defaults write`
+  does not reach a running `@AppStorage`, only the app's own writes do,
+  which is why the View menu writes through `UserDefaults.standard`
+  in-process. The menus themselves have not been clicked by a hand.
+  Open: the main menu's Session items for archive/pin (the context menu
+  has them).
 - **v5 — spawn.** `claude --bg` with cwd, model, prompt, agent; drafts via
   `/fork` with no prompt; worktree awareness.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
