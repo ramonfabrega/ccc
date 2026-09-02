@@ -21,7 +21,8 @@ first automated answer to the permission banner hit "Don't Allow", and
 its first launch of a build ≥ 58.
 
 Slice 2 candidates, none started: a session stopped by your own hand
-still banners ("stopped"); a per-host mute; the Notification hook for
+still banners ("stopped") — decided 2026-09-02 to leave it until it annoys,
+then judge; a per-host mute; the Notification hook for
 what the roster cannot show. `ccc rm <ref>` exists (the harness's guard,
 inherited); the proof sessions are gone through it. The roster's Delete
 gesture and archive are v4.
