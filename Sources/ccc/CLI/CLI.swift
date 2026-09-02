@@ -49,6 +49,13 @@ enum CLI {
                     return Headless.run(ref: ref, cols: intFlag("--cols", rest) ?? 120, rows: intFlag("--rows", rest) ?? 40)
                 }
                 return try request(.attach(id: ref), json: json)
+            case "rm":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await rm(ref: ref, json: json)
             case "snapshot":
                 return try request(.snapshot, json: json)
             case "send":
@@ -132,6 +139,31 @@ enum CLI {
             printRoster(state.sorted, issues: state.issues, hosts: loaded.config)
         }
         return state.issues.isEmpty ? 0 : 3
+    }
+
+    /// Delete a session: `claude rm` behind the ref's host prefix, its
+    /// answer and exit status passed through. The dirty-worktree guard is
+    /// the harness's (docs/HARNESS.md); ccc adds no `--force` because the
+    /// harness has none, and "kept" is the correct answer, not an error
+    /// of ours.
+    static func rm(ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let result = try await cli.rm(id: ref.id)
+        if json {
+            printJSON(["ref": ref.description, "removed": result.removed ? "true" : "false", "said": result.said])
+        } else {
+            print(result.said)
+        }
+        return result.removed ? 0 : 1
     }
 
     /// The notification center's twin (v3): the same poll, the same
@@ -736,6 +768,7 @@ enum CLI {
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach
+               ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
                ccc resize <cols> <rows>
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)

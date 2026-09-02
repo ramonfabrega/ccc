@@ -38,11 +38,21 @@ behind `ssh`.
   hook. It also brought a **third `status` value, `waiting`**, which no doc
   lists; the lenient decoder flagged it as an unknown value and the banner
   is how we learned about it, exactly as designed. Only the blocked row
-  carries it. **Not always, though (2026-09-02, v3's proof):** eight
-  sessions spawned with a prompt that calls `AskUserQuestion` all came
-  back `{state: "blocked", status: "idle"}` with **no `waitingFor`** — the
-  pairing is real but the reason is optional, and the transition detector
-  keys on `state` with `waitingFor` as detail, never as the trigger.
+  carries it. **The reason is per prompt kind (2026-09-02, v3's proof):**
+  a permission prompt is `{state: "blocked", status: "waiting",
+  waitingFor: "permission prompt"}`, but eight sessions blocked on
+  `AskUserQuestion` came back `{state: "blocked", status: "idle"}` with
+  **no `waitingFor`** — so the transition detector keys on `state` with
+  `waitingFor` as detail, never as the trigger.
+- **`claude rm <id>`** deletes a background session and its worktree
+  "when that is safe", and works on exited sessions (`stop` does not).
+  The guard is the harness's: against a worktree with an untracked file
+  it answered `kept <id> — worktree has uncommitted changes`, kept the
+  worktree, exit 1, and the row stayed in the roster (measured
+  2026-09-02). No `--force`; resolving means commit/push or removing the
+  worktree by hand, then `rm` again. `ccc rm <ref>` is that command
+  behind the host prefix and nothing more — the agents view's Delete is
+  this same check, so ccc inherits it rather than re-deciding it.
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.

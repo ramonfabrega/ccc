@@ -150,6 +150,14 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   a banner; a per-host mute; the hook for what the roster cannot show.
 - **v4 — the roster, ours.** Archive, pin, group, sort in an overlay keyed by
   session id under Application Support; done vs stopped vs archived.
+  **Delete is not ours — done 2026-09-02:** `ccc rm <ref>` is the
+  harness's `claude rm` behind the host prefix, answer and exit status
+  passed through, so the agents view's guard is inherited rather than
+  re-decided (docs/HARNESS.md: a dirty worktree is `kept`, exit 1, the
+  row stays). Proved on ten sessions: one kept while its worktree held an
+  untracked file, removed once it was dropped, nine removed outright.
+  The roster's Delete gesture waits for the v4 roster work; archive is
+  ours and stays here.
 - **v5 — spawn.** `claude --bg` with cwd, model, prompt, agent; drafts via
   `/fork` with no prompt; worktree awareness.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via

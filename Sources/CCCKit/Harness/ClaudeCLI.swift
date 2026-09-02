@@ -253,6 +253,29 @@ public struct ClaudeCLI: Sendable {
         argv(["attach", id], tty: true)
     }
 
+    /// `claude rm <id>` on this host: delete the session and its worktree
+    /// when the harness judges that safe. The guard is the harness's, not
+    /// ours (docs/HARNESS.md): a dirty or unpushed worktree is kept and
+    /// the session stays, exit 1 with the reason. ccc passes the words
+    /// through — the agents view's Delete is this same check.
+    public func rmArgv(id: String) -> [String] {
+        argv(["rm", id], tty: false)
+    }
+
+    public struct RmResult: Sendable {
+        public var removed: Bool
+        /// What the harness said, stdout and stderr in the order they came.
+        public var said: String
+    }
+
+    public func rm(id: String) async throws -> RmResult {
+        try prepareControlDirectory()
+        let result = try await run(rmArgv(id: id), accepting: [0, 1], program: "claude")
+        let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return RmResult(removed: result.status == 0, said: said)
+    }
+
     /// The same command as a line a human can paste into a terminal — what
     /// the roster's "copy attach command" offers. One definition, two
     /// surfaces (CLAUDE.md's parity rule).

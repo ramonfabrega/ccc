@@ -17,6 +17,16 @@ import Testing
         #expect(local.agentsArgv() == ["/Users/x/.local/bin/claude", "agents", "--json", "--all"])
     }
 
+    /// Delete is the harness's `rm`, no tty, the same words behind the
+    /// prefix; ccc adds no flag the harness lacks.
+    @Test func rmIsTheHarnessesOwnWordsWithoutATTY() {
+        #expect(local.rmArgv(id: "a1b2") == ["/Users/x/.local/bin/claude", "rm", "a1b2"])
+        let argv = remote.rmArgv(id: "a1b2")
+        #expect(argv.first == "/usr/bin/ssh")
+        #expect(!argv.contains("-t"))
+        #expect(argv.suffix(4) == ["studio", "~/.local/bin/claude", "rm", "a1b2"])
+    }
+
     @Test func remoteAttachIsTheSameWordsBehindSSH() {
         let argv = remote.attachArgv(id: "a1b2")
         #expect(argv.first == "/usr/bin/ssh")

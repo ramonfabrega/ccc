@@ -22,9 +22,9 @@ its first launch of a build ≥ 58.
 
 Slice 2 candidates, none started: a session stopped by your own hand
 still banners ("stopped"); a per-host mute; the Notification hook for
-what the roster cannot show (permission prompts carry no text in the
-roster). The eight `ccc-v3-*` proof sessions sit stopped/done in studio's
-roster until v4's archive exists.
+what the roster cannot show. `ccc rm <ref>` exists (the harness's guard,
+inherited); the proof sessions are gone through it. The roster's Delete
+gesture and archive are v4.
 
 Polish parked until the pane is the subject again: the banner draws under
 the title bar (fix when touching the window controller for click-to-attach)
