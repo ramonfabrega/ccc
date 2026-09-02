@@ -23,7 +23,7 @@ out = args[0] if args else os.path.join(os.path.dirname(__file__), "..", "Tests"
 os.makedirs(out, exist_ok=True)
 if not cmd:
     cmd = ["/bin/sh", "-c",
-           "seq 1 20000; "
+           "seq 1 60000; "
            "for i in $(seq 1 300); do printf '%s\\n' 'Grüße aus Zürich — 日本語のテキスト, combining e\\u0301, tabs\\tand\\ttabs, and a long line that will certainly wrap when the terminal is one hundred columns wide because it just keeps going and going'; done; "
            "ls -la --color=always /usr/bin | head -400; "
            "printf '\\033[1;31mbold red\\033[0m \\033[4munderline\\033[0m \\033[3mitalic\\033[0m\\n'; sleep 0.5"]
@@ -44,7 +44,7 @@ events = open(os.path.join(out, "stream.events"), "w")
 offset = 0
 phases = []
 resized = False
-RESIZE_AT = 400_000   # bytes; roughly halfway through the default command
+RESIZE_AT = 150_000   # bytes; roughly halfway through the default command
 
 while True:
     r, _, _ = select.select([fd], [], [], 0.5)

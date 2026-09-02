@@ -17,6 +17,15 @@ public final class GhosttyPane: TerminalHost {
     private let container: PaneInputView
     private var frameScheduled = false
     private var pendingFrame = false
+    /// Mouse encoding is the core's job too; the encoder retains `core` so
+    /// the terminal handle outlives it. Built once, options synced per event.
+    private lazy var mouse: GhosttyMouse = {
+        let mouse = GhosttyMouse(host: core)
+        mouse.setCellSize(width: Int(metrics.widthPixels), height: Int(metrics.heightPixels))
+        return mouse
+    }()
+    /// Sub-line trackpad pixels not yet spent on a whole line of scroll.
+    private var scrollRemainder: CGFloat = 0
 
     public var onOutput: ((Data) -> Void)?
     /// The grid changed because the view did (window resize); the owner
@@ -108,12 +117,64 @@ public final class GhosttyPane: TerminalHost {
     }
 
     fileprivate func scroll(_ event: NSEvent) {
-        // v1 start: wheel → arrow keys, which the alt-screen TUI understands
-        // (Zed does the same in alternate-scroll mode). Mouse reporting via
-        // the core's mouse API is check 3's proper answer and comes next.
-        let lines = Int((event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? metrics.height : 1)).rounded())
-        guard lines != 0, let key = NamedKey(lines > 0 ? "up" : "down") else { return }
+        // Zed's `determine_scroll_lines` shape: a trackpad reports fractional
+        // pixels, so they accumulate into a remainder and only whole lines
+        // are emitted. A classic wheel reports whole lines already.
+        let lines: Int
+        if event.hasPreciseScrollingDeltas {
+            scrollRemainder += event.scrollingDeltaY
+            let whole = (scrollRemainder / metrics.height).rounded(.towardZero)
+            scrollRemainder -= whole * metrics.height
+            lines = Int(whole)
+        } else {
+            scrollRemainder = 0
+            lines = Int(event.scrollingDeltaY.rounded())
+        }
+        guard lines != 0 else { return }
+
+        let cell = self.cell(for: event)
+        let bytes = mouse.wheel(deltaLines: lines, col: cell.col, row: cell.row, mods: Self.mods(for: event))
+        if !bytes.isEmpty {
+            onOutput?(bytes)
+            return
+        }
+        // The core declined and told us why: alternate screen + mode 1007 +
+        // no tracking. `GhosttyMouse.wheel` documents that alternate scroll
+        // lives above the library line, so the arrows are ours to send —
+        // through the key encoder, which applies DECCKM.
+        guard mouse.wantsArrowFallback, let key = NamedKey(lines > 0 ? "up" : "down") else { return }
         for _ in 0..<min(abs(lines), 5) { _ = core.press(key) }
+    }
+
+    /// Cell under the pointer. The container is flipped, so the view's y
+    /// already grows downward like the grid's row index.
+    fileprivate func cell(for event: NSEvent) -> (col: Int, row: Int) {
+        let point = container.convert(event.locationInWindow, from: nil)
+        let grid = metalView.gridSize()
+        let col = Int((point.x / metrics.width).rounded(.down))
+        let row = Int((point.y / metrics.height).rounded(.down))
+        return (min(max(col, 0), max(grid.cols - 1, 0)), min(max(row, 0), max(grid.rows - 1, 0)))
+    }
+
+    /// Mouse button events → the core's encoder. When the child has not
+    /// enabled tracking the core emits nothing and we send nothing: that is
+    /// the correct answer, not a dropped event (local selection, which is
+    /// what a real terminal does with an untracked click, is not in v1).
+    fileprivate func mouseEvent(_ event: NSEvent, button: GhosttyMouse.Button?, action: GhosttyMouse.Action) {
+        let cell = self.cell(for: event)
+        let bytes = mouse.encode(button: button, action: action, col: cell.col, row: cell.row, mods: Self.mods(for: event))
+        guard !bytes.isEmpty else { return }
+        onOutput?(bytes)
+    }
+
+    private static func mods(for event: NSEvent) -> GhosttyMouse.Modifiers {
+        var mods: GhosttyMouse.Modifiers = []
+        let flags = event.modifierFlags
+        if flags.contains(.shift) { mods.insert(.shift) }
+        if flags.contains(.control) { mods.insert(.control) }
+        if flags.contains(.option) { mods.insert(.option) }
+        if flags.contains(.command) { mods.insert(.command) }
+        return mods
     }
 
     /// NSEvent → the key the encoder understands. Letters/digits/punctuation
@@ -170,7 +231,57 @@ final class PaneInputView: NSView {
         pane?.scroll(event)
     }
 
+    // Buttons go to the core's mouse encoder. `makeFirstResponder` stays on
+    // the left press so a click still focuses the pane; everything else is
+    // pure encoding, and produces no bytes at all while tracking is off.
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        pane?.mouseEvent(event, button: .left, action: .press)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .left, action: .release)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .left, action: .motion)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .right, action: .press)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .right, action: .release)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        pane?.mouseEvent(event, button: .right, action: .motion)
+    }
+
+    // AppKit funnels every button past the second through `otherMouse*`;
+    // button number 2 is the middle button, and the rest have no place in
+    // the protocols we encode, so they are dropped.
+    override func otherMouseDown(with event: NSEvent) {
+        guard event.buttonNumber == 2 else { return }
+        pane?.mouseEvent(event, button: .middle, action: .press)
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        guard event.buttonNumber == 2 else { return }
+        pane?.mouseEvent(event, button: .middle, action: .release)
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        guard event.buttonNumber == 2 else { return }
+        pane?.mouseEvent(event, button: .middle, action: .motion)
+    }
+
+    // Button-less motion is only meaningful under any-event tracking (DEC
+    // 1003); the encoder drops it in every other mode, so no tracking-area
+    // is installed until a pane needs 1003 — this override exists for when
+    // one is.
+    override func mouseMoved(with event: NSEvent) {
+        pane?.mouseEvent(event, button: nil, action: .motion)
     }
 }

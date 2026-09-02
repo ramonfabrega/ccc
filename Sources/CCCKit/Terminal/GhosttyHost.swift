@@ -45,7 +45,19 @@ public final class GhosttyHost: TerminalHost {
             MainActor.assumeIsolated { host.onOutput?(bytes) }
         }
         _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_WRITE_PTY, unsafeBitCast(writePty, to: UnsafeRawPointer.self))
+
+        // Scrollback policy is ours (docs/TERMINAL.md): the core's default
+        // kept ~500 rows of a 60k-line stream (a byte cap). Match SwiftTerm's
+        // 2000-line stand-in for a like-for-like scoreboard, and lift the
+        // byte cap so lines, not bytes, are the limit. Non-pointer option
+        // values are passed by pointer.
+        var lines: Int = GhosttyHost.scrollbackLines
+        _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines)
+        _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, nil)
     }
+
+    /// Lines of scrollback kept per pane. A setting once the roster is ours.
+    public static var scrollbackLines = 2_000
 
     isolated deinit {
         frameReader = nil          // its render state must go before the terminal

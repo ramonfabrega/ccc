@@ -169,13 +169,32 @@ enum CLI {
             var parseMs: Double; var snapshotMs: Double; var mbPerSecond: Double
             var footprintDeltaMB: Double; var scrollbackRows: Int; var gridDigest: String
         }
+        // A recording made by scripts/record-stream carries a mid-stream
+        // resize; replaying it at the same byte offset is what makes reflow
+        // cost part of the measurement.
+        struct StreamMeta: Decodable { var cols: Int?; var rows: Int?; var resizeAtBytes: Int?; var resizedTo: [Int]? }
+        let metaURL = URL(filePath: path).deletingPathExtension().appendingPathExtension("meta.json")
+        let meta = (try? Data(contentsOf: metaURL)).flatMap { try? JSONDecoder().decode(StreamMeta.self, from: $0) }
+        let startCols = meta?.cols ?? cols, startRows = meta?.rows ?? rows
         var results: [Result] = []
         for name in (core.map { [$0] } ?? ["swiftterm", "ghostty"]) {
             let before = ProcessStats.footprint(of: getpid()) ?? 0
-            let host: TerminalHost = name == "ghostty" ? GhosttyHost(cols: cols, rows: rows) : HeadlessHost(cols: cols, rows: rows)
+            let host: TerminalHost = name == "ghostty" ? GhosttyHost(cols: startCols, rows: startRows) : HeadlessHost(cols: startCols, rows: startRows)
             let clock = ContinuousClock()
             let parse = clock.measure {
-                for _ in 0..<repeats { for chunk in chunks { host.feed(chunk) } }
+                for _ in 0..<repeats {
+                    host.resize(cols: startCols, rows: startRows)
+                    var offset = 0
+                    var resized = false
+                    for chunk in chunks {
+                        host.feed(chunk)
+                        offset += chunk.count
+                        if !resized, let at = meta?.resizeAtBytes, let to = meta?.resizedTo, to.count == 2, offset >= at {
+                            host.resize(cols: to[0], rows: to[1])
+                            resized = true
+                        }
+                    }
+                }
             }
             let snap = clock.measure { for _ in 0..<repeats { _ = host.snapshot() } }
             let grid = host.snapshot()
