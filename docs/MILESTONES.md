@@ -98,7 +98,12 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   session after a relaunch, since an update is one. **v0.1.1, same day:**
   the macOS 26 floor was the v0 skeleton's, not a need — nothing in the
   code is 26-only, it builds clean at macOS 14 (the Observation floor) —
-  so the minimum is 14.0 and air need not update first.
+  so the minimum is 14.0 and air need not update first. **v0.1.3, same
+  day:** the Metal pane had been black on screen since v1 — a
+  `CAMetalLayer` never gets `updateLayer`, and `ccc peek` composites an
+  offscreen render, so only the human could see it (docs/DESIGN.md §7).
+  Draws on `render()` now; `ccc stats` counts frames presented. Plus the
+  Sparkle guard for unbundled runs and the `hosts add` probe.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
