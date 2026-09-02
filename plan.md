@@ -83,7 +83,12 @@ and the terminal clips a little at its bounds.
    master, merged back into worktree-v2 as 0e73a69). `ota` is on
    studio's PATH and v0.1.8 went through it end to end. What remains of
    §6a's proof is air installing v0.1.8 from the feed; ota is pinned to
-   revision 45f3a63 until it tags. The superseded branches
+   revision 45f3a63 until it tags. ota's own `verify --feed ccc` agreed
+   with the cut (version 76, length 4509224). **Next bump:** ota master
+   gained 187ec67, "refuse to release an installed app" — a path under
+   /Applications or ~/Applications is refused; ccc releases from
+   `.build/dist/ccc.app`, so nothing changes, but take it with the next
+   pin move. The superseded branches
    `origin/ota-migration` and `origin/ota-migration-v017` can be deleted.
 
 `scripts/attach-probe` is the tool for anything attach-shaped: hold, type,
