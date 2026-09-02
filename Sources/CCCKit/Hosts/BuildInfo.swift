@@ -17,21 +17,41 @@ public struct BuildInfo: Codable, Sendable, Equatable {
     public var bundlePath: String?
     /// The executable itself, symlinks resolved — what `install-cli` links to.
     public var executablePath: String
+    /// The dev lane: a bundle with no Sparkle feed (`scripts/make-bundle`
+    /// without `--release`), or no bundle at all. One definition — the
+    /// Updater keys on the same absence — so "which lane is this" is read
+    /// off the plist, never a separate flag that could disagree with it.
+    public var dev: Bool
 
-    public init(version: String?, build: Int?, bundlePath: String?, executablePath: String) {
+    public init(version: String?, build: Int?, bundlePath: String?, executablePath: String, dev: Bool = false) {
         self.version = version
         self.build = build
         self.bundlePath = bundlePath
         self.executablePath = executablePath
+        self.dev = dev
+    }
+
+    /// An older `ccc version --json` has no `dev` key; that ccc predates
+    /// the lane split and was always a release cut.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(String.self, forKey: .version)
+        build = try c.decodeIfPresent(Int.self, forKey: .build)
+        bundlePath = try c.decodeIfPresent(String.self, forKey: .bundlePath)
+        executablePath = try c.decode(String.self, forKey: .executablePath)
+        dev = try c.decodeIfPresent(Bool.self, forKey: .dev) ?? false
     }
 
     public var isBundled: Bool { bundlePath != nil && version != nil }
 
-    /// `0.1.4 (53)`, or `dev` for a bare binary.
+    /// `0.1.4 (53)`, `0.1.4 (56) dev`, or `dev` for a bare binary.
     public var short: String {
         guard let version else { return "dev" }
-        return build.map { "\(version) (\($0))" } ?? version
+        return (build.map { "\(version) (\($0))" } ?? version) + (dev ? " dev" : "")
     }
+
+    /// What the status item and the window title are called.
+    public var appTitle: String { dev ? "ccc·dev" : "ccc" }
 
     /// The `ccc version` line.
     public var description: String {
@@ -50,6 +70,7 @@ public struct BuildInfo: Codable, Sendable, Equatable {
 
     public init(executable: URL) {
         executablePath = executable.path
+        dev = true
         var dir = executable.deletingLastPathComponent()
         while dir.path != "/" {
             if dir.pathExtension == "app",
@@ -58,6 +79,7 @@ public struct BuildInfo: Codable, Sendable, Equatable {
                 self.version = version
                 self.build = (bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String).flatMap { Int($0) }
                 self.bundlePath = dir.path
+                self.dev = bundle.object(forInfoDictionaryKey: "SUFeedURL") == nil
                 return
             }
             dir = dir.deletingLastPathComponent()

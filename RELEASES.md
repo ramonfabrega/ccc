@@ -16,7 +16,11 @@ ID signing plus Sparkle is the fleet's answer and it costs one script
 
 - **Dev, on studio:** `scripts/install` — release build, ad-hoc sign,
   `~/Applications/ccc.app`, `ccc` on PATH as a symlink into the bundle.
-  This Mac only. `scripts/install --dist` installs the last cut instead
+  This Mac only. A dev bundle carries no Sparkle keys (`make-bundle`
+  without `--release`), which is the one definition of the lane: it never
+  polls the CDN, `ccc version` says `dev`, the status item and window
+  read `ccc·dev`, and "Check for Updates…" is disabled with that reason.
+  `scripts/install --dist` installs the last cut instead
   (the notarized app from `.build/dist`), so the daily driver on studio is
   the same bytes air runs.
 - **Release, for every Mac, studio included:** the steps below. Air only

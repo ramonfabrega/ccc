@@ -28,7 +28,7 @@ swift build -c release 2>&1 | grep -E "error|warning: .*Sources/ccc|Build comple
 OUT="$PWD/.build/dist"
 APP="$OUT/ccc.app"
 mkdir -p "$OUT"
-APP_OUT="$APP" ./scripts/make-bundle
+APP_OUT="$APP" ./scripts/make-bundle --release
 
 if [ "$NOTARIZE" = "1" ]; then
     ID=$(security find-identity -v -p codesigning \

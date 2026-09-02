@@ -101,7 +101,14 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      --json` on the warm master and prints its build and the skew as a
      number — an older ccc there is named as predating the verb. Proved
      against `loop`: `ccc 0.1.4 (55)`, skew 0, and the installed v0.1.4
-     reported as the older one.
+     reported as the older one. **Lanes, same day:** the dev bundle is
+     the one without Sparkle keys (`make-bundle --release` is what
+     `package` passes), and that absence is read everywhere — `ccc
+     version` says `dev`, the status item and window title are
+     `ccc·dev`, the updater item is disabled with the reason, and a dev
+     build never polls the CDN. Chosen over a separate bundle id: only
+     one ccc runs (the socket), the release proof lives on air, and a
+     second identity would split UserDefaults for nothing measured.
 - **Release lane — done 2026-09-02, v0.1.0 cut.** The fleet's mux/disk
   flow (docs/DESIGN.md §6, RELEASES.md): Developer ID + hardened runtime,
   notarized (accepted first submission) and stapled, Sparkle appcast on the

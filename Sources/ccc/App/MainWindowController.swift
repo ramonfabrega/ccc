@@ -23,7 +23,7 @@ final class MainWindowController: NSWindowController {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
-        window.title = "ccc"
+        window.title = BuildInfo.current.appTitle
         window.titlebarAppearsTransparent = true
         window.setFrameAutosaveName("ccc.main")
         window.minSize = NSSize(width: 800, height: 400)
@@ -173,13 +173,13 @@ final class MainWindowController: NSWindowController {
             pane.resize(cols: dims.cols, rows: dims.rows)
             session.viewResized(cols: dims.cols, rows: dims.rows)
         }
-        window?.title = "ccc — \(session.ref)"
+        window?.title = "\(BuildInfo.current.appTitle) — \(session.ref)"
     }
 
     private func unmount() {
         for view in paneContainer.subviews where view !== placeholder { view.removeFromSuperview() }
         placeholder.isHidden = false
-        window?.title = "ccc"
+        window?.title = BuildInfo.current.appTitle
     }
 
     private func attach(_ ref: SessionRef) {

@@ -129,7 +129,8 @@ enum App {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "ccc"
+        let title = BuildInfo.current.appTitle
+        item.button?.title = title
         item.button?.target = self
         item.button?.action = #selector(statusItemClicked)
         statusItem = item
@@ -138,7 +139,7 @@ enum App {
             while let self, let controller = self.controller {
                 let blocked = controller.poller.state.rows.filter { $0.session.state == .blocked }.count
                 let working = controller.poller.state.rows.filter { $0.session.state == .working }.count
-                self.statusItem?.button?.title = blocked > 0 ? "ccc ⏸\(blocked)" : (working > 0 ? "ccc ·\(working)" : "ccc")
+                self.statusItem?.button?.title = blocked > 0 ? "\(title) ⏸\(blocked)" : (working > 0 ? "\(title) ·\(working)" : title)
                 try? await Task.sleep(for: .seconds(2))
             }
         }

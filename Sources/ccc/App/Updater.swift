@@ -29,11 +29,11 @@ final class Updater {
 
     /// The menu item, wired to Sparkle's own action so its enabled state
     /// follows `canCheckForUpdates` through the controller's validation.
-    /// Disabled, with the reason as its title, when not running from a
-    /// bundle.
+    /// Disabled, with the reason as its title, on the dev lane (a bundle
+    /// without the feed keys, or no bundle at all).
     func menuItem() -> NSMenuItem {
         guard let controller else {
-            let item = NSMenuItem(title: "Check for Updates… (not a bundle)", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: "Check for Updates… (dev build)", action: nil, keyEquivalent: "")
             item.isEnabled = false
             return item
         }

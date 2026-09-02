@@ -17,7 +17,7 @@ import Testing
     }
 
     /// A fake `X.app` with a plist and an executable, the shape make-bundle makes.
-    private func makeBundle(in dir: URL, version: String = "0.1.5", build: Int = 57) throws -> URL {
+    private func makeBundle(in dir: URL, version: String = "0.1.5", build: Int = 57, release: Bool = true) throws -> URL {
         let app = dir.appending(path: "ccc.app")
         let macos = app.appending(path: "Contents/MacOS")
         try FileManager.default.createDirectory(at: macos, withIntermediateDirectories: true)
@@ -32,6 +32,7 @@ import Testing
           <key>CFBundleIdentifier</key><string>com.ramonfabrega.ccc.test</string>
           <key>CFBundleShortVersionString</key><string>\(version)</string>
           <key>CFBundleVersion</key><string>\(build)</string>
+          \(release ? "<key>SUFeedURL</key><string>https://example.invalid/appcast.xml</string>" : "")
         </dict></plist>
         """
         try Data(plist.utf8).write(to: app.appending(path: "Contents/Info.plist"))
@@ -46,7 +47,21 @@ import Testing
             #expect(info.build == 57)
             #expect(info.bundlePath == dir.appending(path: "ccc.app").path)
             #expect(info.isBundled)
+            #expect(!info.dev)
             #expect(info.short == "0.1.5 (57)")
+            #expect(info.appTitle == "ccc")
+        }
+    }
+
+    /// The lane is the feed's absence: a bundle make-bundle made without
+    /// `--release` is dev, says so everywhere, and is still installable.
+    @Test func aBundleWithoutTheFeedIsTheDevLane() throws {
+        try withTempDir { dir in
+            let info = BuildInfo(executable: try makeBundle(in: dir, release: false))
+            #expect(info.isBundled)
+            #expect(info.dev)
+            #expect(info.short == "0.1.5 (57) dev")
+            #expect(info.appTitle == "ccc·dev")
         }
     }
 
@@ -70,6 +85,7 @@ import Testing
             try Data("#!/bin/sh\n".utf8).write(to: exe)
             let info = BuildInfo(executable: exe)
             #expect(!info.isBundled)
+            #expect(info.dev)
             #expect(info.version == nil)
             #expect(info.short == "dev")
         }

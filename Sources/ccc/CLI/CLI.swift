@@ -367,7 +367,7 @@ enum CLI {
     static func installCLI(directory: String?, force: Bool, json: Bool) -> Int32 {
         let me = BuildInfo.current
         guard me.isBundled else {
-            stderr("ccc: this is a dev build (\(me.executablePath)), not an installed app; `scripts/install` links the dev lane")
+            stderr("ccc: \(me.executablePath) is not in an app bundle, so there is nothing to link into; `scripts/install` makes one")
             return 1
         }
         do {
