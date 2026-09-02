@@ -12,9 +12,11 @@ true; do it again after every master sync or the branches re-diverge).
 **v0.1.5 (build 61) is cut and on the feed** (2026-09-02); origin master
 is at the tag — the main checkout wants a `git pull --ff-only`. Studio
 stays on the dev lane (build > 61, never offered a downgrade);
-`scripts/install --dist` puts the cut back. **Air owes its update:**
-Check for Updates… → v0.1.5, then answer the notification permission
-banner, then `ccc install-cli` there so `ccc hosts add air` finds it.
+`scripts/install --dist` puts the cut back. **Air is on v0.1.5** with
+its command linked (`ccc install-cli`, for air's own `ccc list` /
+`watch`); air polls studio, never the reverse (no Remote Login on
+air). Left there: answer the notification permission banner once,
+`ccc stats` on air says `authorized` when done.
 
 ## Current: v3 notifications
 
