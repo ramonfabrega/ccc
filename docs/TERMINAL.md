@@ -41,6 +41,31 @@ an `NSView`. Estimate 800–1,800 lines. Precedents to read, not copy:
 (SwiftUI + Metal + forkpty). Paneflow's postmortem is the honest warning:
 the glyph atlas and box-drawing coverage are the long tail, not the PTY.
 
+**What Zed does (read 2026-09-02 at zed `97b1e64`, by a Sonnet spawn; take
+the technique, not the code).** Core is a Zed fork of `alacritty_terminal`;
+`terminal_element.rs` rebuilds the visible cells only when the terminal
+mutates, not per frame. Paint: per row, adjacent same-style cells are
+greedily merged into one shaped text run (font/fg/bg/underline/strike
+equal), so shaping is per run, not per cell; backgrounds are merged into
+per-row spans and drawn as quads; the cursor is a quad whose width is
+`max(shaped width, cell width)` so wide glyphs are not clipped; wide-char
+spacer cells skip text but keep their background; block/sextant glyphs are
+drawn as sub-cell quads on an 8×24 subgrid, never shaped. Frame pacing: no
+timer — the PTY loop handles the first event immediately for latency, then
+coalesces for 4 ms (cap 100 events, repeated wakeups collapsed) into one
+update and one repaint. Glyphs: CoreText into an 8-bit alpha atlas
+(`A8Unorm`) for monochrome and BGRA for color, 4 subpixel x-variants per
+glyph, shaped-line cache two frames deep. Scroll: integer line offset into
+the grid; trackpad pixels accumulate and emit whole lines; in the alt
+screen wheel becomes arrow keys (alternate-scroll mode) or SGR mouse
+reports. Bugs they fixed in the last year, which our renderer inherits as
+checks: resize jitter and flicker (twice), pixel-snapping cell rects (merged
+and reverted the same day), cursor stretching on wide glyphs, zero-width
+combining characters, sextant coverage. GPUI itself is not liftable into a
+Swift window — it owns the window and the language — but every item above
+maps onto libghostty-vt's render state (dirty rows, per-cell resolved
+colors, grapheme UTF-8) plus one `CAMetalLayer`.
+
 Scrollback policy is ours. Ghostty-the-app's footprint (10 MB per surface
 default, cells preallocated at full width, and the ≤1.2.3 leak) is not
 inherited by a single pane with its own limits.
