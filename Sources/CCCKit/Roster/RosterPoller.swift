@@ -78,7 +78,11 @@ public final class RosterPoller {
             let rows = decoded.sessions.map { session -> SessionRow in
                 var model: String?
                 if let id = session.sessionId {
-                    let url = known[id] ?? WellPath.locateTranscript(sessionId: id, cwd: session.cwd)
+                    // A cached path can go stale: the transcript follows the
+                    // session's CURRENT worktree well on every entry (lore
+                    // canon e085cbb), so a populated well empties under us.
+                    let cached = known[id].flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+                    let url = cached ?? WellPath.locateTranscript(sessionId: id, cwd: session.cwd)
                     if let url {
                         found[id] = url
                         model = probe.model(forTranscriptAt: url)?.model

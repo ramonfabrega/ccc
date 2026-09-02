@@ -49,7 +49,7 @@ enum CLI {
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
-                                        bytes: intFlag("--bytes", rest), json: json)
+                                        bytes: intFlag("--bytes", rest), core: stringFlag("--core", rest) ?? "ghostty", json: json)
             default:
                 stderr("ccc: unknown command '\(verb)'")
                 return usage()
@@ -103,10 +103,17 @@ enum CLI {
 
     /// `--bytes N` replays only the first N bytes: a phase boundary from the
     /// recording's `.meta.json`, so a golden can be taken mid-session.
-    static func replay(path: String, cols: Int, rows: Int, bytes limit: Int?, json: Bool) async throws -> Int32 {
+    static func replay(path: String, cols: Int, rows: Int, bytes limit: Int?, core: String, json: Bool) async throws -> Int32 {
         var bytes = try Data(contentsOf: URL(filePath: path))
         if let limit, limit < bytes.count { bytes = bytes.prefix(limit) }
-        let host = HeadlessHost(cols: cols, rows: rows)
+        let host: TerminalHost
+        switch core {
+        case "ghostty": host = GhosttyHost(cols: cols, rows: rows)
+        case "swiftterm": host = HeadlessHost(cols: cols, rows: rows)
+        default:
+            stderr("ccc: unknown core '\(core)' (ghostty|swiftterm)")
+            return 2
+        }
         host.feed(bytes)
         let grid = host.snapshot()
         if json { printJSON(grid) } else { print(grid.rendered()) }
@@ -194,6 +201,11 @@ enum CLI {
         return Int(args[i + 1])
     }
 
+    static func stringFlag(_ name: String, _ args: [String]) -> String? {
+        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
     static func stderr(_ message: String) {
         FileHandle.standardError.write(Data((message + "\n").utf8))
     }
@@ -211,7 +223,7 @@ enum CLI {
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)
                ccc window show|hide|close         the window's own gestures (close = Cmd-W)
-               ccc replay <bytes-file> [--cols N --rows N --bytes N] [--json]
+               ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
 
         """.utf8))
         return status
