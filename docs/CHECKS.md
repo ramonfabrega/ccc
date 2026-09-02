@@ -16,8 +16,9 @@ baseline (CoreGraphics; Metal on is a second column when it matters).
 | R | renderer frame time | `RenderTests/offscreenFrameTiming`, 120×40 mixed styles, offscreen, waits for completion | n/a (SwiftTerm draws its own) | — | 7.9 ms debug / **1.10 ms release** per frame; atlas A8 2048² = 4 MB eager, BGRA 1024² lazy |
 | 5 | resize over ssh | `ssh -t localhost claude attach`, window resize → redraw within 1 frame at the new size, no torn rows (exp 3 for the harness side) | pending | pending | pending |
 | 6 | detach keys | `ccc detach` (Ctrl+Z through the host's encoder) ends the attach client, session stays alive | ✔ (v0, socket) | ✔ | **✔** live via the window pane: `detached 78bb5bd1`, session `done · idle` in the roster after |
-| M | memory attached | `ccc stats` footprint with one pane attached (window, 95×50) | 40 MB | 287 MB | 39.9 MB debug build (includes the 4 MB A8 atlas); release + two-pane pending (bar: < 40) |
-| M | idle footprint | `ccc stats`, no pane | 26 MB | — | 30.4 MB debug (renderer/atlas not yet allocated; the delta is the core library) |
+| M | memory attached | `ccc stats` footprint with one pane attached (window). **All three columns are debug builds** (`swift build`, 2026-09-02): the v0 baseline was never measured in release, so this row compares debug to debug until the release row below exists | 40 MB (debug, 105×50) | 287 MB (debug) | 39.9 MB (debug, 95×50, 4 MB A8 atlas inside); 47.8 MB after detach with the ended pane still referenced — watch N attach/detach cycles for growth |
+| M′ | memory attached, release | same, `swift build -c release`, both cores, 1 pane and 2 sequential attaches | pending | — | pending |
+| M | idle footprint | `ccc stats`, no pane, debug | 26 MB | — | 30.4 MB (renderer/atlas not yet allocated; the delta is the core library) |
 
 Rules: numbers come from `ccc stats` / `ccc bench` / the tests, never from
 Activity Monitor screenshots; a check is ✔ only with the command that
