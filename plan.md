@@ -30,6 +30,20 @@ true; do it again after every master sync or the branches re-diverge).
 4. **Shared size** (§4c) — slice 4. So is the host picker; seed it from
    `tailscale status --json` (MagicDNS names are the ssh destinations;
    Bonjour is link-local and never crosses the tailnet).
+5. **Install polish** (slice 4): the app offers to install its own command
+   on first launch when `ccc` is not on PATH (VS Code's pattern; a symlink
+   into the bundle, which Sparkle preserves), with a `ccc install-cli`
+   twin. `ccc --version` (version + build from the bundle), and
+   `hosts check` reporting the far side's build so skew is a number rather
+   than a "malformed request".
+6. **Master** has not been fast-forwarded to `worktree-v2` since the
+   morning; the user's merge.
+7. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to its
+   timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
+   nonblocking read before the host list grows.
+8. **Fleet, not ccc** (filed with lore): the `SUFeedURL` gate and the
+   minimum-from-binary rule belong in the shared updater/bundle template;
+   three apps now use the release flow, the extraction trigger is met.
 
 `scripts/attach-probe` is the tool for anything attach-shaped: hold, type,
 resize, SIGUSR1 to report mid-hold.
