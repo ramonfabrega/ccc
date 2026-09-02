@@ -54,6 +54,17 @@ spawns, verified, ledgered in the lore wiki):
   CoreText per-cell compositing with a documented perf problem under
   alternating styles, and open mouse-reporting bugs. Right floor, not the
   ceiling.
+  **Finding (2026-09-02, from the vendored source, not the web):** the
+  "no Metal renderer" claim is wrong for v1.20.0. `Sources/SwiftTerm/Apple/
+  Metal/` ships `MetalTerminalRenderer`, a CoreText glyph atlas, and a
+  recovery policy that falls back to CoreGraphics on stalls; `MacTerminalView`
+  holds it behind a private `useMetalRenderer` flag with public
+  `metalRendererStatus`. The research spawns were Sonnets reading the web,
+  not the code. This does not reopen the decision — the reasons libghostty-vt
+  wins are the core (parser, render-state deltas, key encoding), not the
+  paint — but the v0/v1 comparison now has a fairer baseline, and the six
+  checks should run against SwiftTerm with Metal on if the flag is
+  reachable.
 - **native-sdk.dev — not for us, but a validation.** Vercel Labs' TS+Zig
   desktop toolkit (custom Metal renderer, pre-1.0, four months old) ships a
   `<terminal>` element whose core is libghostty-vt with their own PTY and

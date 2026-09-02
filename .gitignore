@@ -1,4 +1,5 @@
 .claude/worktrees/
 .build/
+.build-*/
 *.xcodeproj
 .swiftpm/

@@ -1,0 +1,13 @@
+{"type":"user","message":{"role":"user","content":"hi"},"timestamp":"2026-09-02T01:00:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","model":"claude-opus-5","content":[{"type":"text","text":"hello"}]},"timestamp":"2026-09-02T01:00:01.000Z"}
+{"type":"user","message":{"role":"user","content":"go on"},"timestamp":"2026-09-02T01:01:00.000Z"}
+{"type":"system","subtype":"compact_boundary","timestamp":"2026-09-02T01:02:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","model":"claude-opus-5","content":[{"type":"text","text":"still opus"}]},"timestamp":"2026-09-02T01:03:00.000Z"}
+{"type":"attachment","attachment":{"type":"file","path":"/tmp/none"},"timestamp":"2026-09-02T01:04:00.000Z"}
+{"type":"user","message":{"role":"user","content":"switch"},"timestamp":"2026-09-02T01:04:30.000Z"}
+{"type":"assistant","message":{"role":"assistant","model":"claude-fable-5-1","content":[{"type":"text","text":"fable now"}]},"timestamp":"2026-09-02T01:05:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"interrupted"}]},"timestamp":"2026-09-02T01:05:30.000Z"}
+{"type":"system","subtype":"hook","timestamp":"2026-09-02T01:06:00.000Z"}
+this line is not valid json at all
+{"type":"attachment","attachment":{"type":"file","path":"/tmp/none"},"timestamp":"2026-09-02T01:07:00.000Z"}
+{"type":"user","message":{"role":"user","content":"bye"},"timestamp":"2026-09-02T01:08:00.000Z"}

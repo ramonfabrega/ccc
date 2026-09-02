@@ -1,0 +1,29 @@
+[
+  {
+    "id": "aaaa1111",
+    "cwd": "/Users/rf-studio/code/fun/ccc",
+    "kind": "background",
+    "startedAt": 1788331923028,
+    "sessionId": "aaaa1111-0000-4000-8000-000000000001",
+    "name": "normal",
+    "state": "working"
+  },
+  {
+    "id": "bbbb2222",
+    "cwd": "/Users/rf-studio/code/fun/lore",
+    "startedAt": "2026-09-02T01:00:00.000Z",
+    "sessionId": "bbbb2222-0000-4000-8000-000000000002",
+    "name": "shape drift"
+  },
+  {
+    "id": "cccc3333",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1788332000000,
+    "sessionId": "cccc3333-0000-4000-8000-000000000003",
+    "name": "paused row",
+    "state": "paused",
+    "tempo": "active",
+    "fan": [{ "id": "x" }]
+  }
+]

@@ -48,6 +48,19 @@ child is `claude attach <id>` or `ssh -t <host> claude attach <id>` with
 `TERM=xterm-256color` until a feature needs `xterm-ghostty` (then install
 the terminfo on our own hosts once).
 
+**Built 2026-09-02 (v0, pulled forward from v1 by the user).** 436 lines
+with doc comments, not "a couple hundred": the cost was never `forkpty`
+but two semantics the tests caught. (1) Reads and writes share one serial
+queue; a write larger than the master's buffer deadlocked because the
+child echoes, the master fills, the child stops reading, the writer spins
+on EAGAIN — fixed by draining the read side while waiting for `POLLOUT`.
+(2) EIO on the master does not prove the child exited (it may close its
+tty fds and live on), so reaping is `WNOHANG` + a 2 s grace + SIGKILL, never
+a blocking `waitpid` on the read queue. Also: `execve` over prebuilt PATH
+candidates instead of `execvp` (Swift's Darwin overlay exposes `environ`
+get-only), and the child resets signal dispositions before exec (a parent
+that ignores SIGHUP would otherwise make the child immune to `terminate`).
+
 ## The seam
 
 ```

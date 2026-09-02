@@ -21,6 +21,20 @@ the files on disk; prompt contents redacted, shapes only.
 Local daemon only; other machines are reached by running the same command
 behind `ssh`.
 
+**Findings from the first real capture (17 rows, 2026-09-02; fixture
+`Tests/CCCKitTests/Fixtures/roster/agents-2026-09-02.json`):**
+
+- **`state` and `status` are independent axes.** Three rows had
+  `state: "done"` *and* a live `pid` with `status: "idle"`: the job is
+  finished, the process is still up. Liveness keys off `pid`, never off
+  `state`. `pid` and `status` are strictly co-present.
+- No row carried `waitingFor`; the `blocked` + `waitingFor` pairing the
+  poll-as-notifier plan (v3) depends on has no fixture yet. Capture one
+  while a session is actually blocked.
+- Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
+  it**; the remote command must be an absolute path (or `zsh -lc`). v2
+  fact, learned setting up experiment 3.
+
 **`claude attach <id>`** — no flags. Fullscreen TUI. Detach: `←` on an empty
 prompt, `/exit`, `Ctrl+Z` (back to where you started), double `Ctrl+C` or
 `Ctrl+D` on an empty prompt. None stop the session; `/stop` inside does.
@@ -85,6 +99,18 @@ is the sanctioned inbound surface (not investigated).
 1. Open a plain foreground `claude` and run `claude agents --json --all`: does
    `kind: interactive` ever appear, with which fields? (Decides whether the
    poll covers interactive sessions or the hook must.)
+   **Answered 2026-09-02 (2.1.258): yes, in both `--json` and `--json --all`.**
+   A foreground `claude` in `~/cc-test`, idle at its first prompt, appeared
+   within 20 s as `{pid, cwd, kind: "interactive", startedAt, sessionId,
+   name: "cc-test-f7", status: "idle"}` — an auto-generated `name`, **no
+   `id` and no `state`**. So the poll covers interactive sessions for
+   presence and busy/idle, but they cannot be attached (no short id) and
+   have no lifecycle state; `waitingFor` on an interactive row is untested.
+   Caveat that cost one false negative: a `claude` launched from inside
+   another Claude Code session inherits `CLAUDE_CODE_CHILD_SESSION` (and
+   friends), runs with "transcript saving is off", and **never registers
+   with the daemon**. ccc's own spawns (v5) must strip `CLAUDE*` from the
+   child environment; the experiment script does.
 2. **[state-changing]** `claude attach <same-id>` from studio and from air
    simultaneously; record the refusal text and what the first client sees.
 3. **[state-changing]** `ssh -t localhost claude attach <id>`: fullscreen,
