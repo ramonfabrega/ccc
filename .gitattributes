@@ -1,0 +1,5 @@
+# Recorded terminal streams are byte-exact fixtures: never normalize line
+# endings or diff them as text. core.autocrlf=input silently rewrote CRLF
+# in stream.bin on its first commit (504,383 → 443,681 bytes).
+*.bin binary
+Tests/CCCKitTests/Fixtures/** -text
