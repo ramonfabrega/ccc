@@ -69,9 +69,12 @@ import Testing
     /// the two fields that carry the number are the ones pinned.
     @Test func versionCrossesTheHopOnTwoFields() throws {
         let json = Data(#"{"version":"0.1.5","build":57,"executablePath":"/x/ccc.app/Contents/MacOS/ccc","bundlePath":"/x/ccc.app","futureKey":true}"#.utf8)
-        let info = try JSONDecoder().decode(BuildInfo.self, from: json)
+        let info = try BuildInfo.decode(json, naming: cccName)
         #expect(info.short == "0.1.5 (57)")
         // No `dev` key: that ccc predates the lane split, and was a release.
         #expect(!info.dev)
+        // No `name` key either — that ccc predates ota. The reader ran the
+        // command, so the reader names it; a blank here is a blank row.
+        #expect(info.name == "ccc")
     }
 }

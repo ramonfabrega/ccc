@@ -1,5 +1,7 @@
 import AppKit
 import CCCKit
+// The Sparkle half, and the only place in ccc that links it.
+import OTAUpdater
 
 /// The window face. Bootstraps NSApplication by hand (no storyboard, no
 /// SwiftUI App lifecycle) so the same binary can skip all of it when run as
@@ -100,7 +102,7 @@ enum App {
     private func offerCommandLineTool() {
         guard BuildInfo.current.isBundled else { return }
         guard !UserDefaults.standard.bool(forKey: Self.cliOfferDeclinedKey) else { return }
-        let status = CLIInstall.status()
+        let status = CLIInstall.ccc.status()
         let why: String
         switch status {
         case .installed, .foreign: return
@@ -125,7 +127,7 @@ enum App {
     /// The menu's twin of `ccc install-cli`: relinks, and says where.
     @objc private func installCommandLineTool(_ sender: Any?) {
         do {
-            let result = try CLIInstall.install()
+            let result = try CLIInstall.ccc.install()
             window?.showNotice("installed: \(result.description)")
             UserDefaults.standard.removeObject(forKey: Self.cliOfferDeclinedKey)
         } catch {

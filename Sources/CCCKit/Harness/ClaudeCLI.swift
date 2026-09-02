@@ -350,7 +350,7 @@ public struct ClaudeCLI: Sendable {
         try prepareControlDirectory()
         let out = try await run(sshPrefix(tty: false, destination: destination) + [ccc, "version", "--json"], program: "ccc")
         do {
-            return try JSONDecoder().decode(BuildInfo.self, from: out)
+            return try BuildInfo.decode(out, naming: cccName)
         } catch {
             throw RunError(status: 0, stderr: "`ccc version --json` on \(host.name) answered something that is not a build", host: host.name, program: "ccc")
         }

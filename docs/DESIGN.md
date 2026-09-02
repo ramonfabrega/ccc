@@ -321,6 +321,51 @@ UserDefaults and reattaches after a relaunch, the way the agents view keeps
 its focus. Lore's note that a third consumer is the extraction threshold
 for a shared release package is a fleet chore, recorded, not ccc's.
 
+### 6a. The chore came due: `ota` owns the flow (amendment, 2026-09-02)
+
+ccc *was* the third consumer, so the extraction happened the same day, and
+what came back is `ota` — the same flow as a tool plus the app-side half,
+seeded from a diff of mux's, disk's and ccc's copies. ccc's four cuts in a
+day are what found two of the pitfalls it carries, so this is ccc's own
+code returning with the parts that were always fleet-wide.
+
+**What ota replaces.** `scripts/package` loses everything after the build:
+the Developer ID lookup, the inside-out signing walk, `ditto
+--sequesterRsrc`, notarize/staple/spctl, the Sparkle tools fetch,
+`generate_appcast`, the single-item guard, the stable-key rewrite and the
+two `share` lines — 128 lines down to a build and two calls.
+`scripts/make-bundle` is gone entirely: `ota bundle` assembles the app and
+`--feed`'s presence is the lane, exactly as `--release` was. `Updater.swift`
+and the `BuildInfo`/`CLIInstall` halves of `Hosts/BuildInfo.swift` are gone;
+what remains there is ccc's name, said once.
+
+**What it must keep, and does.** Two invariants are load-bearing and are
+pinned by ccc's own tests rather than trusted to the dependency: `ccc
+version` reads version and build from the bundle the executable *actually
+lives in*, symlinks resolved, so the command on PATH answers for the app;
+and the dev lane's only tell is the absence of the Sparkle keys in the
+bundle, read the same way everywhere (`ccc version` says `dev`, the status
+item is `ccc·dev`, the updater item is disabled with the reason, and nothing
+polls the CDN). The day an ota bump changes either answer, ccc is what
+fails.
+
+**Why two products, not one.** ota ships `OTA` (BuildInfo, CLIInstall, zero
+dependencies) and `OTAUpdater` (the Sparkle-gated updater). CCCKit takes
+only the first. CCCKit is what every test links and what the CLI face is,
+and putting a signed binary framework behind it for two structs that never
+touch it is the wrong trade — `swift test` still links no Sparkle, and the
+test bundle carries zero references to it while the app binary carries
+`@rpath/Sparkle.framework`.
+
+**What it costs.** A third earned dependency, and one that is ours — a
+version of ota that breaks ccc is a version we wrote. The mitigation is
+the same as `vendor/ghostty`'s: pinned to a revision, moved deliberately,
+never floating.
+
+**The proof.** Not "it compiles": a cut of ccc through `ota release` that
+the Air's Sparkle actually installs, end to end from the published feed. Until
+that has happened once, the old lane is what ships.
+
 ## 7. The human's screen is the oracle for presentation (2026-09-02)
 
 The Metal pane was black on screen for the whole of v1 and v2, and every

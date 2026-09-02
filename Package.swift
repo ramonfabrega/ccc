@@ -14,7 +14,12 @@ let package = Package(
         // appcast, the fleet's mux/disk release flow. Air cannot be pushed
         // to (no Remote Login), so every update is a pull, and this is the
         // pull. Only the app target links it; CCCKit and the tests never do.
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
+        //
+        // Sparkle now arrives THROUGH ota (§6 amendment, 2026-09-02): the
+        // release flow ccc hand-copied from disk, plus the app-side half
+        // this repo wrote and ota extracted. Pinned to a revision until ota
+        // tags v0.1.0 — the same policy vendor/ghostty is held to.
+        .package(url: "https://github.com/ramonfabrega/ota", revision: "45f3a63c752622e7d9002324d2cc461f25711c58"),
     ],
     targets: [
         // libghostty-vt, built from vendor/ghostty by scripts/build-vt (Zig is
@@ -29,11 +34,18 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
                 "GhosttyVt",
+                // BuildInfo and CLIInstall, which ota extracted from this
+                // repo. Zero dependencies by design — no Sparkle behind the
+                // library every test links.
+                .product(name: "OTA", package: "ota"),
             ]
         ),
         .executableTarget(
             name: "ccc",
-            dependencies: ["CCCKit", .product(name: "Sparkle", package: "Sparkle")],
+            // OTAUpdater is the Sparkle half, and it stops here: the app
+            // target is the only one that embeds Sparkle.framework and the
+            // only one that carries the rpath below.
+            dependencies: ["CCCKit", .product(name: "OTAUpdater", package: "ota")],
             linkerSettings: [
                 // The bundle embeds Sparkle.framework in Contents/Frameworks;
                 // the bare SwiftPM binary needs the matching rpath baked in.
