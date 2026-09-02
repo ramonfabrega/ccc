@@ -27,6 +27,9 @@ public enum ControlRequest: Codable, Sendable {
     /// screen-recording permission, works while another app has focus).
     /// Headless servers have no window and answer with an error.
     case peek
+    /// `show` brings the window forward, `hide` orders it out, `close` is
+    /// exactly ⌘W (so the reopen path can be exercised without a hand).
+    case window(action: String)
 }
 
 public enum ControlResponse: Codable, Sendable {

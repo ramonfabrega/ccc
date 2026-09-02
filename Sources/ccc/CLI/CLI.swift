@@ -43,6 +43,9 @@ enum CLI {
                 return try request(.stats, json: json)
             case "peek":
                 return try peek(to: rest.first(where: { !$0.hasPrefix("--") }))
+            case "window":
+                guard let action = rest.first, ["show", "hide", "close"].contains(action) else { return usage() }
+                return try request(.window(action: action), json: json)
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
@@ -207,6 +210,7 @@ enum CLI {
                ccc resize <cols> <rows>
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)
+               ccc window show|hide|close         the window's own gestures (close = Cmd-W)
                ccc replay <bytes-file> [--cols N --rows N --bytes N] [--json]
 
         """.utf8))

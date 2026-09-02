@@ -27,6 +27,9 @@ final class MainWindowController: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.setFrameAutosaveName("ccc.main")
         window.minSize = NSSize(width: 800, height: 400)
+        // ⌘W closes the window, not the app; the controller keeps it so the
+        // menubar item, the Dock, ⌘0 and `ccc window show` bring it back.
+        window.isReleasedWhenClosed = false
         super.init(window: window)
         build()
         controller.makeHost = { [weak self] cols, rows in
@@ -177,6 +180,23 @@ final class MainWindowController: NSWindowController {
 
     @objc func detachAction(_ sender: Any?) {
         Task { await controller.detach() }
+    }
+
+    @objc func showAction(_ sender: Any?) {
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
+    /// The socket's window verbs; `close` is literally ⌘W.
+    func windowAction(_ action: String) -> Bool {
+        switch action {
+        case "show": showAction(nil)
+        case "hide": window?.orderOut(nil)
+        case "close": window?.performClose(nil)
+        default: return false
+        }
+        return true
     }
 
     @objc func refreshAction(_ sender: Any?) {

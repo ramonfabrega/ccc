@@ -34,6 +34,7 @@ enum App {
         let window = MainWindowController(controller: controller)
         self.window = window
         controller.peekProvider = { [weak window] in window?.peek() }
+        controller.windowAction = { [weak window] action in window?.windowAction(action) ?? false }
         do {
             try controller.serve()
         } catch {
@@ -109,6 +110,11 @@ enum App {
         main.addItem(editItem)
 
         let windowMenu = NSMenu(title: "Window")
+        // Targeted at the delegate: with the window closed, the responder
+        // chain has no window controller to find.
+        let show = windowMenu.addItem(withTitle: "Show ccc", action: #selector(statusItemClicked), keyEquivalent: "0")
+        show.target = self
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         let windowItem = NSMenuItem()
         windowItem.submenu = windowMenu

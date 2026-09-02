@@ -24,6 +24,8 @@ final class PaneController {
     var defaultSize: (cols: Int, rows: Int) = (120, 40)
     /// The window's PNG, when there is a window.
     var peekProvider: (@MainActor () -> Data?)?
+    /// show / hide / close, when there is a window. Returns false if unknown.
+    var windowAction: (@MainActor (String) -> Bool)?
 
     init(cli: ClaudeCLI) {
         self.cli = cli
@@ -117,6 +119,9 @@ final class PaneController {
         case .peek:
             guard let peekProvider, let png = peekProvider() else { return .error("no window to peek (headless)") }
             return .peek(png: png)
+        case .window(let action):
+            guard let windowAction else { return .error("no window (headless)") }
+            return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (show|hide|close)")
         case .stats:
             if let session {
                 return .stats(session.stats(pollState: poller.state))
