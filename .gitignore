@@ -6,3 +6,4 @@
 .zig/
 vendor/ghostty/zig-out/
 vendor/ghostty/.zig-cache/
+Design/concepts/

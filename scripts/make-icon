@@ -1,0 +1,244 @@
+#!/bin/zsh
+# Generate Design/AppIcon.icns from the app's own visual language (disk's
+# pattern: the icon is code, not a binary blob nobody can edit — AppKit +
+# CoreGraphics, zero dependencies, regenerable).
+#
+#   scripts/make-icon                # → Design/AppIcon.icns + Design/AppIcon-preview.png
+#   scripts/make-icon <concept>      # build a different concept instead
+#   scripts/make-icon --previews     # render every concept at 512 to Design/concepts/
+#
+# Concepts (the ones proposed 2026-09-02; `roster` is the chosen mark):
+#   roster  — three session rows with their state dots, the blocked one lit.
+#             The app's own roster: many agents, one list, one wants you.
+#   cursor  — a cell grid with one bright block cursor. The Metal pane.
+#   arcs    — three concentric C's (the name) in the roster's state colors.
+set -e
+cd "$(dirname "$0")/.."
+
+CONCEPT="${1:-roster}"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+ICONSET="$TMP/AppIcon.iconset"
+mkdir -p "$ICONSET" Design
+
+cat > "$TMP/icon.swift" <<'SWIFTEOF'
+import AppKit
+import CoreGraphics
+
+func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
+    CGColor(red: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255,
+            blue: CGFloat(hex & 255) / 255, alpha: a)
+}
+
+// ccc's palette is the roster's, not an invented one: RosterView paints a
+// session's dot green when it is working, orange when it is blocked, gray
+// when it is done — and the pane behind it all is black.
+enum P {
+    static let bgTop: UInt32 = 0x30313a      // graphite, lit from the upper left
+    static let bgBottom: UInt32 = 0x0c0d11   // the pane's black, near enough
+    static let working: UInt32 = 0x32d15b    // .green
+    static let blocked: UInt32 = 0xff9f0a    // .orange — "it's your turn"
+    static let idle: UInt32 = 0x6f7078       // .secondary
+    static let lit: UInt32 = 0xf2f3f6        // the attached row / the glyph
+}
+
+// Apple-ish continuous corner: a superellipse (n≈5) inset to the Big Sur
+// icon grid (824 of 1024, ~100 margin) — softer than a plain rounded rect.
+func squircle(cx: CGFloat, cy: CGFloat, a: CGFloat, n: CGFloat) -> CGPath {
+    let p = CGMutablePath()
+    let steps = 720
+    for i in 0...steps {
+        let t = CGFloat(i) / CGFloat(steps) * 2 * .pi
+        let ct = cos(t), st = sin(t)
+        let x = cx + a * (ct < 0 ? -1 : 1) * pow(abs(ct), 2 / n)
+        let y = cy + a * (st < 0 ? -1 : 1) * pow(abs(st), 2 / n)
+        if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+    }
+    p.closeSubpath()
+    return p
+}
+
+func bar(_ cg: CGContext, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, _ color: CGColor) {
+    cg.addPath(CGPath(roundedRect: CGRect(x: x, y: y - h / 2, width: w, height: h),
+                      cornerWidth: h / 2, cornerHeight: h / 2, transform: nil))
+    cg.setFillColor(color); cg.fillPath()
+}
+
+func dot(_ cg: CGContext, _ c: CGPoint, _ r: CGFloat, _ color: CGColor) {
+    cg.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+    cg.setFillColor(color); cg.fillPath()
+}
+
+// The shared ground: a graphite squircle lit from the upper left, with the
+// mark's own glow behind it. Every concept sits on this.
+func ground(_ cg: CGContext, glowAt: CGPoint, glow: UInt32) {
+    let sp = CGColorSpace(name: CGColorSpace.sRGB)!
+    cg.saveGState()
+    cg.addPath(squircle(cx: 512, cy: 512, a: 412, n: 5)); cg.clip()
+    let bg = CGGradient(colorsSpace: sp, colors: [rgb(P.bgTop), rgb(P.bgBottom)] as CFArray,
+                        locations: [0, 1])!
+    cg.drawLinearGradient(bg, start: CGPoint(x: 150, y: 905), end: CGPoint(x: 890, y: 140), options: [])
+    let g = CGGradient(colorsSpace: sp, colors: [rgb(glow, 0.20), rgb(glow, 0)] as CFArray,
+                       locations: [0, 1])!
+    cg.drawRadialGradient(g, startCenter: glowAt, startRadius: 0,
+                          endCenter: glowAt, endRadius: 470, options: [])
+    cg.restoreGState()
+}
+
+// ── roster ────────────────────────────────────────────────────────────────
+// What the app IS: a list of sessions, each with its state dot, one of them
+// blocked and lit — the notification is the reason to open it. Reads at 16px
+// as a list with a colored dot, which is the honest one-glance summary.
+func drawRoster(_ cg: CGContext) {
+    ground(cg, glowAt: CGPoint(x: 470, y: 560), glow: P.blocked)
+
+    // Three rows, the middle one blocked and attached (bright bar, orange dot,
+    // a soft halo). Widths differ so it reads as real names, not a hamburger.
+    let rows: [(y: CGFloat, dotHex: UInt32, w: CGFloat, barHex: UInt32, barA: CGFloat, lit: Bool)] = [
+        (512 + 176, P.working, 320, P.idle, 0.80, false),
+        (512,       P.blocked, 396, P.lit,  1.00, true),
+        (512 - 176, P.idle,    252, P.idle, 0.42, false),
+    ]
+    let dotX: CGFloat = 512 - 214, dotR: CGFloat = 38
+    let barX: CGFloat = 512 - 146, barH: CGFloat = 74
+
+    for r in rows {
+        if r.lit {
+            cg.saveGState()
+            cg.setShadow(offset: .zero, blur: 60, color: rgb(P.blocked, 0.55))
+            bar(cg, x: barX, y: r.y, w: r.w, h: barH, rgb(r.barHex, r.barA))
+            cg.restoreGState()
+        } else {
+            bar(cg, x: barX, y: r.y, w: r.w, h: barH, rgb(r.barHex, r.barA))
+        }
+        cg.saveGState()
+        if r.lit { cg.setShadow(offset: .zero, blur: 44, color: rgb(P.blocked, 0.85)) }
+        dot(cg, CGPoint(x: dotX, y: r.y), dotR, rgb(r.dotHex, r.lit ? 1 : 0.9))
+        cg.restoreGState()
+    }
+}
+
+// ── cursor ────────────────────────────────────────────────────────────────
+// The pane: a prompt chevron and a block cursor, on the cell grid the
+// renderer actually thinks in. Says "a real terminal, ours" and nothing
+// about the roster. Two shapes only, so it survives 16px.
+func drawCursor(_ cg: CGContext) {
+    ground(cg, glowAt: CGPoint(x: 560, y: 500), glow: P.blocked)
+
+    // The faint cell lattice the glyphs sit on — present at 1024, gone by
+    // 32px, which is the right amount of texture for a Dock icon.
+    cg.saveGState()
+    cg.addPath(squircle(cx: 512, cy: 512, a: 412, n: 5)); cg.clip()
+    cg.setStrokeColor(rgb(P.lit, 0.05)); cg.setLineWidth(3)
+    let cw: CGFloat = 88, ch: CGFloat = 116
+    var gx = 512 - 5 * cw
+    while gx < 512 + 5 * cw { cg.move(to: CGPoint(x: gx, y: 80)); cg.addLine(to: CGPoint(x: gx, y: 944)); gx += cw }
+    var gy = 512 - 4 * ch
+    while gy < 512 + 4 * ch { cg.move(to: CGPoint(x: 80, y: gy)); cg.addLine(to: CGPoint(x: 944, y: gy)); gy += ch }
+    cg.strokePath()
+    cg.restoreGState()
+
+    // The prompt chevron, drawn as a stroke so it keeps its weight when scaled.
+    cg.setLineCap(.round); cg.setLineJoin(.round)
+    cg.setLineWidth(76)
+    cg.setStrokeColor(rgb(P.lit, 0.95))
+    cg.move(to: CGPoint(x: 300, y: 660))
+    cg.addLine(to: CGPoint(x: 486, y: 500))
+    cg.addLine(to: CGPoint(x: 300, y: 340))
+    cg.strokePath()
+
+    // The block cursor, in the roster's "it's your turn" orange.
+    cg.saveGState()
+    cg.setShadow(offset: .zero, blur: 70, color: rgb(P.blocked, 0.75))
+    cg.addPath(CGPath(roundedRect: CGRect(x: 570, y: 330, width: 152, height: 340),
+                      cornerWidth: 26, cornerHeight: 26, transform: nil))
+    cg.setFillColor(rgb(P.blocked)); cg.fillPath()
+    cg.restoreGState()
+}
+
+// ── arcs ──────────────────────────────────────────────────────────────────
+// The name as a mark: three concentric C's, coloured by the roster's states,
+// opening right the way the prompt does. Most abstract of the three; the one
+// that survives being shrunk furthest.
+func drawArcs(_ cg: CGContext) {
+    ground(cg, glowAt: CGPoint(x: 512, y: 540), glow: P.blocked)
+
+    // Centred, and the outer C's stroke stays inside the squircle (a=412):
+    // radius 296 + half of a 62 stroke + the round cap is 327 at its widest.
+    let c = CGPoint(x: 512, y: 512)
+    let open: CGFloat = 40 * .pi / 180   // half-angle of the C's opening, at the right
+    let rings: [(r: CGFloat, w: CGFloat, hex: UInt32, a: CGFloat, glow: Bool)] = [
+        (112, 62, P.working, 1.00, false),
+        (204, 62, P.blocked, 1.00, true),
+        (296, 62, P.idle,    0.55, false),
+    ]
+    cg.setLineCap(.round)
+    for ring in rings {
+        cg.saveGState()
+        if ring.glow { cg.setShadow(offset: .zero, blur: 54, color: rgb(ring.hex, 0.70)) }
+        let p = CGMutablePath()
+        p.addArc(center: c, radius: ring.r, startAngle: open, endAngle: -open, clockwise: false)
+        cg.addPath(p)
+        cg.setStrokeColor(rgb(ring.hex, ring.a)); cg.setLineWidth(ring.w); cg.strokePath()
+        cg.restoreGState()
+    }
+}
+
+func drawIcon(_ cg: CGContext, _ concept: String) {
+    switch concept {
+    case "cursor": drawCursor(cg)
+    case "arcs": drawArcs(cg)
+    default: drawRoster(cg)
+    }
+}
+
+func render(_ concept: String, _ px: Int, to path: String) {
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
+        samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+        bytesPerRow: 0, bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    let g = NSGraphicsContext(bitmapImageRep: rep)!
+    NSGraphicsContext.current = g
+    let cg = g.cgContext
+    let f = CGFloat(px) / 1024
+    cg.scaleBy(x: f, y: f)
+    drawIcon(cg, concept)
+    g.flushGraphics()
+    NSGraphicsContext.restoreGraphicsState()
+    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
+}
+
+let concept = CommandLine.arguments[1]
+let outDir = CommandLine.arguments[2]
+let mode = CommandLine.arguments[3]  // "iconset" | "previews"
+
+if mode == "previews" {
+    // One sheet per concept at the sizes that decide it: 1024 for the craft,
+    // 128 and 32 for whether it survives the Dock and the menubar.
+    for c in ["roster", "cursor", "arcs"] {
+        render(c, 1024, to: "\(outDir)/\(c)-1024.png")
+        render(c, 128, to: "\(outDir)/\(c)-128.png")
+        render(c, 32, to: "\(outDir)/\(c)-32.png")
+    }
+} else {
+    let names: [(String, Int)] = [
+        ("icon_16x16", 16), ("icon_16x16@2x", 32), ("icon_32x32", 32), ("icon_32x32@2x", 64),
+        ("icon_128x128", 128), ("icon_128x128@2x", 256), ("icon_256x256", 256),
+        ("icon_256x256@2x", 512), ("icon_512x512", 512), ("icon_512x512@2x", 1024),
+    ]
+    for (name, px) in names { render(concept, px, to: "\(outDir)/\(name).png") }
+}
+SWIFTEOF
+
+if [ "$CONCEPT" = "--previews" ]; then
+    mkdir -p Design/concepts
+    swift "$TMP/icon.swift" roster Design/concepts previews
+    echo "Design/concepts/{roster,cursor,arcs}-{1024,128,32}.png"
+    exit 0
+fi
+
+swift "$TMP/icon.swift" "$CONCEPT" "$ICONSET" iconset
+iconutil -c icns "$ICONSET" -o Design/AppIcon.icns
+cp "$ICONSET/icon_512x512@2x.png" Design/AppIcon-preview.png
+echo "Design/AppIcon.icns ($(du -h Design/AppIcon.icns | cut -f1)) + Design/AppIcon-preview.png [$CONCEPT]"
