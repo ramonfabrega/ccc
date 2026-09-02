@@ -130,14 +130,52 @@ Three consequences worth naming, because each was a choice:
   a tty would make `claude agents --json` negotiate a terminal and stop
   being a clean pipe.
 
-**The model column over ssh — open.** `ModelProbe` joins the model by reading
+**The model column over ssh — settled 2026-09-02: ask the far side's own
+`ccc`.** `ModelProbe` joins the model by reading
 `~/.claude/projects/<mangled cwd>/<id>.jsonl`, which only works where the
-daemon and the filesystem are the same machine. A remote row therefore shows
-no model rather than this Mac's answer to a question about another one. The
-fix is a decision, not an oversight: a second ssh command per row would put a
-`tail` storm on a 2 s poll, so the candidates are one batched remote reader
-per tick, pushing the mangle to the far side, or accepting a slower cadence
-for the model column than for state. Settle it before the poll fans out.
+daemon and the filesystem are the same machine. The candidates were a batched
+remote reader, pushing the mangle to the far side, or giving the model column
+a slower cadence than state — and the measurement threw out the last one and
+suggested a fourth.
+
+*What the measurement said* (`ccc stats`, 24 ticks over 19 sessions, the
+instrumentation added for exactly this question):
+
+```
+roster poll  last 387 ms  mean 199 ms  n=24
+model join   last  13 ms  mean   9 ms  reads 22  cached 338  gone 0  well lookups 63 (48 unresolved)
+```
+
+The join is **9 ms — 4.5% of the poll**, and the 199 ms is the `claude
+agents` process spawn, which nothing in the model column can touch. The
+`(size, mtime)` cache is why: 338 hits against 22 reads, because a transcript
+is only re-read when it actually changed. Even the wasteful path stays
+invisible — 48 of 63 well lookups resolve to nothing and re-scan every well
+each tick. **So the local cadence is left exactly as it is**; decoupling it
+would have bought 9 ms and cost real complexity.
+
+The remote case is different in kind, not degree: the join is cheap locally
+*because the filesystem is local and cached*, and over ssh it can never be.
+So the answer must remove the round trips rather than make them cheaper —
+`Host.ccc` names ccc on the far side, and the poll asks it for
+`ccc list --json`. The far side does the join where the filesystem is and
+hands back finished rows inside the one round trip we already pay: 17
+sessions, 15 with a model, 213–284 ms — no worse than the harness reader
+that returns no models at all. There is no remote helper to deploy and no
+inline shell blob, because the thing we call is our own command twin. When
+`Host.ccc` is unset the reader falls back to `claude agents --json --all`,
+which is a correct roster with a blank model column.
+
+Two rules that fell out of building it, both of which cost a live failure
+first:
+
+- **`ccc list` exits 3 for "rows are fine, shape changed".** The first
+  version of the remote reader treated any non-zero exit as failure and
+  dropped 17 good rows over a warning — the "never an empty list" rule,
+  broken by us rather than by the daemon. Exit 3 is now a reading *with a
+  warning*, and the far side's banner crosses the hop into ours.
+- **`ccc list --json` writes its issues to stderr.** Exit 3 alone told a
+  caller *that* something changed and never *what*; stdout stays pure JSON.
 
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 

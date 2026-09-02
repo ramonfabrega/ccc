@@ -14,7 +14,7 @@ the files on disk; prompt contents redacted, shapes only.
 | `cwd`, `kind`, `startedAt` | always | `kind`: `interactive` \| `background` (interactive never observed live — experiment 1) |
 | `id` | background | short id for attach/logs/stop |
 | `state` | background | `working` \| `blocked` \| `done` \| `failed` \| `stopped` |
-| `pid`, `status` | process alive | `status`: `busy` \| `idle` |
+| `pid`, `status` | process alive | `status`: `busy` \| `idle` \| `waiting` |
 | `waitingFor` | waiting | `permission prompt` \| `input needed` \| `sandbox request` \| `worker request` \| `dialog open` |
 | `sessionId`, `name` | when set | full transcript uuid (usable with `--resume`); display name |
 
@@ -28,9 +28,17 @@ behind `ssh`.
   `state: "done"` *and* a live `pid` with `status: "idle"`: the job is
   finished, the process is still up. Liveness keys off `pid`, never off
   `state`. `pid` and `status` are strictly co-present.
-- No row carried `waitingFor`; the `blocked` + `waitingFor` pairing the
-  poll-as-notifier plan (v3) depends on has no fixture yet. Capture one
-  while a session is actually blocked.
+- No row carried `waitingFor` in that first capture, so the `blocked` +
+  `waitingFor` pairing the poll-as-notifier plan (v3) depends on was an
+  assumption. **Captured 2026-09-02**
+  (`Fixtures/roster/agents-blocked-2026-09-02.json`, 17 rows): a genuinely
+  blocked session comes back as
+  `{state: "blocked", waitingFor: "input needed", status: "waiting", pid}`
+  — state, reason and liveness together, which is v3's notification with no
+  hook. It also brought a **third `status` value, `waiting`**, which no doc
+  lists; the lenient decoder flagged it as an unknown value and the banner
+  is how we learned about it, exactly as designed. Only the blocked row
+  carries it.
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.

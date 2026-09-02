@@ -1,0 +1,166 @@
+[
+  {
+    "id": "a76974d4",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1780729502912,
+    "sessionId": "a76974d4-6d2c-4c50-a65e-0f378507b3e2",
+    "name": "mobile",
+    "state": "done"
+  },
+  {
+    "id": "e2f16177",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1780957089259,
+    "sessionId": "e2f16177-8b71-43a2-bb15-64dff1d090d6",
+    "name": "storefront",
+    "state": "done"
+  },
+  {
+    "id": "b9ef1298",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1786480924878,
+    "sessionId": "b9ef1298-658c-4664-8b0f-719f2f8c5d1e",
+    "name": "android translation checkout bug",
+    "state": "done"
+  },
+  {
+    "id": "755a5779",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1786980406081,
+    "sessionId": "755a5779-25e4-4004-bf98-83853e3ff5b1",
+    "name": "migrate babyhouse.club theme",
+    "state": "done"
+  },
+  {
+    "id": "1fd92acc",
+    "cwd": "/Users/rf-studio/code/fun/centaur",
+    "kind": "background",
+    "startedAt": 1787293845139,
+    "sessionId": "1fd92acc-350f-40d1-8047-be54e8665f67",
+    "name": "centaur mev",
+    "state": "done"
+  },
+  {
+    "id": "2d567704",
+    "cwd": "/Users/rf-studio/code/work/centaur",
+    "kind": "background",
+    "startedAt": 1787328666004,
+    "sessionId": "2d567704-cd79-43e9-9ab7-e78da9d23736",
+    "name": "centaur cuanto",
+    "state": "stopped"
+  },
+  {
+    "id": "277ffc3b",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787697971389,
+    "sessionId": "277ffc3b-d936-409b-8f0d-4426d2960ebd",
+    "name": "sentry migration assessment",
+    "state": "done"
+  },
+  {
+    "id": "5df0fa59",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787774693960,
+    "sessionId": "5df0fa59-8b0b-4472-a17f-ad0b640114ec",
+    "name": "pr review and testing",
+    "state": "stopped"
+  },
+  {
+    "id": "63c02b9d",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787930110921,
+    "sessionId": "63c02b9d-0844-42e5-b0b9-f6f381d8a9cb",
+    "name": "slack message retrieval",
+    "state": "done"
+  },
+  {
+    "id": "6dd0d4b4",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787930521432,
+    "sessionId": "6dd0d4b4-62fe-4f8e-b593-6158ddf9fd77",
+    "name": "mobile session invalidation research",
+    "state": "done"
+  },
+  {
+    "id": "9f61204a",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787961009338,
+    "sessionId": "9f61204a-fb1a-4817-9620-c8c1afa6c368",
+    "name": "polish",
+    "state": "done"
+  },
+  {
+    "id": "1e743056",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1788297387508,
+    "sessionId": "1e743056-e7ec-4423-8522-252726dbcb1b",
+    "name": "investigate delayed alerts slack",
+    "state": "done"
+  },
+  {
+    "pid": 36812,
+    "id": "3c382923",
+    "cwd": "/Users/rf-studio/code/fun/attrition/.claude/worktrees/replan-pdb",
+    "kind": "background",
+    "startedAt": 1788331412498,
+    "sessionId": "2b1bea59-5ac0-43e3-9e44-383710660ab9",
+    "name": "attrition",
+    "status": "idle",
+    "state": "working"
+  },
+  {
+    "pid": 85001,
+    "id": "b3919c35",
+    "cwd": "/Users/rf-studio/code/fun/ccc/.claude/worktrees/v2",
+    "kind": "background",
+    "startedAt": 1788331923028,
+    "sessionId": "c24b5612-c1aa-4ea5-91ab-f29bbcaaa904",
+    "name": "ccc",
+    "status": "busy",
+    "state": "working"
+  },
+  {
+    "pid": 61989,
+    "id": "a18a763f",
+    "cwd": "/Users/rf-studio/code/fun/lore/.claude/worktrees/worktree-invariant",
+    "kind": "background",
+    "startedAt": 1788333604308,
+    "sessionId": "dbdad1ef-8ec8-4778-a2ea-769bf6de860e",
+    "name": "lore",
+    "status": "idle",
+    "state": "done"
+  },
+  {
+    "pid": 25779,
+    "id": "3369359f",
+    "cwd": "/Users/rf-studio/code/work/cuanto/.claude/worktrees/bill-currency-derive",
+    "kind": "background",
+    "startedAt": 1788370192499,
+    "sessionId": "3f10f9f6-5e52-4d75-95e1-e5c20195ab19",
+    "name": "linear cuanto bill project",
+    "status": "waiting",
+    "waitingFor": "input needed",
+    "state": "blocked"
+  },
+  {
+    "pid": 26985,
+    "id": "1622e5f0",
+    "cwd": "/Users/rf-studio/code/work/cuanto/.claude/worktrees/annotate-cleanup",
+    "kind": "background",
+    "startedAt": 1788372548063,
+    "sessionId": "64eb096e-bcc7-4080-ac3c-05da68353aca",
+    "name": "annotate",
+    "status": "idle",
+    "state": "done"
+  }
+]

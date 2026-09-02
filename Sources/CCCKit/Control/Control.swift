@@ -74,6 +74,33 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         self.model = model
         self.attached = attached
     }
+
+    /// Lenient on everything ccc adds, because these rows now arrive over
+    /// ssh from *another build of ccc* (`ClaudeCLI.RosterSource.ccc`), which
+    /// may be older than this one — a v1 `ccc list --json` has no `host` key
+    /// at all. Only `session` is required; the rest fall back, and the
+    /// poller overwrites `host` and `attached` with what it knows locally
+    /// anyway. `Session` itself stays as lenient as the harness boundary
+    /// demands.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        session = try container.decode(Session.self, forKey: .session)
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? Host.localName
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        attached = try container.decodeIfPresent(Bool.self, forKey: .attached) ?? false
+    }
+}
+
+extension JSONDecoder {
+    /// Reads what `ccc list --json` writes. The one thing that must agree is
+    /// the date strategy: `Session.startedAt` goes out ISO-8601 (the CLI's
+    /// printer sets it), and the default strategy would read that string as
+    /// a number and fail. Pinned by `RemoteRosterTests`.
+    public static var roster: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
 }
 
 public struct SnapshotInfo: Codable, Sendable {
@@ -82,6 +109,36 @@ public struct SnapshotInfo: Codable, Sendable {
     public init(attachedTo: SessionRef?, grid: Grid?) {
         self.attachedTo = attachedTo
         self.grid = grid
+    }
+}
+
+/// What the model column costs per tick, and which shape each row took.
+/// Measured before the cadence is changed, so "the join is cheap" or "the
+/// join is the poll" is a number rather than an intuition (CLAUDE.md's
+/// perf rule).
+public struct ModelJoinStats: Codable, Sendable, Equatable {
+    /// Wall time of the join on the last tick, and the running mean.
+    public var lastMs: Double?
+    public var meanMs: Double?
+    /// Cumulative, from `ModelProbe`: transcripts read, rows answered from
+    /// the cache after one `stat`, rows whose file was gone.
+    public var reads: Int
+    public var hits: Int
+    public var misses: Int
+    /// Cumulative well lookups, and how many resolved to nothing — the
+    /// expensive shape, since an unresolved id re-scans every well each tick.
+    public var lookups: Int
+    public var unresolved: Int
+
+    public init(lastMs: Double?, meanMs: Double?, reads: Int, hits: Int, misses: Int,
+                lookups: Int, unresolved: Int) {
+        self.lastMs = lastMs
+        self.meanMs = meanMs
+        self.reads = reads
+        self.hits = hits
+        self.misses = misses
+        self.lookups = lookups
+        self.unresolved = unresolved
     }
 }
 
@@ -95,14 +152,19 @@ public struct StatsInfo: Codable, Sendable {
     public var lastPollMs: Double?
     public var meanPollMs: Double?
     public var pollCount: Int
+    /// The model join measured apart from the `claude agents` call it rides
+    /// on. Optional as one field so an older server (which sends no such
+    /// key) still decodes here — the wire rule in `ControlWireTests`.
+    public var modelJoin: ModelJoinStats?
     /// Bytes fed to the terminal since attach, and the rate over the last second.
     public var ptyBytesIn: UInt64
     public var ptyBytesPerSecond: Double
     public var uptimeSeconds: Double
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
-                lastPollMs: Double?, meanPollMs: Double?, pollCount: Int,
+                lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
                 ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double) {
+        self.modelJoin = modelJoin
         self.pid = pid
         self.footprintBytes = footprintBytes
         self.childPID = childPID

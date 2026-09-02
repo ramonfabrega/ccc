@@ -18,14 +18,28 @@ public struct Host: Codable, Sendable, Equatable, Identifiable {
     /// unexpanded — `~/.local/bin/claude` is expanded by the *remote* login
     /// shell, which is why `validate` rejects anything that would need quotes.
     public var claude: String?
+    /// Path of `ccc` on the far side, when it is installed there.
+    ///
+    /// This is what makes the model column work remotely. The model is a
+    /// join against the session's transcript *file*, so it can only be read
+    /// where that filesystem is; doing it from here would be one ssh round
+    /// trip per row (~250 ms × 17 rows against a 2 s tick). Asking the far
+    /// side's own `ccc list --json` instead does the join there and returns
+    /// it inside the one round trip we already pay — no remote helper to
+    /// deploy, no inline shell, and it is the same twin a human would type.
+    ///
+    /// `nil` falls back to `claude agents --json --all`, which is exactly
+    /// v2 slice 1's behaviour: a correct roster with a blank model column.
+    public var ccc: String?
 
     public var id: String { name }
     public var isLocal: Bool { ssh == nil }
 
-    public init(name: String, ssh: String? = nil, claude: String? = nil) {
+    public init(name: String, ssh: String? = nil, claude: String? = nil, ccc: String? = nil) {
         self.name = name
         self.ssh = ssh
         self.claude = claude
+        self.ccc = ccc
     }
 
     public static let localName = "local"
@@ -45,10 +59,14 @@ public struct Host: Codable, Sendable, Equatable, Identifiable {
         // The remote command words are handed to ssh unquoted so the remote
         // shell expands a leading `~`. That only holds while they cannot be
         // reinterpreted as shell syntax.
-        if claude.contains(where: { $0.isWhitespace || "\"'$`;&|<>()".contains($0) }) {
-            return "claude path '\(claude)' has whitespace or shell characters; ccc passes it to the remote shell unquoted so `~` expands"
-        }
+        if let problem = Self.shellSafe(claude, what: "claude") { return problem }
+        if let ccc, let problem = Self.shellSafe(ccc, what: "ccc") { return problem }
         return nil
+    }
+
+    private static func shellSafe(_ path: String, what: String) -> String? {
+        guard path.contains(where: { $0.isWhitespace || "\"'$`;&|<>()".contains($0) }) else { return nil }
+        return "\(what) path '\(path)' has whitespace or shell characters; ccc passes it to the remote shell unquoted so `~` expands"
     }
 }
 

@@ -183,6 +183,7 @@ final class PaneController {
             return .stats(StatsInfo(pid: me, footprintBytes: ProcessStats.footprint(of: me) ?? 0, childPID: nil,
                                     childFootprintBytes: nil, lastPollMs: poller.state.lastPollMs,
                                     meanPollMs: poller.state.meanPollMs, pollCount: poller.state.pollCount,
+                                    modelJoin: poller.state.modelJoin,
                                     ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 0))
         }
     }

@@ -22,17 +22,19 @@ libghostty-vt + our Metal renderer, which took all six checks
 `CCC_CORE=swiftterm` escape hatch.
 
 ```
-swift build && swift test           # 113 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer
+swift build && swift test           # 121 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer
 scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH (symlink into the bundle)
 
 ccc hosts [add <n> --ssh <d>|remove <n>|check]  # the Macs ccc can reach; check runs the real poll on each
+                                    # a remote host's roster comes from ITS ccc (--ccc <path>), so the
+                                    # model column is joined where the transcripts are; --no-ccc opts out
 ccc list [--host <name>] [--json]   # the roster with the model column (no app needed)
 ccc attach <ref> [--headless]       # attach in the window, or headless: a PTY + the socket, no window
                                     # <ref> is `id` on this Mac, `host:id` anywhere else
 ccc snapshot [--json]               # the pane's grid as text — how an agent sees what you see
 ccc send "text" | --key ctrl-z      # type; named keys go through the core's key encoder
 ccc send --paste <text>|- | --wheel N  # paste framed as the child negotiated (- reads stdin); scroll
-ccc detach | resize <c> <r> | stats # detach; resize (headless); memory / poll latency / PTY B/s
+ccc detach | resize <c> <r> | stats # detach; resize (headless); memory / poll + model-join cost / PTY B/s
 ccc peek [out.png]                  # PNG of the window from our view hierarchy (no screen permission)
 ccc window show|hide|close|resize <c> <r>
 ccc replay <bytes> [--bytes N] [--core X]  # render a recording headlessly (the golden-test oracle)

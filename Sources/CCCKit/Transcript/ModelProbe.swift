@@ -105,17 +105,46 @@ public final class ModelProbe: @unchecked Sendable {
     private static let firstChunk = 64 * 1024
     private static let maxChunk = 4 * 1024 * 1024
 
+    /// What the cache actually saved, cumulative. The join's cost is not
+    /// "rows × a file read" — an unchanged transcript costs one `stat` — so
+    /// the only way to talk about the cadence honestly is to count which
+    /// case each row took. Surfaced through `ccc stats`.
+    public struct Counters: Sendable, Codable, Equatable {
+        /// Transcripts opened and parsed (the transcript had changed).
+        public var reads = 0
+        /// Rows answered from the cache after one `stat`.
+        public var hits = 0
+        /// `stat` failed — the file is gone or was never there.
+        public var misses = 0
+        public init(reads: Int = 0, hits: Int = 0, misses: Int = 0) {
+            self.reads = reads
+            self.hits = hits
+            self.misses = misses
+        }
+    }
+
     private let lock = NSLock()
     private var cache: [String: Entry] = [:]
+    private var counters = Counters()
 
     public init() {}
 
+    public var stats: Counters {
+        lock.lock()
+        defer { lock.unlock() }
+        return counters
+    }
+
     public func model(forTranscriptAt url: URL) -> Result? {
-        guard let stamp = Self.stamp(of: url) else { return nil }
+        guard let stamp = Self.stamp(of: url) else {
+            lock.lock(); counters.misses += 1; lock.unlock()
+            return nil
+        }
         let key = url.path(percentEncoded: false)
 
         lock.lock()
         if let cached = cache[key], cached.stamp == stamp {
+            counters.hits += 1
             lock.unlock()
             return cached.result
         }
@@ -125,6 +154,7 @@ public final class ModelProbe: @unchecked Sendable {
 
         lock.lock()
         cache[key] = Entry(stamp: stamp, result: result)
+        counters.reads += 1
         lock.unlock()
         return result
     }

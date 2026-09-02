@@ -3,6 +3,29 @@ import Foundation
 import Testing
 
 @Suite struct RosterDecoderTests {
+    /// The capture v3 was waiting for. The first fixture had no `waitingFor`
+    /// on any row, so the `blocked` + `waitingFor` pairing that the
+    /// poll-as-notifier plan rests on was an assumption. This capture
+    /// (2026-09-02, taken while a session was genuinely blocked) has it —
+    /// and brought a third `status` value with it, which the shape banner
+    /// caught before this test existed.
+    @Test func aBlockedRowCarriesWaitingForAndTheWaitingStatus() throws {
+        let result = RosterDecoder.decode(try Fixtures.data("roster/agents-blocked-2026-09-02.json"))
+        #expect(result.issues.isEmpty, "issues: \(result.issues.map(\.description))")
+        #expect(result.sessions.count == 17)
+
+        let blocked = try #require(result.sessions.first { $0.state == .blocked })
+        #expect(blocked.id == "3369359f")
+        #expect(blocked.waitingFor == "input needed")
+        // "it's your turn", with no hook: state, reason, and a live process.
+        #expect(blocked.status == .waiting)
+        #expect(blocked.pid != nil)
+        // Still the rule from the first capture: the two axes are independent.
+        #expect(result.sessions.allSatisfy { ($0.pid == nil) == ($0.status == nil) })
+        // `waiting` is exactly the blocked row; nothing else claims it.
+        #expect(result.sessions.filter { $0.status == .waiting }.count == 1)
+    }
+
     // MARK: - The real capture
 
     @Test func realCaptureDecodesCleanly() throws {

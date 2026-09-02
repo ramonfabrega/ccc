@@ -107,6 +107,11 @@ enum CLI {
         }
         if json {
             printJSON(state.sorted)
+            // stdout stays pure JSON, but the banner must not vanish just
+            // because a machine is reading: exit 3 alone told a caller
+            // *that* something changed and never *what*. This is also what
+            // crosses the ssh hop when another ccc polls this one.
+            for issue in state.issues { stderr("⚠ roster shape changed: \(issue.description)") }
         } else {
             printRoster(state.sorted, issues: state.issues)
         }
@@ -129,7 +134,8 @@ enum CLI {
             let width = loaded.config.hosts.map(\.name.count).max() ?? 0
             for host in loaded.config.hosts {
                 let name = host.name.padding(toLength: width, withPad: " ", startingAt: 0)
-                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")")
+                let reader = host.isLocal ? "" : "  roster via \(host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)")"
+                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")\(reader)")
             }
             print("\n\(HostConfig.defaultPath)")
             return loaded.issues.isEmpty ? 0 : 3
@@ -139,8 +145,13 @@ enum CLI {
                 stderr("ccc: usage: ccc hosts add <name> --ssh <destination> [--claude <absolute path>]")
                 return 2
             }
+            // ccc on the far side is what gets the model column over ssh
+            // (docs/DESIGN.md §4a), so it is the default rather than an
+            // opt-in; `--no-ccc` falls back to the harness reader.
+            let remoteCCC = rest.contains("--no-ccc") ? nil : (stringFlag("--ccc", rest) ?? "~/.local/bin/ccc")
             let host = Host(name: name, ssh: stringFlag("--ssh", rest) ?? name,
-                            claude: stringFlag("--claude", rest) ?? "~/.local/bin/claude")
+                            claude: stringFlag("--claude", rest) ?? "~/.local/bin/claude",
+                            ccc: remoteCCC)
             if let problem = host.validate() {
                 stderr("ccc: \(problem)")
                 return 2
@@ -148,7 +159,8 @@ enum CLI {
             loaded.config.hosts.removeAll { $0.name == name }
             loaded.config.hosts.append(host)
             try loaded.config.save()
-            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-")); `ccc hosts check \(name)` to prove it")
+            let reader = host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)"
+            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)); `ccc hosts check \(name)` to prove it")
             return 0
 
         case "remove":
@@ -173,32 +185,49 @@ enum CLI {
                 stderr("ccc: no host '\(wanted ?? "")'")
                 return 1
             }
-            struct Check: Encodable { var host: String; var ok: Bool; var ms: Double; var sessions: Int?; var error: String? }
+            // Runs the reader the poller would actually use, so a green row
+            // here means the roster works — including whether the model
+            // column came back, which is the whole reason `ccc` on the far
+            // side exists.
+            struct Check: Encodable {
+                var host: String; var ok: Bool; var ms: Double; var reader: String
+                var sessions: Int?; var models: Int?; var error: String?
+            }
             var results: [Check] = []
             for host in targets {
                 let started = ContinuousClock.now
                 guard let cli = ClaudeCLI.of(host) else {
-                    results.append(Check(host: host.name, ok: false, ms: 0, sessions: nil,
+                    results.append(Check(host: host.name, ok: false, ms: 0, reader: "-", sessions: nil, models: nil,
                                          error: host.validate() ?? "claude not found"))
                     continue
                 }
+                let reader = cli.rosterSource.rawValue
                 do {
-                    let data = try await cli.agentsJSON(all: true)
-                    let decoded = RosterDecoder.decode(data)
-                    results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started),
-                                         sessions: decoded.sessions.count,
-                                         error: decoded.issues.isEmpty ? nil : decoded.issues.map(\.description).joined(separator: "; ")))
+                    let reading = try await cli.rosterJSON()
+                    if cli.rosterSource == .ccc {
+                        let rows = try JSONDecoder.roster.decode([SessionRow].self, from: reading.data)
+                        results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started), reader: reader,
+                                             sessions: rows.count, models: rows.count { $0.model != nil },
+                                             error: reading.warning))
+                    } else {
+                        let decoded = RosterDecoder.decode(reading.data)
+                        results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started), reader: reader,
+                                             sessions: decoded.sessions.count, models: nil,
+                                             error: decoded.issues.isEmpty ? nil : decoded.issues.map(\.description).joined(separator: "; ")))
+                    }
                 } catch {
-                    results.append(Check(host: host.name, ok: false, ms: elapsedMs(since: started), sessions: nil, error: "\(error)"))
+                    results.append(Check(host: host.name, ok: false, ms: elapsedMs(since: started), reader: reader,
+                                         sessions: nil, models: nil, error: "\(error)"))
                 }
             }
             if json { printJSON(results) } else {
                 let width = results.map(\.host.count).max() ?? 0
                 for r in results {
                     let name = r.host.padding(toLength: width, withPad: " ", startingAt: 0)
-                    let head = r.ok ? String(format: "ok   %5.0f ms  %d sessions", r.ms, r.sessions ?? 0)
-                                    : String(format: "FAIL %5.0f ms", r.ms)
-                    print("\(name)  \(head)\(r.error.map { "  \($0)" } ?? "")")
+                    let head = r.ok ? String(format: "ok   %5.0f ms  %-6@ %d sessions", r.ms, r.reader as NSString, r.sessions ?? 0)
+                                    : String(format: "FAIL %5.0f ms  %-6@", r.ms, r.reader as NSString)
+                    let models = r.models.map { ", \($0) with a model" } ?? ""
+                    print("\(name)  \(head)\(models)\(r.error.map { "  \($0)" } ?? "")")
                 }
             }
             return results.allSatisfy(\.ok) ? 0 : 1
@@ -427,6 +456,9 @@ enum CLI {
         print("ccc pid \(s.pid)  memory \(mb(s.footprintBytes))  uptime \(Int(s.uptimeSeconds))s")
         if let child = s.childPID { print("child pid \(child)  memory \(mb(s.childFootprintBytes))") }
         print("roster poll  last \(ms(s.lastPollMs))  mean \(ms(s.meanPollMs))  n=\(s.pollCount)")
+        if let j = s.modelJoin {
+            print("model join   last \(ms(j.lastMs))  mean \(ms(j.meanMs))  reads \(j.reads)  cached \(j.hits)  gone \(j.misses)  well lookups \(j.lookups) (\(j.unresolved) unresolved)")
+        }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
     }
 

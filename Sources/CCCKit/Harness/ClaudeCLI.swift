@@ -95,6 +95,10 @@ public struct ClaudeCLI: Sendable {
     /// terminal and its output would stop being a clean pipe.
     public func argv(_ arguments: [String], tty: Bool) -> [String] {
         guard let destination = host.ssh else { return [executable] + arguments }
+        return sshPrefix(tty: tty, destination: destination) + [executable] + arguments
+    }
+
+    func sshPrefix(tty: Bool, destination: String) -> [String] {
         var out = [Self.sshExecutable]
         if tty { out.append("-t") }
         out += [
@@ -106,11 +110,36 @@ public struct ClaudeCLI: Sendable {
             "-o", "BatchMode=yes",
             destination,
         ]
-        return out + [executable] + arguments
+        return out
     }
 
     public func agentsArgv(all: Bool = true) -> [String] {
         argv(all ? ["agents", "--json", "--all"] : ["agents", "--json"], tty: false)
+    }
+
+    /// Which reader answers this host's roster.
+    public enum RosterSource: String, Sendable {
+        /// `claude agents --json --all` — the harness, decoded here. Always
+        /// available; the model column stays blank on a remote host because
+        /// the transcript it joins against is on the other machine.
+        case claude
+        /// `ccc list --json` on the far side — our own twin, which does the
+        /// transcript join where the filesystem is and hands back finished
+        /// rows. One round trip, models included.
+        case ccc
+    }
+
+    public var rosterSource: RosterSource {
+        // Local always reads the harness directly: shelling out to ourselves
+        // would spawn a second process to do what this one already does.
+        (!host.isLocal && host.ccc != nil) ? .ccc : .claude
+    }
+
+    /// The argv that produces this host's roster, whichever reader that is.
+    public func rosterArgv() -> [String] {
+        guard rosterSource == .ccc, let ccc = host.ccc else { return agentsArgv() }
+        guard let destination = host.ssh else { return [ccc, "list", "--json"] }
+        return sshPrefix(tty: false, destination: destination) + [ccc, "list", "--json"]
     }
 
     /// The argv for attaching. The PTY execs this.
@@ -134,6 +163,33 @@ public struct ClaudeCLI: Sendable {
         return try await run(agentsArgv(all: all))
     }
 
+    /// A roster read: the bytes, plus whatever the reader warned about
+    /// without failing.
+    public struct RosterReading: Sendable {
+        public var data: Data
+        /// The far side had rows AND something to say about their shape.
+        public var warning: String?
+    }
+
+    /// This host's roster, from whichever reader `rosterSource` names. The
+    /// bytes differ by source — harness sessions, or finished `SessionRow`s
+    /// — so the caller decodes on the same enum.
+    ///
+    /// `ccc list` exits **3** when the roster decoded but its shape changed:
+    /// the rows are good and a banner is owed. Treating that as a failure
+    /// would throw away a whole host's sessions over a warning — the exact
+    /// "never an empty list" rule this project holds — so 3 is a reading
+    /// with a warning, not an error.
+    public func rosterJSON() async throws -> RosterReading {
+        try prepareControlDirectory()
+        let accepted: Set<Int32> = rosterSource == .ccc ? [0, 3] : [0]
+        let result = try await run(rosterArgv(), accepting: accepted)
+        guard result.status != 0 else { return RosterReading(data: result.stdout, warning: nil) }
+        let said = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        return RosterReading(data: result.stdout,
+                             warning: said.isEmpty ? "\(host.name): the remote ccc reported a roster shape change" : said)
+    }
+
     public struct RunError: Error, CustomStringConvertible {
         public var status: Int32
         public var stderr: String
@@ -150,6 +206,11 @@ public struct ClaudeCLI: Sendable {
     }
 
     private func run(_ argv: [String]) async throws -> Data {
+        try await run(argv, accepting: [0]).stdout
+    }
+
+    private func run(_ argv: [String],
+                     accepting accepted: Set<Int32>) async throws -> (stdout: Data, stderr: String, status: Int32) {
         let process = Process()
         process.executableURL = URL(filePath: argv[0])
         process.arguments = Array(argv.dropFirst())
@@ -162,11 +223,10 @@ public struct ClaudeCLI: Sendable {
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
         let stderr = err.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw RunError(status: process.terminationStatus,
-                           stderr: String(decoding: stderr, as: UTF8.self),
-                           host: host.name)
+        let text = String(decoding: stderr, as: UTF8.self)
+        guard accepted.contains(process.terminationStatus) else {
+            throw RunError(status: process.terminationStatus, stderr: text, host: host.name)
         }
-        return stdout
+        return (stdout, text, process.terminationStatus)
     }
 }

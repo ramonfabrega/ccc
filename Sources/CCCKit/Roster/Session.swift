@@ -23,7 +23,11 @@ public struct Session: Codable, Sendable, Equatable, Identifiable {
 
     public enum Kind: String, Codable, Sendable { case interactive, background }
     public enum State: String, Codable, Sendable { case working, blocked, done, failed, stopped }
-    public enum Status: String, Codable, Sendable { case busy, idle }
+    /// `waiting` was found by the banner, not by reading docs: on
+    /// 2026-09-02 a `blocked` row with `waitingFor: "input needed"` came
+    /// back as `status: "waiting"`, which the decoder flagged as an unknown
+    /// value. It is a known one now (docs/HARNESS.md).
+    public enum Status: String, Codable, Sendable { case busy, idle, waiting }
 
     public init(id: String, cwd: String, kind: Kind, startedAt: Date, state: State? = nil,
                 status: Status? = nil, pid: Int32? = nil, waitingFor: String? = nil,

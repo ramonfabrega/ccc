@@ -38,7 +38,19 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      roster faces shorten a cwd by substituting *this* Mac's home path, which
      is wrong for a host whose username differs (invisible against `loop`,
      since it is the same machine).
-  3. **The model column over ssh.** The open decision in docs/DESIGN.md §4a.
+  3. **The model column over ssh — done 2026-09-02.** Settled by
+     measurement (docs/DESIGN.md §4a): the local join is 9 ms of a 199 ms
+     poll, so its cadence is left alone; the remote host is read by its own
+     `ccc list --json` (`Host.ccc`), which joins where the filesystem is and
+     returns finished rows in the one round trip. Live: `ccc hosts check`
+     → `loop ok 213 ms ccc 17 sessions, 15 with a model`; `ccc list --host
+     loop` shows `fable-5-1` / `opus-5` on remote rows. `ccc stats` grew a
+     `model join` line (reads / cached / gone / well lookups) so the claim
+     is re-measurable. Two bugs found and fixed by doing it: the reader
+     dropped 17 good rows on `ccc list`'s exit 3 ("shape changed" is a
+     warning, not a failure), and `ccc list --json` reported issues through
+     the exit code alone — it now writes them to stderr, and they cross the
+     hop into the local banner.
   4. **Host picker + TERM policy**, and experiment 2 while a remote attach
      is cheap to run.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
