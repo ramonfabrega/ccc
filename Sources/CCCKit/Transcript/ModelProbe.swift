@@ -16,9 +16,15 @@ import Foundation
 /// cwd with `_` or a space, and the well-scan fallback hid it as a miss.
 public enum WellPath {
     public static func directory(forCwd cwd: String, claudeHome: URL = defaultClaudeHome) -> URL {
+        // Per NFC character, not per byte (lore probes 2 and 3: `日本語` →
+        // three dashes; a directory that is NFD on disk is recorded NFC in
+        // the transcript and sharded from the NFC form). macOS hands
+        // directory listings back NFD, so normalize here and every caller
+        // agrees whatever its source.
+        let normalized = cwd.precomposedStringWithCanonicalMapping
         var mangled = ""
-        mangled.reserveCapacity(cwd.count)
-        for character in cwd {
+        mangled.reserveCapacity(normalized.count)
+        for character in normalized {
             let keep = character.isASCII && (character.isLetter || character.isNumber)
             mangled.append(keep ? character : "-")
         }
@@ -45,11 +51,11 @@ public enum WellPath {
         // entry moves the whole transcript into the worktree's well, which
         // is named `<parent well>--claude-worktrees-<name>`), then the rest.
         let parentWell = directory(forCwd: cwd, claudeHome: claudeHome).lastPathComponent
-        let ordered = wells.sorted { a, b in
-            let ra = a.lastPathComponent.hasPrefix(parentWell + "--claude-worktrees-")
-            let rb = b.lastPathComponent.hasPrefix(parentWell + "--claude-worktrees-")
-            return ra && !rb
+        // Listing names come back NFD from APFS; compare in NFC like the key.
+        func isWorktreeWell(_ url: URL) -> Bool {
+            url.lastPathComponent.precomposedStringWithCanonicalMapping.hasPrefix(parentWell + "--claude-worktrees-")
         }
+        let ordered = wells.sorted { a, b in isWorktreeWell(a) && !isWorktreeWell(b) }
         for well in ordered {
             let candidate = well.appending(path: "\(sessionId).jsonl")
             if fm.fileExists(atPath: candidate.path) { return candidate }

@@ -52,6 +52,20 @@ import Testing
                 .lastPathComponent == "-tmp-my-project-dir")
     }
 
+    /// Probes 2 and 3: one dash per NFC character (not per byte), and an
+    /// NFD path from a directory listing encodes like the NFC form the
+    /// transcript records.
+    @Test func nonASCIIIsPerCharacterAfterNFC() {
+        #expect(
+            WellPath.directory(forCwd: "/Users/rf-studio/cc-test/probé café ünïcode/日本語dir", claudeHome: Self.home)
+                .lastPathComponent == "-Users-rf-studio-cc-test-prob--caf---n-code----dir")
+        let nfd = "/Users/rf-studio/cc-test/cafe\u{0301}-nfd"      // e + combining acute, as APFS returns it
+        let nfc = "/Users/rf-studio/cc-test/caf\u{00E9}-nfd"
+        #expect(nfd != nfc)
+        #expect(WellPath.directory(forCwd: nfd, claudeHome: Self.home).lastPathComponent == "-Users-rf-studio-cc-test-caf--nfd")
+        #expect(WellPath.directory(forCwd: nfc, claudeHome: Self.home).lastPathComponent == "-Users-rf-studio-cc-test-caf--nfd")
+    }
+
     /// lore's corpus of real wells (`~/.claude/projects`, cwd taken from the
     /// transcript records, never reverse-derived). `strict` wells come from a
     /// session whose every record carries one cwd, so that cwd is the shard
@@ -80,6 +94,6 @@ import Testing
                 loose += 1
             }
         }
-        #expect(strict == 43 && loose == 45, "corpus shape changed: \(strict) strict, \(loose) loose")
+        #expect(strict == 45 && loose == 45, "corpus shape changed: \(strict) strict, \(loose) loose")
     }
 }
