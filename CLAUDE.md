@@ -48,7 +48,10 @@ it should break while being awesome.**
   resize, snapshot). v0 may fill it with SwiftTerm's stock view to unblock the
   roster work; the libghostty-vt + Metal pane replaces it when it wins on:
   kitty keyboard / shift-enter, bracketed paste, mouse scroll, streaming
-  throughput, resize over ssh, detach keys.
+  throughput, resize over ssh, detach keys. **Settled 2026-09-02: it won all
+  six (docs/CHECKS.md) and is the default; `CCC_CORE=swiftterm` is the
+  escape hatch.** The seam stays — it is what made the swap a one-line
+  change and what a third core would enter through.
 - **PTY is always local; remote is the same command behind `ssh -t`.** Roster
   poll, attach, spawn: one prefix per host, one multiplexed ssh connection per
   host. Folders, git, worktrees fall out as cwd choices. No daemon of our own.

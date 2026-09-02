@@ -17,13 +17,14 @@ final class PaneController {
     /// Called when a session is attached; the window mounts `host.view`.
     var onSessionStarted: ((AttachSession) -> Void)?
     /// The host factory: off-screen for headless, in-window for the app.
-    /// `CCC_CORE=ghostty` selects the v1 pane (libghostty-vt + our Metal
-    /// renderer); the default stays SwiftTerm until the six checks are won.
+    /// The v1 pane (libghostty-vt + our Metal renderer) is the default since
+    /// it won the six checks (docs/CHECKS.md, 2026-09-02); `CCC_CORE=swiftterm`
+    /// falls back to the v0 stand-in, which is kept only as that escape hatch.
     var makeHost: @MainActor (Int, Int) -> TerminalHost = { cols, rows in
         PaneController.makeDefaultHost(frame: CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows))
     }
 
-    static var selectedCore: String { ProcessInfo.processInfo.environment["CCC_CORE"] ?? "swiftterm" }
+    static var selectedCore: String { ProcessInfo.processInfo.environment["CCC_CORE"] ?? "ghostty" }
 
     static func makeDefaultHost(frame: CGRect) -> TerminalHost {
         selectedCore == "ghostty" ? GhosttyPane(frame: frame) : SwiftTermHost(frame: frame)
@@ -112,15 +113,18 @@ final class PaneController {
         case .snapshot:
             guard let session else { return .snapshot(SnapshotInfo(attachedTo: nil, grid: nil)) }
             return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.id : nil, grid: session.host.snapshot()))
-        case .send(let text, let keys, let wheel):
+        case .send(let text, let keys, let wheel, let paste):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             if let text { session.send(text: text) }
+            if let paste {
+                guard session.paste(paste) else { return .error("host cannot paste (\(PaneController.selectedCore) core)") }
+            }
             for name in keys ?? [] {
                 guard let key = NamedKey(name) else { return .error("unknown key '\(name)'") }
                 guard session.press(key) else { return .error("host cannot encode '\(name)'") }
             }
             if let wheel, wheel != 0 {
-                guard let pane = session.host as? GhosttyPane else { return .error("wheel needs the ghostty pane (CCC_CORE=ghostty)") }
+                guard let pane = session.host as? GhosttyPane else { return .error("wheel needs the ghostty pane; this session is on the \(PaneController.selectedCore) core") }
                 pane.wheel(lines: wheel)
             }
             return .ok("sent")

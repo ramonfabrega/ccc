@@ -19,7 +19,10 @@ public enum ControlRequest: Codable, Sendable {
     /// (`enter`, `escape`, `ctrl-c`, `ctrl-z`, `up`, `shift-enter`, …) that
     /// the terminal host encodes — never hand-rolled escape sequences.
     /// `wheel`: scroll lines (positive = up) through the host's mouse path.
-    case send(text: String?, keys: [String]?, wheel: Int? = nil)
+    /// `paste`: text handed to the host's paste path, which frames it the
+    /// way the child negotiated (bracketed under mode 2004) — the twin of
+    /// Command-V on the pane, and the only way to prove check 2 live.
+    case send(text: String?, keys: [String]?, wheel: Int? = nil, paste: String? = nil)
     /// Resize the pane's grid (headless only; the window resizes itself).
     case resize(cols: Int, rows: Int)
     /// Memory, poll latency, PTY throughput — how we're doing.

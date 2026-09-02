@@ -6,11 +6,19 @@ session and the same live `claude attach`. Each row names how it is measured
 so a number here is reproducible, and the SwiftTerm column is the v0
 baseline (CoreGraphics; Metal on is a second column when it matters).
 
+**Swapped 2026-09-02.** All six rows are ✔ in the Ghostty column with a live
+proof each, so `PaneController.selectedCore` now defaults to `ghostty`;
+`CCC_CORE=swiftterm` is the escape hatch and the only reason `SwiftTermHost`
+still exists. Proof of the default itself: `ccc send --wheel 3` succeeds with
+no `CCC_CORE` set, and that path is guarded by `session.host as? GhosttyPane`.
+Under the hatch, `ccc send --paste` answers `host cannot paste (swiftterm
+core)` — the v0 limitation, now visible instead of silent.
+
 | # | check | how measured | SwiftTerm (CG) | SwiftTerm (Metal) | Ghostty + ours |
 |---|---|---|---|---|---|
 | 0 | correctness | `ccc replay --core X` on every phase of `Fixtures/attach` equals the goldens | 4/4 (defines them) | same | **4/4** (300f8df) |
 | 1 | kitty keyboard / shift-enter | with the child's kitty flags pushed, `ccc send --key shift-enter` reaches the child as `CSI 13;2u`; without, distinguishable from enter | via NSEvent → SwiftTerm (untested) | same | **✔** `GhosttyKeysTests`: kitty → `ESC[13;2u`; legacy → `ESC[27;2;13~` (modifyOtherKeys), enter stays `\r`. Live (window pane, socket `send --key shift-enter`): Claude's prompt grew a line instead of submitting |
-| 2 | bracketed paste | `host.paste` of multi-line text arrives wrapped in `ESC[200~ … ESC[201~` when mode 2004 is on; unbracketed, LF becomes CR | no programmatic paste API (SwiftTerm frames only its own `paste:` responder) | same | **✔** `GhosttyReplayTests.pasteIsBracketed…` (core frames; `ccc send` twin pending) |
+| 2 | bracketed paste | `host.paste` of multi-line text arrives wrapped in `ESC[200~ … ESC[201~` when mode 2004 is on; unbracketed, LF becomes CR | no programmatic paste API (SwiftTerm frames only its own `paste:` responder) | same | **✔** `GhosttyReplayTests.pasteIsBracketed…` (core frames). **Live ✔** (twin `ccc send --paste`, headless attach): a 3-line paste landed as three prompt lines with nothing submitted, and a 12-line paste collapsed to `[Pasted text #1 +11 lines]` — Claude Code only shows that for a paste it recognized, so the framing reached the child, not just the wire |
 | 3 | mouse scroll in the transcript | wheel over the pane scrolls Claude's transcript (alt-screen: arrows or SGR mouse per negotiated mode); no jumps | pending | pending | encoder half **✔** `GhosttyMouseTests` (SGR `ESC[<64;x;yM` under tracking; the core does NOT implement alternate scroll, the pane presses arrows through the key encoder in alt screen + mode 1007, mirroring Ghostty's Surface.zig). **Live ✔**: `ccc send --wheel 5` on a 150-line transcript moved the top row 109 → 104, `--wheel -5` brought it back to 108; Claude Code tracks the mouse (SGR), so the reports went through the core encoder, not the arrow fallback |
 | 4′ | throughput, primary screen + reflow | `ccc bench Fixtures/stream/stream.bin --repeat 20`, release, resize to 140×40 replayed at byte 150,020 | 13.3 MB/s, Δ14.0 MB, 2000 scrollback rows | — | **101.8 MB/s**, Δ3.2 MB, 1908 rows, **same grid digest** (3c1fb1d5) (7.7×; both cores keep the 2000-line policy, Ghostty's count is lower because reflow merges wrapped rows) |
 | 4 | streaming throughput | `ccc bench Fixtures/attach/attach.bin --repeat 300`, release build, real chunking; equal-work columns: same grid digest, scrollback rows, Δfootprint | 13.6–22.9 MB/s (two runs; noisy), 0.14 ms/snapshot, Δ0.7 MB | — | **286–296 MB/s**, 0.13–0.19 ms/snapshot, Δ0.8 MB, **same grid digest** (12–21×). Caveat: the fixture is alt-screen, scrollback 0 on both, so reflow/scrollback cost is not yet compared — needs a primary-screen recording |

@@ -160,6 +160,13 @@ swap, run against a recorded `claude attach` session: kitty keyboard /
 shift-enter, bracketed paste, mouse scroll in the transcript, streaming
 throughput on a long response, resize over `ssh -t`, detach keys.
 
+**Decided 2026-09-02: Ghostty took all six** (docs/CHECKS.md) and is now the
+default core; SwiftTerm is reachable only as `CCC_CORE=swiftterm`. That
+demotes the 2.0 break above from "absorb before shipping" to "absorb if we
+ever need the hatch again" — and makes deleting `SwiftTermHost` a real
+option once v2 stops wanting a second opinion on a rendering bug. Keep it
+through v2 for that reason alone; the seam costs nothing to leave in place.
+
 ## Headless from day one
 
 The same binary runs without a window: `ccc attach <id> --headless` drives

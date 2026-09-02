@@ -6,7 +6,7 @@ import Foundation
 ///   ccc list [--json]                 the roster, with the model column
 ///   ccc attach <id> [--headless]      attach; headless drives a PTY and serves the socket
 ///   ccc snapshot [--json]             the pane's grid as text
-///   ccc send <text> | --key <name>…   type into the pane
+///   ccc send <text> | --key <name>… | --paste <text>   type into the pane
 ///   ccc detach                        detach the pane
 ///   ccc stats [--json]                memory, poll latency, PTY throughput
 ///   ccc replay <bytes> [--cols N --rows N]   render recorded bytes headlessly
@@ -88,10 +88,16 @@ enum CLI {
         return state.issues.isEmpty ? 0 : 3
     }
 
+    /// `--paste` takes one argument and goes through the host's paste path,
+    /// so the child sees it framed as a paste (bracketed under mode 2004) —
+    /// bare `<text>` is raw typing straight at the PTY. `-` reads stdin, so a
+    /// multi-line paste needs no shell quoting. Applied before `--key`, which
+    /// makes `send --paste "$(cat x)" --key enter` the scripted ⌘V + return.
     static func send(_ rest: [String], json: Bool) throws -> Int32 {
         var keys: [String] = []
         var text: [String] = []
         var wheel: Int?
+        var paste: String?
         var i = 0
         while i < rest.count {
             if rest[i] == "--key", i + 1 < rest.count {
@@ -104,13 +110,27 @@ enum CLI {
             } else if rest[i] == "--wheel", i + 1 < rest.count, let n = Int(rest[i + 1]) {
                 wheel = n
                 i += 2
+            } else if rest[i] == "--paste", i + 1 < rest.count {
+                let argument = rest[i + 1]
+                if argument == "-" {
+                    let stdin = FileHandle.standardInput.readDataToEndOfFile()
+                    paste = String(decoding: stdin, as: UTF8.self)
+                } else {
+                    paste = argument
+                }
+                i += 2
             } else {
                 text.append(rest[i])
                 i += 1
             }
         }
-        guard !keys.isEmpty || !text.isEmpty || wheel != nil else { return usage() }
-        return try request(.send(text: text.isEmpty ? nil : text.joined(separator: " "), keys: keys.isEmpty ? nil : keys, wheel: wheel), json: json)
+        guard !keys.isEmpty || !text.isEmpty || wheel != nil || paste != nil else { return usage() }
+        guard paste?.isEmpty != true else {
+            stderr("ccc: --paste got empty text")
+            return 2
+        }
+        return try request(.send(text: text.isEmpty ? nil : text.joined(separator: " "), keys: keys.isEmpty ? nil : keys,
+                                 wheel: wheel, paste: paste), json: json)
     }
 
     /// `--bytes N` replays only the first N bytes: a phase boundary from the
@@ -306,7 +326,8 @@ enum CLI {
                ccc list [--json]
                ccc attach <id> [--headless [--cols N --rows N]]
                ccc snapshot [--json]
-               ccc send <text> | --key <name>... | --wheel N   (N>0 scrolls up; ghostty pane)
+               ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
+                                                              (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach
                ccc resize <cols> <rows>
                ccc stats [--json]

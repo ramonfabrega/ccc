@@ -3,10 +3,11 @@ import CCCKit
 import Foundation
 
 /// `ccc attach <id> --headless`: the pane without the window. Owns one
-/// `AttachSession` on an off-screen `SwiftTermHost` (so named keys encode
-/// exactly as in the window), polls the roster, and serves the control
-/// socket until the child exits or `ccc detach` arrives. This is how an
-/// agent sees what the user sees.
+/// `AttachSession` on an off-screen host built by `PaneController.makeHost` —
+/// the same core the window would use, so keys, mouse and paste encode
+/// identically — polls the roster, and serves the control socket until the
+/// child exits or `ccc detach` arrives. This is how an agent sees what the
+/// user sees.
 enum Headless {
     @MainActor
     static func run(id: String, cols: Int, rows: Int) -> Int32 {

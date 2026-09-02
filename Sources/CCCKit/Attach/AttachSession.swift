@@ -69,6 +69,14 @@ public final class AttachSession {
         host.press(key)
     }
 
+    /// Paste through the host, which applies the framing the child
+    /// negotiated (bracketed when mode 2004 is on). Never the PTY directly:
+    /// `send(text:)` is raw typing, this is a paste.
+    @discardableResult
+    public func paste(_ text: String) -> Bool {
+        host.paste(text)
+    }
+
     /// Programmatic resize: grid and PTY together.
     public func resize(cols: Int, rows: Int) {
         host.resize(cols: cols, rows: rows)
