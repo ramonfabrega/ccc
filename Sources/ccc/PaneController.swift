@@ -155,6 +155,24 @@ final class PaneController {
         await session.detach()
     }
 
+    /// Archive / pin (v4): exactly `ccc archive <ref>` — the overlay file
+    /// here for a local ref, the far side's own verb for a remote one —
+    /// then a poll, so the row moves now rather than a tick later.
+    func mark(_ ref: SessionRef, _ change: MarkChange) async throws -> String {
+        let said = try await cli(for: ref).mark(change, id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return said
+    }
+
+    /// The harness's `rm` behind the host prefix (`ccc rm <ref>`), its
+    /// sentence returned whether it removed or kept. A poll after, so a
+    /// removed row leaves the roster at once.
+    func delete(_ ref: SessionRef) async throws -> String {
+        let result = try await cli(for: ref).rm(id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return result.said
+    }
+
     /// The wake-up gesture: evict every remote ssh master and poll again,
     /// then bring back a remote pane the sleep killed. Called by the app on
     /// `NSWorkspace.didWakeNotification` and by `ccc hosts reconnect`.

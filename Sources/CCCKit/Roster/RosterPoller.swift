@@ -21,6 +21,8 @@ public final class RosterPoller {
         /// Every host's rows, stale ones included (`HostPoll.isStale`).
         public var rows: [SessionRow] { hosts.flatMap(\.rows) }
         public var issues: [RosterShapeIssue] { hosts.flatMap(\.issues) }
+        /// Things of ours to say (a broken overlay file), never an error.
+        public var notes: [String] { hosts.flatMap(\.notes) }
 
         /// Hosts whose last poll failed. Per host by construction: the
         /// banner names the host, the others keep their rows.
@@ -52,15 +54,23 @@ public final class RosterPoller {
 
         public func host(_ name: String) -> HostPoll? { hosts.first { $0.host == name } }
 
-        /// Presentation order: live and blocked first, then by most recent
-        /// start, across hosts.
+        /// Presentation order: pinned first, then live and blocked, then by
+        /// most recent start, across hosts. Every row, archived included —
+        /// this is what `--json` carries and what the far side reads.
         public var sorted: [SessionRow] {
             rows.sorted { a, b in
+                if a.pinned != b.pinned { return a.pinned }
                 let ra = a.session.rank, rb = b.session.rank
                 if ra != rb { return ra < rb }
                 return a.session.startedAt > b.session.startedAt
             }
         }
+
+        /// What the roster shows by default: `sorted` without the archived
+        /// rows (`SessionRow.isHidden` — a blocked one is never hidden).
+        public var visible: [SessionRow] { sorted.filter { !$0.isHidden } }
+        /// How many `sorted` has that `visible` does not.
+        public var hiddenCount: Int { rows.count { $0.isHidden } }
     }
 
     public let pollers: [HostPoller]

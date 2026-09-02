@@ -162,6 +162,42 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   untracked file, removed once it was dropped, nine removed outright.
   The roster's Delete gesture waits for the v4 roster work; archive is
   ours and stays here.
+  **Slice 1 — done 2026-09-02: archive, pin, Delete.** The overlay is
+  `~/Library/Application Support/ccc/roster.json` (`RosterOverlay`,
+  `CCC_ROSTER_OVERLAY` overrides), hand-editable like `hosts.json` and
+  decoded as leniently: a broken file is one note on the banner and no
+  marks, never no rows. **It lives with the session's host**
+  (docs/DESIGN.md §8): each Mac's file marks its own sessions, the marks
+  ride the far side's `ccc list --json` rows like the model does, and
+  `ccc archive studio:a1b2` from air is `ccc archive a1b2` on studio
+  behind the ssh prefix — one answer, both Macs agree. Keyed by the short
+  id with the session's uuid as the guard against a reused one; a mark
+  on a session the roster lost is pruned a week later, on a good poll of
+  the owning host. The rules: pinned rows sort first; an archived row
+  folds out of the default list **unless it is blocked** ("it's your
+  turn" beats tidiness), and the notifier never consults the overlay.
+  `ccc archive|unarchive|pin|unpin <ref>` are the context menu's twins
+  (`a` and `p` on the selected row in the window; `archive`/`pin` need
+  the row, `unarchive`/`unpin` only drop a mark); `ccc list` folds
+  archived rows with a count line, `--archived` shows them, and `--json`
+  always carries every row with its flags because it is what the far
+  side reads. The window folds them behind an "N archived" toggle in the
+  header and re-reads the file when its mtime moves, so a shell's
+  `ccc archive` shows a tick later. Delete is the context menu's
+  `Delete…` (⌫ on the selected row): one alert naming the session and
+  its cwd, then `claude rm` behind the host prefix, and the harness's
+  sentence — removed, or `kept` — is the banner. **Proved live** on this
+  Mac: `ccc archive 5df0fa59` / `ccc pin 2d567704` wrote the file with
+  both uuids, `ccc list` printed the pinned row first with a 📌 and
+  `(1 archived; --archived shows them)` last, `--archived` showed the row
+  with `(archived)`, `--json` carried the flags, `ccc archive nope`
+  answered `no session 'nope' in the roster`, exit 1. The window folded
+  the row and showed the pin a tick after each shell verb; its header's
+  "1 archived" toggle is on a real `screencapture` and **absent from
+  `ccc peek`** — the composite drops SwiftUI buttons the way it drops
+  materials (§7 again: the screen is the oracle). Open for slice 2:
+  group and sort options; the fold as sections (live / finished /
+  archived) rather than a toggle.
 - **v5 — spawn.** `claude --bg` with cwd, model, prompt, agent; drafts via
   `/fork` with no prompt; worktree awareness.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via

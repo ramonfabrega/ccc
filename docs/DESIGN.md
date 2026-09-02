@@ -355,6 +355,50 @@ alert when run unbundled — visible only as a control socket that never
 answered, diagnosed with `sample`. Same shape: the face the agent uses
 (the socket) went quiet, and nothing said why.
 
+## 8. Marks live with the session's host (v4, 2026-09-02)
+
+Archive and pin are the first state that is ours and not the daemon's,
+and the first question was where it lives. Two shapes:
+
+- **Per viewing Mac.** Each ccc keeps marks for every ref it sees, local
+  or remote, in its own file. No ssh to make a mark, and it works for a
+  host read through the harness fallback. But "archived" then means
+  something different on each Mac: fold a session away on studio and air
+  still lists it, and the thesis — notifications and the roster the same
+  on every device — has its first exception.
+- **With the session's host.** Each Mac's file marks only that Mac's own
+  sessions. A remote row's marks arrive inside the far side's
+  `ccc list --json`, the road the model column already takes (§4a), and
+  a mark made from another Mac is the same verb run there behind the ssh
+  prefix (`ccc archive studio:a1b2` from air is `ccc archive a1b2` on
+  studio) — the road every other remote gesture takes. One answer, kept
+  next to the session, and both Macs read it. The cost is that a host
+  without ccc has nowhere to keep a mark, which is the same cost the
+  model column pays, and the same fix (`ccc hosts add` finds it).
+
+The second. It was chosen the day it was built; the rule it follows is
+older: **PTY is always local; remote is the same command behind
+`ssh -t`.** State follows the same rule — where the thing is, the
+command runs, and the answer comes back on the poll. Two smaller calls
+made with it:
+
+- **A blocked row is never hidden.** Archive folds a row out of the
+  default list, but a session asking for input shows again, marked
+  archived, until it stops asking. The notifier never reads the overlay
+  at all. "It's your turn" outranks tidiness, and a hidden question is
+  the black pane in another form (§7).
+- **Delete confirms; the harness guards.** The roster's `Delete…` is one
+  alert, then `claude rm` behind the host prefix, and its sentence —
+  removed, or `kept` with the reason — is the banner. ccc adds no
+  `--force` because the harness has none (docs/HARNESS.md).
+
+The file is keyed by the harness's short id with the session's uuid
+beside it as a guard: nothing promises a daemon never mints an id twice,
+and a mark whose uuid disagrees with the row's is a mark on some earlier
+session and does not apply. Marks on sessions the roster lost are pruned
+a week later, on a good poll of the owning host — a host that is merely
+asleep never reaches that path.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past

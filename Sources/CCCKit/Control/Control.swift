@@ -68,16 +68,29 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     public var host: String
     public var model: String?
     public var attached: Bool
+    /// Our marks (v4, `RosterOverlay`), joined where the session lives and
+    /// carried across the hop like the model. Off the wire they default to
+    /// false: an older ccc on the far side has no marks to send.
+    public var archived: Bool
+    public var pinned: Bool
 
     /// The address: what `ccc attach` takes and the roster's row identity.
     public var ref: SessionRef { SessionRef(host: host, id: session.id) }
     public var id: SessionRef { ref }
 
-    public init(session: Session, host: String = Host.localName, model: String?, attached: Bool) {
+    /// Archived rows are out of the default list — unless the session is
+    /// asking for input, which is never hidden (v4's rule: "it's your
+    /// turn" beats tidiness).
+    public var isHidden: Bool { archived && session.state != .blocked }
+
+    public init(session: Session, host: String = Host.localName, model: String?, attached: Bool,
+                archived: Bool = false, pinned: Bool = false) {
         self.session = session
         self.host = host
         self.model = model
         self.attached = attached
+        self.archived = archived
+        self.pinned = pinned
     }
 
     /// Lenient on everything ccc adds, because these rows now arrive over
@@ -93,6 +106,8 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? Host.localName
         model = try container.decodeIfPresent(String.self, forKey: .model)
         attached = try container.decodeIfPresent(Bool.self, forKey: .attached) ?? false
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
     }
 }
 

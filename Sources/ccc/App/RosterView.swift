@@ -1,9 +1,11 @@
 import CCCKit
 import SwiftUI
 
-/// The roster: what `claude agents` shows, plus the model column. Sorted
-/// blocked → working → failed → done/stopped, newest first within a rank.
-/// Enter or double-click attaches; the attached row is marked.
+/// The roster: what `claude agents` shows, plus the model column and our
+/// marks (v4). Sorted pinned → blocked → working → failed → done/stopped,
+/// newest first within a rank; archived rows are folded away behind the
+/// header's count unless they are asking for input. Enter or double-click
+/// attaches; the attached row is marked.
 struct RosterView: View {
     let poller: RosterPoller
     /// For shortening a row's cwd with the home of the host that answered
@@ -16,39 +18,79 @@ struct RosterView: View {
     /// controller rather than rebuilt here, so the copied line and the
     /// attached child can never disagree about the ssh hop.
     let attachCommandLine: (SessionRef) -> String
+    /// Archive / pin and their undoes: the same `MarkChange` that
+    /// `ccc archive <ref>` takes.
+    let mark: (SessionRef, MarkChange) -> Void
+    /// The harness's `rm`, behind a confirmation the controller owns.
+    let delete: (SessionRef) -> Void
     @State private var selection: SessionRef?
+    @State private var showsArchived = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            List(poller.state.sorted, selection: $selection) { row in
+            List(showsArchived ? poller.state.sorted : poller.state.visible, selection: $selection) { row in
                 RosterRow(row: row, showsHost: showsHost, shortCwd: hosts.shortCwd(row.session.cwd, host: row.host),
                           stale: poller.state.host(row.host)?.isStale ?? false)
                     .tag(row.ref)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { attach(row.ref) }
-                    .contextMenu {
-                        Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
-                        if row.attached { Button("Detach") { detach() } }
-                        if let sid = row.session.sessionId {
-                            Button("Copy session id") { NSPasteboard.general.setString(sid, forType: .string) }
-                        }
-                        Button("Copy attach command") {
-                            NSPasteboard.general.setString(attachCommandLine(row.ref), forType: .string)
-                        }
-                    }
+                    .contextMenu { menu(for: row) }
             }
             .listStyle(.inset)
             .onKeyPress(.return) {
-                guard let selection, let row = poller.state.rows.first(where: { $0.ref == selection }),
-                      row.session.isAttachable else { return .ignored }
-                attach(selection)
+                guard let row = selectedRow, row.session.isAttachable else { return .ignored }
+                attach(row.ref)
                 return .handled
             }
+            // The agents view's keys, plus ours: ⌫ deletes (confirmed),
+            // `a` archives or unarchives, `p` pins or unpins.
+            .onKeyPress(.delete) { press(delete) }
+            .onKeyPress(.deleteForward) { press(delete) }
+            .onKeyPress("a") { press { mark($0, marks($0)?.archived == true ? .unarchive : .archive) } }
+            .onKeyPress("p") { press { mark($0, marks($0)?.pinned == true ? .unpin : .pin) } }
             footer
         }
         .frame(minWidth: 320)
+    }
+
+    private var selectedRow: SessionRow? {
+        guard let selection else { return nil }
+        return poller.state.rows.first { $0.ref == selection }
+    }
+
+    private func marks(_ ref: SessionRef) -> SessionRow? { poller.state.rows.first { $0.ref == ref } }
+
+    private func press(_ gesture: (SessionRef) -> Void) -> KeyPress.Result {
+        guard let row = selectedRow, row.session.isAttachable else { return .ignored }
+        gesture(row.ref)
+        return .handled
+    }
+
+    /// Marks live with the session's host: a remote row read through the
+    /// harness fallback has no ccc there to keep one.
+    private func canMark(_ row: SessionRow) -> Bool {
+        row.host == Host.localName || hosts.host(named: row.host)?.ccc != nil
+    }
+
+    @ViewBuilder private func menu(for row: SessionRow) -> some View {
+        Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
+        if row.attached { Button("Detach") { detach() } }
+        Divider()
+        Button(row.pinned ? "Unpin" : "Pin") { mark(row.ref, row.pinned ? .unpin : .pin) }
+            .disabled(!row.session.isAttachable || !canMark(row))
+        Button(row.archived ? "Unarchive" : "Archive") { mark(row.ref, row.archived ? .unarchive : .archive) }
+            .disabled(!row.session.isAttachable || !canMark(row))
+        Divider()
+        if let sid = row.session.sessionId {
+            Button("Copy session id") { NSPasteboard.general.setString(sid, forType: .string) }
+        }
+        Button("Copy attach command") {
+            NSPasteboard.general.setString(attachCommandLine(row.ref), forType: .string)
+        }
+        Divider()
+        Button("Delete…") { delete(row.ref) }.disabled(!row.session.isAttachable)
     }
 
     /// One Mac looks exactly like v1: the host is only worth a column once
@@ -64,6 +106,20 @@ struct RosterView: View {
             let blocked = poller.state.rows.filter { $0.session.state == .blocked }.count
             if blocked > 0 {
                 Label("\(blocked) waiting", systemImage: "hand.raised.fill").foregroundStyle(.orange).font(.caption)
+            }
+            // The fold: how many rows are archived away, and the toggle
+            // that shows them. Absent when there is nothing folded.
+            let hidden = poller.state.hiddenCount
+            if hidden > 0 || showsArchived {
+                Button {
+                    showsArchived.toggle()
+                } label: {
+                    Label("\(hidden) archived", systemImage: showsArchived ? "archivebox.fill" : "archivebox")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(showsArchived ? .primary : .secondary)
+                .help(showsArchived ? "Hide archived sessions" : "Show archived sessions")
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -111,6 +167,7 @@ struct RosterRow: View {
                             .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
                             .foregroundStyle(.secondary)
                     }
+                    if row.pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary) }
                     Text(row.session.name ?? row.session.id).fontWeight(row.attached ? .semibold : .regular).lineLimit(1)
                     if row.attached { Image(systemName: "rectangle.connected.to.line.below").font(.caption2) }
                     Spacer()
@@ -121,13 +178,16 @@ struct RosterRow: View {
                     if let waiting = row.session.waitingFor {
                         Text(waiting).font(.caption).foregroundStyle(.orange)
                     }
+                    if row.archived {
+                        Label("archived", systemImage: "archivebox").font(.caption).foregroundStyle(.tertiary)
+                    }
                     Spacer()
                     Text(shortCwd).font(.caption.monospaced()).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
                 }
             }
         }
         .padding(.vertical, 2)
-        .opacity(stale ? 0.6 : 1)
+        .opacity(stale ? 0.6 : (row.archived ? 0.7 : 1))
         .help("\(row.ref) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
     }
 

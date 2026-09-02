@@ -82,6 +82,10 @@ final class MainWindowController: NSWindowController {
             self?.detachAction(nil)
         }, attachCommandLine: { [weak self] ref in
             self?.controller.attachCommandLine(for: ref) ?? "claude attach \(ref.id)"
+        }, mark: { [weak self] ref, change in
+            self?.mark(ref, change)
+        }, delete: { [weak self] ref in
+            self?.confirmDelete(ref)
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -129,6 +133,7 @@ final class MainWindowController: NSWindowController {
             let kept = failed.rows.isEmpty ? "" : " — showing its \(failed.rows.count) sessions from \(Self.age(since: failed.lastSuccessAt))"
             parts.append("\(failed.host): \(failed.error ?? "unreachable")\(kept)")
         }
+        parts += state.notes
         if !state.issues.isEmpty {
             parts.append("roster shape changed — showing what still decodes: " +
                          state.issues.prefix(3).map(\.description).joined(separator: "; ") +
@@ -193,6 +198,42 @@ final class MainWindowController: NSWindowController {
 
     @objc func detachAction(_ sender: Any?) {
         Task { await controller.detach() }
+    }
+
+    /// Archive / pin (v4): the controller does what `ccc archive <ref>`
+    /// does, and the answer — ours, or the far side's — is the notice.
+    func mark(_ ref: SessionRef, _ change: MarkChange) {
+        Task { @MainActor in
+            do {
+                showNotice(try await controller.mark(ref, change))
+            } catch {
+                showNotice("\(error)")
+            }
+        }
+    }
+
+    /// The roster's Delete: one alert naming what goes, then the harness's
+    /// `rm` behind the host prefix. Its guard is the safety net — a dirty
+    /// worktree is "kept", and that sentence lands here as the notice.
+    func confirmDelete(_ ref: SessionRef) {
+        let row = controller.poller.state.rows.first { $0.ref == ref }
+        let alert = NSAlert()
+        alert.messageText = "Delete \(row?.session.name ?? ref.description)?"
+        let cwd = row.map { controller.hosts.shortCwd($0.session.cwd, host: $0.host) } ?? ""
+        alert.informativeText = "Runs `claude rm \(ref.id)`" + (ref.isLocal ? "" : " on \(ref.host)")
+            + ": the session and its worktree go, unless the worktree has uncommitted or unpushed work, in which case the harness keeps both."
+            + (cwd.isEmpty ? "" : "\n\n\(cwd)")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { @MainActor in
+            do {
+                showNotice(try await controller.delete(ref))
+            } catch {
+                showNotice("\(error)")
+            }
+        }
     }
 
     @objc func showAction(_ sender: Any?) {

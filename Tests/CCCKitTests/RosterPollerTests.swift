@@ -149,4 +149,55 @@ import Testing
             #expect(attached == [SessionRef(host: "studio", id: "a1b2")])
         }
     }
+
+    // MARK: the overlay (v4)
+
+    /// The local host joins our marks from the overlay file, re-reading it
+    /// when it changes — `ccc archive` from a shell shows in the window a
+    /// tick later. A pinned row sorts first; an archived one leaves
+    /// `visible` but never `sorted` (which is what crosses the hop).
+    @Test @MainActor func localRowsCarryTheOverlaysMarks() async throws {
+        try await withTempDir { dir in
+            let overlayPath = dir.appending(path: "roster.json").path
+            let poller = HostPoller(cli: ClaudeCLI(executable: try fakeClaude(in: dir), host: .local), overlayPath: overlayPath)
+            let fleet = RosterPoller(pollers: [poller])
+            await fleet.tick()
+            #expect(fleet.state.sorted.map(\.session.id) == ["a1b2", "c3d4"])
+            #expect(fleet.state.hiddenCount == 0)
+
+            var overlay = RosterOverlay()
+            overlay.set(.pin, id: "c3d4", sessionId: nil)
+            overlay.set(.archive, id: "a1b2", sessionId: "aaaaaaaa-0000-0000-0000-000000000000")
+            try overlay.save(path: overlayPath)
+            await fleet.tick()
+            // Pinned first, ahead of the working row.
+            #expect(fleet.state.sorted.map(\.session.id) == ["c3d4", "a1b2"])
+            #expect(fleet.state.sorted.map(\.pinned) == [true, false])
+            #expect(fleet.state.sorted.map(\.archived) == [false, true])
+            #expect(fleet.state.visible.map(\.session.id) == ["c3d4"])
+            #expect(fleet.state.hiddenCount == 1)
+
+            // A mark made against another uuid is not this session's.
+            overlay.marks["a1b2"]?.sessionId = "some-earlier-session"
+            try overlay.save(path: overlayPath)
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: overlayPath)
+            await fleet.tick()
+            #expect(fleet.state.visible.count == 2)
+        }
+    }
+
+    /// The file is ours to break by hand; the rows are the harness's and
+    /// stay. One note, no error, no exit status.
+    @Test @MainActor func aBrokenOverlayIsANoteNotAFailure() async throws {
+        try await withTempDir { dir in
+            let overlayPath = dir.appending(path: "roster.json").path
+            try Data("nope".utf8).write(to: URL(filePath: overlayPath))
+            let poller = HostPoller(cli: ClaudeCLI(executable: try fakeClaude(in: dir), host: .local), overlayPath: overlayPath)
+            await poller.tick()
+            #expect(poller.state.rows.count == 2)
+            #expect(poller.state.error == nil)
+            #expect(poller.state.notes.count == 1)
+            #expect(poller.state.notes.first?.contains("ignoring the overlay") == true)
+        }
+    }
 }

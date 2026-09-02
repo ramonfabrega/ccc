@@ -14,6 +14,9 @@ public struct HostPoll: Sendable, Equatable {
     public var rows: [SessionRow] = []
     /// Non-empty when the roster changed shape; shown as the banner.
     public var issues: [RosterShapeIssue] = []
+    /// Something of ours to say that is not a roster failure — a broken
+    /// overlay file, ignored. Shown on the banner, never an exit status.
+    public var notes: [String] = []
     /// The reader could not be run at all (not on PATH, non-zero exit, ssh
     /// down). `nil` after a good poll.
     public var error: String?
@@ -86,11 +89,33 @@ public final class HostPoller {
     private var joinCount: Int = 0
     /// sessionId → transcript path, once found; saves the well scan.
     private var transcriptPaths: [String: URL] = [:]
+    /// Our marks (v4), joined on the local host only — a remote host's rows
+    /// arrive with theirs already set by the far side's ccc. Re-read when
+    /// the file's mtime moves, so `ccc archive` from a shell shows in the
+    /// window on the next tick; one `stat` per tick otherwise.
+    public let overlayPath: String
+    private var overlay = RosterOverlay()
+    private var overlayModifiedAt: Date?
+    private var overlayLoaded = false
 
-    public init(cli: ClaudeCLI?, hostName: String? = nil, interval: Duration = .seconds(2)) {
+    public init(cli: ClaudeCLI?, hostName: String? = nil, interval: Duration = .seconds(2),
+                overlayPath: String = RosterOverlay.defaultPath) {
         self.cli = cli
         self.interval = interval
+        self.overlayPath = overlayPath
         self.state = HostPoll(host: hostName ?? cli?.host.name ?? Host.localName)
+    }
+
+    /// The overlay as of now: the file when it changed, memory otherwise.
+    /// A broken file is one issue on the banner and no marks, never no rows.
+    private func currentOverlay() -> (RosterOverlay, issue: String?) {
+        let modified = RosterOverlay.modificationDate(path: overlayPath)
+        if overlayLoaded, modified == overlayModifiedAt { return (overlay, nil) }
+        let loaded = RosterOverlay.load(path: overlayPath)
+        overlay = loaded.overlay
+        overlayModifiedAt = modified
+        overlayLoaded = true
+        return (overlay, loaded.issue)
     }
 
     public var hostName: String { state.host }
@@ -191,7 +216,7 @@ public final class HostPoller {
         // Model lookups touch the filesystem; keep them off the main actor.
         let isLocal = cli.host.isLocal
         let joinStarted = ContinuousClock.now
-        let (rows, found, lookups, unresolved) = await Task.detached(priority: .utility) {
+        let (joined, found, lookups, unresolved) = await Task.detached(priority: .utility) {
             var found: [String: URL] = [:]
             var lookups = 0, unresolved = 0
             let rows = decoded.sessions.map { session -> SessionRow in
@@ -223,6 +248,23 @@ public final class HostPoller {
             return (rows, found, lookups, unresolved)
         }.value
         transcriptPaths.merge(found) { _, new in new }
+        var rows = joined
+        if isLocal {
+            let (marks, issue) = currentOverlay()
+            state.notes = issue.map { [$0] } ?? []
+            for i in rows.indices {
+                let mark = marks.mark(for: rows[i].session.id, sessionId: rows[i].session.sessionId)
+                rows[i].archived = mark?.archived != nil
+                rows[i].pinned = mark?.pinned != nil
+            }
+            // A good roster is the moment to forget marks on sessions that
+            // left it long ago. Written only when something was dropped.
+            var pruned = marks
+            if pruned.prune(keeping: Set(rows.map(\.session.id))), (try? pruned.save(path: overlayPath)) != nil {
+                overlay = pruned
+                overlayModifiedAt = RosterOverlay.modificationDate(path: overlayPath)
+            }
+        }
         state.rows = rows
         state.issues = decoded.issues + remoteIssues
         state.transcriptLookups += lookups

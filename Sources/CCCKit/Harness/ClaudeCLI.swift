@@ -356,7 +356,7 @@ public struct ClaudeCLI: Sendable {
         }
     }
 
-    private func run(_ argv: [String], program: String = "claude") async throws -> Data {
+    func run(_ argv: [String], program: String = "claude") async throws -> Data {
         try await run(argv, accepting: [0], program: program).stdout
     }
 

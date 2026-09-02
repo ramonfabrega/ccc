@@ -5,6 +5,7 @@ import Foundation
 ///
 ///   ccc hosts [add|remove|check]      the machines ccc can reach
 ///   ccc list [--json]                 the roster, with the model column
+///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
 ///
@@ -34,7 +35,7 @@ enum CLI {
             case "install-cli":
                 return installCLI(directory: stringFlag("--dir", rest), force: rest.contains("--force"), json: json)
             case "list":
-                return try await list(host: stringFlag("--host", rest), json: json)
+                return try await list(host: stringFlag("--host", rest), archived: rest.contains("--archived"), json: json)
             case "watch":
                 return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2, json: json)
             case "hosts":
@@ -56,6 +57,13 @@ enum CLI {
                     return 2
                 }
                 return try await rm(ref: ref, json: json)
+            case "archive", "unarchive", "pin", "unpin":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await mark(MarkChange(rawValue: verb)!, ref: ref, json: json)
             case "snapshot":
                 return try request(.snapshot, json: json)
             case "send":
@@ -105,7 +113,13 @@ enum CLI {
     /// printed); 1 only when *no* host answered. A host that failed is one
     /// line on stderr and its last known rows are kept — never a blank
     /// roster over one sleeping Mac.
-    static func list(host name: String?, json: Bool) async throws -> Int32 {
+    ///
+    /// Archived rows (v4) are folded out of the text the way the window
+    /// folds them; `--archived` shows them. `--json` always carries every
+    /// row with its `archived` / `pinned` flags: it is data, it is what the
+    /// far side reads to build *its* roster, and a machine filters for
+    /// itself.
+    static func list(host name: String?, archived: Bool = false, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
         let poller: RosterPoller
@@ -128,6 +142,7 @@ enum CLI {
             stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")")
         }
         guard state.anyHostAnswered else { return 1 }
+        for note in state.notes { stderr("ccc: \(note)") }
         if json {
             printJSON(state.sorted)
             // stdout stays pure JSON, but the banner must not vanish just
@@ -136,9 +151,31 @@ enum CLI {
             // crosses the ssh hop when another ccc polls this one.
             for issue in state.issues { stderr("⚠ roster shape changed: \(issue.description)") }
         } else {
-            printRoster(state.sorted, issues: state.issues, hosts: loaded.config)
+            printRoster(archived ? state.sorted : state.visible, issues: state.issues, hosts: loaded.config)
+            let hidden = state.hiddenCount
+            if !archived, hidden > 0 { print("(\(hidden) archived; --archived shows them)") }
         }
         return state.issues.isEmpty ? 0 : 3
+    }
+
+    /// `ccc archive|unarchive|pin|unpin <ref>` (v4): a mark on the session,
+    /// kept with the session's host — the overlay file here, or the same
+    /// verb on the far side's ccc, its answer passed through. Needs no
+    /// running app; the window sees the file change on its next tick.
+    static func mark(_ change: MarkChange, ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let said = try await cli.mark(change, id: ref.id)
+        if json { printJSON(["ref": ref.description, change.rawValue: "true", "said": said]) } else { print(said) }
+        return 0
     }
 
     /// Delete a session: `claude rm` behind the ref's host prefix, its
@@ -667,15 +704,18 @@ enum CLI {
         let hostWidth = rows.map(\.host.count).max() ?? 0
         for row in rows {
             let s = row.session
-            let marker = row.attached ? "●" : " "
+            // The attached mark, else the pin: one column, the pin is what
+            // sorts a row to the top and this is why it is there.
+            let marker = row.attached ? "●" : (row.pinned ? "📌" : " ")
             let host = showsHost ? row.host.padding(toLength: hostWidth, withPad: " ", startingAt: 0) + "  " : ""
             let state = s.state?.rawValue ?? (s.kind == .interactive ? "interactive" : "-")
             let live = s.pid != nil ? (s.status?.rawValue ?? "live") : ""
             let name = (s.name ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
             let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
+            let archived = row.archived ? " (archived)" : ""
             let model = row.model.map { shortModel($0) } ?? "-"
             let cwd = hosts.shortCwd(s.cwd, host: row.host)
-            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)")
+            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)\(archived)")
         }
     }
 
@@ -760,7 +800,10 @@ enum CLI {
                ccc hosts add <name> [--ssh <dest>] [--claude <path>] [--ccc <path>|--no-ccc] | remove <name>
                                                   (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
-               ccc list [--host <name>] [--json]  every host's roster; --host narrows to one
+               ccc list [--host <name>] [--archived] [--json]   every host's roster; --host narrows to one,
+                                                  --archived shows the folded rows (--json always has every row)
+               ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host
+                                                  (archived rows fold away unless blocked; pinned sort first)
                ccc watch [--host <name>] [--interval S] [--json]   one line per transition (blocked, done, failed, stopped)
                ccc attach <ref> [--headless [--cols N --rows N]]
                                                   <ref> is `id` (this Mac) or `host:id`
