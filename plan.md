@@ -9,13 +9,15 @@ what is *not* settled.
 Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 173 tests green.
 `master` fast-forwards to it (a merge of master into this branch keeps that
 true; do it again after every master sync or the branches re-diverge).
-**v0.1.7 is cut and on the feed** (2026-09-02 night: v0.1.6 carried v4
-and the icon, v0.1.7 the banner fix air found within the hour). Origin
-master was level at v0.1.6's docs commit; it wants another
-`git merge --ff-only worktree-v2` for v0.1.7. Studio runs the cut
-(`scripts/install --dist`). **Air took v0.1.6 by hand** and linked its
-command from the menu; v0.1.7 reaches it through Sparkle. Left there:
-answer the notification permission banner once, `ccc stats` on air says
+**v0.1.8 is cut and on the feed** (2026-09-02 night; v0.1.6 carried v4
+and the icon, v0.1.7 the banner fix air found within the hour, v0.1.8 is
+the first cut through `ota`). Local master fast-forwarded to the ota
+merge and worktree-v2 merged it back, so master wants
+`git merge --ff-only worktree-v2` again for the v0.1.8 commits. Studio
+runs the cut (`scripts/install --dist`). **Air took v0.1.6 by hand**;
+v0.1.7 and v0.1.8 reach it through Sparkle — air on 0.1.8 is §6a's
+proof and closes the old lane for good. Left on air: answer the
+notification permission banner once, `ccc stats` on air says
 `authorized` when done.
 
 ## Current: v4, the roster ours
@@ -77,16 +79,12 @@ and the terminal clips a little at its bounds.
    `scripts/package` + `make-bundle` + `Updater.swift` + half of
    `BuildInfo.swift` with `ota bundle` / `ota release` and an `OTA`
    package. Its seam question — OTA must split so CCCKit never links
-   Sparkle — was split as asked, and the patch is **reviewed and ready:
-   `origin/ota-migration-v017` (9d7ce79), one commit directly on v0.1.7,
-   a fast-forward for `worktree-v2`.** Reviewed 2026-09-02: merges clean,
-   174 tests, zero Sparkle in the test bundle, ota pinned to a GitHub
-   revision, typealiases instead of `@_exported`. Two things gate the
-   landing, both the user's: install `ota` on studio (`~/code/fun/ota`,
-   its `scripts/install`; the branch's scripts refuse without it), and
-   §6a's proof — a real `scripts/package` through `ota release` that
-   air's Sparkle installs — before the old lane retires. The superseded
-   `origin/ota-migration` (d475fb8) can be deleted.
+   Sparkle — was split as asked, reviewed, and **landed** (9d7ce79 on
+   master, merged back into worktree-v2 as 0e73a69). `ota` is on
+   studio's PATH and v0.1.8 went through it end to end. What remains of
+   §6a's proof is air installing v0.1.8 from the feed; ota is pinned to
+   revision 45f3a63 until it tags. The superseded branches
+   `origin/ota-migration` and `origin/ota-migration-v017` can be deleted.
 
 `scripts/attach-probe` is the tool for anything attach-shaped: hold, type,
 resize, SIGUSR1 to report mid-hold.

@@ -138,6 +138,15 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   "Install ‘ccc’ Command…" stayed up for good, and every archive/pin
   answer from slice 1 would have too. Notices are transient now (8 s,
   or a click); the socket-held-elsewhere notice stays, as a condition.
+  **v0.1.8, same night (build 76): the first cut through `ota`**
+  (docs/DESIGN.md §6a). The migration landed (typealiases over a
+  re-export, 174 tests, zero Sparkle in the test bundle), `ota` went on
+  studio's PATH, and `scripts/package` — now a build plus `ota bundle`
+  and `ota release` — did the whole lane in one run: signed inside-out,
+  notarized first submission, stapled, single-item appcast on the
+  fleet's key, both CDN keys, and its own live check (version 76,
+  length 4509224 both sides). Studio runs it. The other half of §6a's
+  proof — air's Sparkle installing this cut — is air's to show.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
