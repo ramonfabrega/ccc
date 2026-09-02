@@ -193,12 +193,21 @@ final class MainWindowController: NSWindowController {
         NSApp.activate()
     }
 
-    /// The socket's window verbs; `close` is literally ⌘W.
+    /// The socket's window verbs; `close` is literally ⌘W, `resize W H`
+    /// is the user dragging the corner (check 5's twin: the pane and the
+    /// child must follow the new grid).
     func windowAction(_ action: String) -> Bool {
-        switch action {
+        let parts = action.split(separator: " ").map(String.init)
+        switch parts.first {
         case "show": showAction(nil)
         case "hide": window?.orderOut(nil)
         case "close": window?.performClose(nil)
+        case "resize":
+            guard parts.count == 3, let w = Double(parts[1]), let h = Double(parts[2]), let window else { return false }
+            var frame = window.frame
+            frame.origin.y += frame.height - h
+            frame.size = NSSize(width: w, height: h)
+            window.setFrame(frame, display: true, animate: false)
         default: return false
         }
         return true

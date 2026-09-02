@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Record a primary-screen stream with scrollback and a mid-stream resize:
+the fixture check 4 cannot get from the alt-screen attach recording
+(scrollback retained, reflow cost, wide/combining handling under load).
+
+    scripts/record-stream [out-dir] [-- command...]
+
+Default command: a real program producing ~1 MB of mixed text (seq, a UTF-8
+paragraph with CJK and combining marks, SGR-colored ls). The pty starts at
+100x30; halfway through the drain the pty is resized to 140x40 (SIGWINCH
+reaches the child) so the recording carries a reflow point. Writes
+stream.bin / stream.events / stream.meta.json in the same shape as
+scripts/record-attach, so `ccc bench` and the replay tests consume it
+unchanged.
+"""
+import json, os, pty, select, sys, time, fcntl, termios, struct
+
+args = sys.argv[1:]
+cmd = None
+if "--" in args:
+    i = args.index("--"); cmd = args[i + 1:]; args = args[:i]
+out = args[0] if args else os.path.join(os.path.dirname(__file__), "..", "Tests", "CCCKitTests", "Fixtures", "stream")
+os.makedirs(out, exist_ok=True)
+if not cmd:
+    cmd = ["/bin/sh", "-c",
+           "seq 1 20000; "
+           "for i in $(seq 1 300); do printf '%s\\n' 'Grüße aus Zürich — 日本語のテキスト, combining e\\u0301, tabs\\tand\\ttabs, and a long line that will certainly wrap when the terminal is one hundred columns wide because it just keeps going and going'; done; "
+           "ls -la --color=always /usr/bin | head -400; "
+           "printf '\\033[1;31mbold red\\033[0m \\033[4munderline\\033[0m \\033[3mitalic\\033[0m\\n'; sleep 0.5"]
+
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ["TERM"] = "xterm-256color"
+    os.environ["CLICOLOR_FORCE"] = "1"
+    os.execvp(cmd[0], cmd)
+
+def setsize(cols, rows):
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+setsize(100, 30)
+t0 = time.monotonic()
+raw = open(os.path.join(out, "stream.bin"), "wb")
+events = open(os.path.join(out, "stream.events"), "w")
+offset = 0
+phases = []
+resized = False
+RESIZE_AT = 400_000   # bytes; roughly halfway through the default command
+
+while True:
+    r, _, _ = select.select([fd], [], [], 0.5)
+    if not r:
+        if time.monotonic() - t0 > 30: break
+        continue
+    try:
+        chunk = os.read(fd, 65536)
+    except OSError:
+        break
+    if not chunk: break
+    raw.write(chunk)
+    events.write(f"{int((time.monotonic() - t0) * 1000)} {offset} {len(chunk)}\n")
+    offset += len(chunk)
+    if not resized and offset >= RESIZE_AT:
+        phases.append({"name": "before-resize", "atMs": int((time.monotonic() - t0) * 1000), "bytes": offset, "size": [100, 30]})
+        setsize(140, 40)
+        resized = True
+        phases.append({"name": "resize", "atMs": int((time.monotonic() - t0) * 1000), "bytes": offset, "size": [140, 40]})
+phases.append({"name": "end", "atMs": int((time.monotonic() - t0) * 1000), "bytes": offset, "size": [140, 40] if resized else [100, 30]})
+raw.close(); events.close()
+os.waitpid(pid, 0)
+json.dump({"command": cmd, "cols": 100, "rows": 30, "resizeAtBytes": RESIZE_AT if resized else None,
+           "resizedTo": [140, 40] if resized else None, "bytes": offset, "phases": phases,
+           "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z")},
+          open(os.path.join(out, "stream.meta.json"), "w"), indent=2)
+print(f"wrote {offset} bytes to {out}; resized at {RESIZE_AT if resized else 'never'}")

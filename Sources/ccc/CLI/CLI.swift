@@ -48,7 +48,11 @@ enum CLI {
                 return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
                                        repeats: intFlag("--repeat", rest) ?? 200, core: stringFlag("--core", rest), json: json)
             case "window":
-                guard let action = rest.first, ["show", "hide", "close"].contains(action) else { return usage() }
+                guard let action = rest.first, ["show", "hide", "close", "resize"].contains(action) else { return usage() }
+                if action == "resize" {
+                    guard rest.count == 3, Int(rest[1]) != nil, Int(rest[2]) != nil else { return usage() }
+                    return try request(.window(action: "resize \(rest[1]) \(rest[2])"), json: json)
+                }
                 return try request(.window(action: action), json: json)
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
@@ -284,7 +288,7 @@ enum CLI {
                ccc resize <cols> <rows>
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)
-               ccc window show|hide|close         the window's own gestures (close = Cmd-W)
+               ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
                ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
 
