@@ -19,11 +19,12 @@ true; do it again after every master sync or the branches re-diverge).
    (`PaneController.reattachIfSleepKilledIt`: ssh exit 255 within 20 s of
    `didWake` → same argv again) but has not seen a real sleep. First real
    use is on air, once ccc is installed there.
-3. **Install on air.** Nothing has run on air yet. `scripts/install`
-   there, then `ccc hosts add studio` (learns home, `/Users/rf-studio`),
-   `ccc hosts check`, open the app. The studio app is the older build
-   until `scripts/install` is re-run on studio (it refuses while the app
-   is running: quit it first).
+3. **Install on air.** Nothing has run on air yet. v0.1.0 is cut
+   (RELEASES.md): download https://cdn.ramonfabrega.com/ccc/ccc-latest.zip,
+   drag to `~/Applications`, launch, symlink the CLI, then
+   `ccc hosts add studio` (learns home, `/Users/rf-studio`),
+   `ccc hosts check`. Studio already runs the v0.1.0 build (build 47).
+   Every later cut reaches both Macs through Sparkle.
 4. **Shared size** (§4c) — slice 4. So is the host picker; seed it from
    `tailscale status --json` (MagicDNS names are the ssh destinations;
    Bonjour is link-local and never crosses the tailnet).

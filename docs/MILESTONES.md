@@ -89,6 +89,13 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      daemon's PTY is last-resize-wins across viewers (§4c), so decide
      whether a secondary viewer renders the session's grid as-is instead
      of resizing it. Nice-to-have; the agents view has the same wart.
+- **Release lane — done 2026-09-02, v0.1.0 cut.** The fleet's mux/disk
+  flow (docs/DESIGN.md §6, RELEASES.md): Developer ID + hardened runtime,
+  notarized (accepted first submission) and stapled, Sparkle appcast on the
+  CDN under `ccc/`, GitHub Release v0.1.0 with the zip. Every Mac runs the
+  release build; studio installed it with `scripts/install --dist`, air's
+  first install is the zip from the CDN. The window reattaches to its last
+  session after a relaunch, since an update is one.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
