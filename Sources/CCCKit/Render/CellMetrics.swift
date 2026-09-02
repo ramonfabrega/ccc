@@ -19,6 +19,10 @@ public struct CellMetrics {
     public static var defaultFont: NSFont { .monospacedSystemFont(ofSize: 13, weight: .regular) }
 
     public let font: NSFont
+    /// The bold counterpart of `font`, resolved once at init and guaranteed to
+    /// be *some* real face: if the family has no bold, this is `font` itself,
+    /// so bold text draws in the regular weight rather than not at all.
+    public let boldFont: NSFont
     /// Backing scale factor of the screen this grid is drawn on (1 or 2).
     public let scale: CGFloat
 
@@ -48,10 +52,12 @@ public struct CellMetrics {
     public var hairline: CGFloat { 1 / scale }
 
     public var ctFont: CTFont { font as CTFont }
+    public var boldCTFont: CTFont { boldFont as CTFont }
 
     public init(font: NSFont = CellMetrics.defaultFont, scale: CGFloat = 2) {
         let scale = max(1, scale)
         self.font = font
+        self.boldFont = CellMetrics.boldCounterpart(of: font)
         self.scale = scale
 
         let ct = font as CTFont
@@ -97,6 +103,32 @@ public struct CellMetrics {
         let cols = max(1, Int((size.width / width).rounded(.down)))
         let rows = max(1, Int((size.height / height).rounded(.down)))
         return (cols, rows)
+    }
+
+    /// The bold face for a given regular one, tried in the order that actually
+    /// works on macOS.
+    ///
+    /// The system monospaced face is the awkward case: it is a *weight* of a
+    /// system family, so `NSFontManager` trait conversion and CoreText's
+    /// symbolic-trait copy both land on Semibold or miss entirely.
+    /// `monospacedSystemFont(ofSize:weight:.bold)` is the only way to ask for
+    /// real SF Mono Bold, so it goes first when the base font is that face.
+    /// The last resort is the regular face — bold text that draws in the wrong
+    /// weight is a cosmetic bug; bold text that draws nothing is a missing
+    /// word.
+    static func boldCounterpart(of font: NSFont) -> NSFont {
+        let size = font.pointSize
+        if font.fontName == NSFont.monospacedSystemFont(ofSize: size, weight: .regular).fontName {
+            return NSFont.monospacedSystemFont(ofSize: size, weight: .bold)
+        }
+        let converted = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+        if converted.fontName != font.fontName { return converted }
+        if let traited = CTFontCreateCopyWithSymbolicTraits(
+            font as CTFont, 0, nil, .traitBold, .traitBold
+        ) {
+            return traited as NSFont
+        }
+        return font
     }
 
     private static func advance(of samples: [Character], in font: CTFont) -> CGFloat {

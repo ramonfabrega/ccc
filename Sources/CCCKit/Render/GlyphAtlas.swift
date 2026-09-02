@@ -86,6 +86,9 @@ final class GlyphAtlas {
     private let device: any MTLDevice
     private let scale: CGFloat
     private let baseFont: CTFont
+    /// Resolved by `CellMetrics`, which knows how to reach SF Mono Bold; equal
+    /// to `baseFont` when the family has no bold face at all.
+    private let boldBaseFont: CTFont
 
     private(set) var alphaTexture: (any MTLTexture)?
     private(set) var colorTexture: (any MTLTexture)?
@@ -105,14 +108,15 @@ final class GlyphAtlas {
 
     private let log = Logger(subsystem: "app.cuanto.ccc", category: "GlyphAtlas")
 
-    init(device: any MTLDevice, font: CTFont, scale: CGFloat) {
+    init(device: any MTLDevice, font: CTFont, boldFont: CTFont? = nil, scale: CGFloat) {
         self.device = device
         self.baseFont = font
+        self.boldBaseFont = boldFont ?? (CellMetrics.boldCounterpart(of: font as NSFont) as CTFont)
         self.scale = max(1, scale)
     }
 
     convenience init(device: any MTLDevice, metrics: CellMetrics) {
-        self.init(device: device, font: metrics.ctFont, scale: metrics.scale)
+        self.init(device: device, font: metrics.ctFont, boldFont: metrics.boldCTFont, scale: metrics.scale)
     }
 
     /// Number of distinct rasterizations currently held. Used by tests and by
@@ -184,17 +188,25 @@ final class GlyphAtlas {
         return out
     }
 
-    /// The primary face with bold/italic traits applied. Synthetic obliquing is
-    /// not attempted: if the family has no italic, CoreText returns the
-    /// original and text stays upright, which is what every terminal does.
+    /// The face to shape a run in.
+    ///
+    /// Bold starts from `boldBaseFont` (a real bold face, resolved by
+    /// `CellMetrics`) rather than from a symbolic-trait copy of the regular
+    /// one, and every branch ends at a face that exists: a style we cannot
+    /// synthesize degrades to the nearest face we have, never to nothing.
+    /// Synthetic obliquing is not attempted — if the family has no italic,
+    /// text stays upright, which is what every terminal does.
     func styledFont(bold: Bool, italic: Bool) -> CTFont {
         guard bold || italic else { return baseFont }
         let key = ShapeKey(text: "", bold: bold, italic: italic)
         if let cached = styledFonts[key] { return cached }
-        var traits: CTFontSymbolicTraits = []
-        if bold { traits.insert(.traitBold) }
-        if italic { traits.insert(.traitItalic) }
-        let font = CTFontCreateCopyWithSymbolicTraits(baseFont, 0, nil, traits, traits) ?? baseFont
+
+        let base = bold ? boldBaseFont : baseFont
+        var font = base
+        if italic,
+           let oblique = CTFontCreateCopyWithSymbolicTraits(base, 0, nil, .traitItalic, .traitItalic) {
+            font = oblique
+        }
         styledFonts[key] = font
         return font
     }

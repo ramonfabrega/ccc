@@ -57,7 +57,11 @@ final class FrameReader {
         default: .none
         }
 
+        // Sized struct: the library fills nothing unless `size` is set first
+        // (GHOSTTY_INIT_SIZED in C). Missing this drew every default-colored
+        // cell black on black.
         var colors = GhosttyRenderStateColors()
+        colors.size = MemoryLayout<GhosttyRenderStateColors>.size
         _ = ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors)
 
         var frameRows: [Frame.Row] = []
@@ -153,6 +157,7 @@ final class FrameReader {
         _ = ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING, &hasStyling)
         if hasStyling {
             var style = GhosttyStyle()
+            style.size = MemoryLayout<GhosttyStyle>.size   // sized struct, see above
             if ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style) == GHOSTTY_SUCCESS {
                 var flags: Frame.Cell.Flags = []
                 if style.bold { flags.insert(.bold) }

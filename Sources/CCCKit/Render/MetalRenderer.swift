@@ -44,6 +44,7 @@ public final class MetalRenderer {
     private let inFlight = DispatchSemaphore(value: MetalRenderer.bufferCount)
 
     private var hasRendered = false
+    private var warnedAboutPalette = false
     private let log = Logger(subsystem: "app.cuanto.ccc", category: "MetalRenderer")
 
     // Instance layouts, matched field for field by the shader source below.
@@ -277,6 +278,7 @@ public final class MetalRenderer {
 
     private func build(frame: Frame, metrics: CellMetrics) -> Batch {
         let atlas = self.atlas(for: metrics)
+        let foreground = readableForeground(of: frame)
         var batch = Batch()
 
         let cellW = metrics.widthPixels
@@ -287,7 +289,7 @@ public final class MetalRenderer {
         for row in frame.rows {
             let top = CGFloat(row.y) * cellH
 
-            for span in RunMerge.backgroundSpans(row, background: frame.background, foreground: frame.foreground) {
+            for span in RunMerge.backgroundSpans(row, background: frame.background, foreground: foreground) {
                 batch.solids.append(SolidInstance(
                     rect: SIMD4<Float>(
                         Float(CGFloat(span.x) * cellW), Float(top),
@@ -297,11 +299,11 @@ public final class MetalRenderer {
                 ))
             }
 
-            for span in RunMerge.decorationSpans(row, background: frame.background, foreground: frame.foreground) {
+            for span in RunMerge.decorationSpans(row, background: frame.background, foreground: foreground) {
                 appendDecoration(span, top: top, metrics: metrics, into: &batch.solids)
             }
 
-            for run in RunMerge.textRuns(row, background: frame.background, foreground: frame.foreground) {
+            for run in RunMerge.textRuns(row, background: frame.background, foreground: foreground) {
                 let color = Self.color(run.style.fg, alpha: run.style.faint ? 0.6 : 1)
                 appendGlyphs(
                     run.text,
@@ -314,7 +316,7 @@ public final class MetalRenderer {
             }
         }
 
-        appendCursor(frame: frame, metrics: metrics, atlas: atlas, into: &batch)
+        appendCursor(frame: frame, foreground: foreground, metrics: metrics, atlas: atlas, into: &batch)
         return batch
     }
 
@@ -397,7 +399,8 @@ public final class MetalRenderer {
     }
 
     private func appendCursor(
-        frame: Frame, metrics: CellMetrics, atlas: GlyphAtlas, into batch: inout Batch
+        frame: Frame, foreground: Frame.RGB, metrics: CellMetrics,
+        atlas: GlyphAtlas, into batch: inout Batch
     ) {
         guard let cursor = frame.cursor, cursor.visible else { return }
         guard cursor.y >= 0, cursor.y < frame.rows.count else { return }
@@ -412,7 +415,7 @@ public final class MetalRenderer {
         // A cursor over a wide glyph covers the glyph, never half of it.
         let width = (cursor.wideTail || cell.wide == .wide) ? cellW * 2 : cellW
 
-        let cursorColor = cursor.color ?? frame.foreground
+        let cursorColor = cursor.color ?? foreground
         let solid = Self.color(cursorColor, alpha: 1)
         let hairline = max(1, metrics.scale)
 
@@ -426,7 +429,7 @@ public final class MetalRenderer {
                 rect: SIMD4<Float>(Float(x), Float(top), Float(width), Float(cellH)), color: solid))
             // The cell's own glyph, redrawn in the background colour on top —
             // that is the inversion, without a second pass over the grid.
-            let under = RunMerge.resolvedColors(cell, frame: frame.background, foreground: frame.foreground)
+            let under = RunMerge.resolvedColors(cell, frame: frame.background, foreground: foreground)
             let inverted = Self.color(under.bg ?? frame.background, alpha: 1)
             if !cell.text.isEmpty, !cell.flags.contains(.invisible) {
                 appendGlyphs(
@@ -455,6 +458,33 @@ public final class MetalRenderer {
                 color: solid))
         }
     }
+
+    /// The colour to draw cells that carry no explicit foreground.
+    ///
+    /// A frame whose default foreground equals its default background paints
+    /// every unstyled cell in the background colour — invisible text. That is
+    /// not a hypothetical: a `Frame` built from a render state whose colours
+    /// were never populated arrives as black-on-black, and the symptom is that
+    /// only *explicitly coloured* text shows up while everything using the
+    /// terminal default vanishes. The renderer refuses to draw an invisible
+    /// grid, says so once, and substitutes a legible default; the real repair
+    /// belongs wherever the frame's palette is filled in.
+    private func readableForeground(of frame: Frame) -> Frame.RGB {
+        guard frame.foreground == frame.background else { return frame.foreground }
+        if !warnedAboutPalette {
+            warnedAboutPalette = true
+            log.warning("""
+                frame default foreground equals its background \
+                (\(frame.foreground.r), \(frame.foreground.g), \(frame.foreground.b)); \
+                the palette is unset. Drawing default-coloured text in a fallback \
+                foreground so it is not invisible.
+                """)
+        }
+        return Self.fallbackForeground
+    }
+
+    /// Near-white, matching what a terminal reports for bright white.
+    static let fallbackForeground = Frame.RGB(234, 234, 234)
 
     private func atlas(for metrics: CellMetrics) -> GlyphAtlas {
         if let existing = glyphAtlas, let font = atlasFont,

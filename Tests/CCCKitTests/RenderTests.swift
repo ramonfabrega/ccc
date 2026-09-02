@@ -205,6 +205,116 @@ struct RenderTests {
 
     // MARK: - c. Offscreen render
 
+    /// Ink in one cell of a rendered frame, as a count of non-background pixels.
+    private func inkedPixels(
+        _ bytes: [UInt8], width: Int, metrics: CellMetrics, col: Int, row: Int, background: Frame.RGB
+    ) -> Int {
+        let cellW = Int(metrics.widthPixels), cellH = Int(metrics.heightPixels)
+        var count = 0
+        for y in (row * cellH)..<((row + 1) * cellH) {
+            for x in (col * cellW)..<((col + 1) * cellW)
+            where rgb(pixel(bytes, width: width, x: x, y: y)) != background {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    /// Regression for the live finding: bold text drew nothing at all while
+    /// italic and regular text drew fine ("Claude Code" blank in the header,
+    /// the bold "ok" after "⏺" blank). Every style must put ink in its cell.
+    @Test(.enabled(if: hasMetalDevice), arguments: [
+        ("regular", Frame.Cell.Flags()),
+        ("bold", Frame.Cell.Flags.bold),
+        ("italic", Frame.Cell.Flags.italic),
+        ("bold+italic", Frame.Cell.Flags([.bold, .italic])),
+        ("faint", Frame.Cell.Flags.faint),
+    ])
+    func everyStyleDrawsInk(name: String, flags: Frame.Cell.Flags) throws {
+        let renderer = try #require(MetalRenderer())
+        let metrics = CellMetrics(scale: 2)
+        let text = "Claude"
+        let cells = text.map { self.cell(String($0), fg: Self.white, flags: flags) }
+        let frame = Frame(
+            cols: text.count, rows: [row(0, cells, cols: text.count)], cursor: nil,
+            background: Self.black, foreground: Self.white, dirty: .full
+        )
+        let width = Int(metrics.widthPixels) * frame.cols
+        let height = Int(metrics.heightPixels)
+        let texture = try #require(renderer.makeOffscreenTexture(width: width, height: height))
+        renderer.render(frame: frame, to: texture, metrics: metrics)
+        let bytes = renderer.readPixels(from: texture)
+
+        for col in 0..<text.count {
+            let ink = inkedPixels(bytes, width: width, metrics: metrics, col: col, row: 0, background: Self.black)
+            #expect(ink > 0, "\(name): column \(col) of \"\(text)\" drew no glyph")
+        }
+    }
+
+    /// The live finding's *actual* cause: a frame whose default foreground
+    /// equals its default background paints every cell that uses the terminal
+    /// default in the background colour. Explicitly coloured text still shows,
+    /// which is why the symptom looked like "only bold is missing" — the bold
+    /// runs happened to be the ones using the default foreground.
+    @Test(.enabled(if: hasMetalDevice))
+    func defaultForegroundEqualToBackgroundStillDrawsText() throws {
+        let renderer = try #require(MetalRenderer())
+        let metrics = CellMetrics(scale: 2)
+        let text = "Claude"
+        let cells = text.map { self.cell(String($0), fg: nil, flags: .bold) }
+        let frame = Frame(
+            cols: text.count, rows: [row(0, cells, cols: text.count)], cursor: nil,
+            // Both black: the palette was never populated.
+            background: Self.black, foreground: Self.black, dirty: .full
+        )
+        let width = Int(metrics.widthPixels) * frame.cols
+        let texture = try #require(renderer.makeOffscreenTexture(
+            width: width, height: Int(metrics.heightPixels)))
+        renderer.render(frame: frame, to: texture, metrics: metrics)
+        let bytes = renderer.readPixels(from: texture)
+
+        for col in 0..<text.count {
+            let ink = inkedPixels(bytes, width: width, metrics: metrics, col: col, row: 0, background: Self.black)
+            #expect(ink > 0, "column \(col) vanished into the background: the palette is unset")
+        }
+    }
+
+    @Test func aUsablePaletteIsLeftAlone() {
+        // The fallback must not hijack a frame that has real colours.
+        #expect(MetalRenderer.fallbackForeground != Frame.RGB(0, 0, 0))
+    }
+
+    /// A bold face must always be *some* face: if the family has no bold, the
+    /// regular one is drawn rather than nothing.
+    @Test(.enabled(if: hasMetalDevice))
+    func boldFallsBackToAFaceThatExists() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let metrics = CellMetrics(scale: 2)
+        let atlas = GlyphAtlas(device: device, metrics: metrics)
+        let bold = atlas.styledFont(bold: true, italic: false)
+        #expect(CTFontGetSize(bold) == CTFontGetSize(metrics.ctFont))
+
+        // SF Mono has a real Bold weight, reachable only through
+        // `monospacedSystemFont(ofSize:weight:)`.
+        #expect(metrics.boldFont.fontName != metrics.font.fontName)
+        #expect(CTFontGetSymbolicTraits(bold).contains(.traitBold))
+
+        // A family with no bold at all degrades to itself, never to nothing.
+        let plain = NSFont(name: "Zapfino", size: 13) ?? NSFont.systemFont(ofSize: 13)
+        #expect(CellMetrics.boldCounterpart(of: plain).pointSize == plain.pointSize)
+
+        let shaped = atlas.shape("C", bold: true)
+        #expect(shaped.count == 1)
+        let entry = try #require(atlas.entry(for: shaped[0], subpixel: 0),
+                                 "a bold glyph must rasterize into the atlas")
+        #expect(entry.size.width > 0 && entry.size.height > 0)
+
+        // Bold and regular are different rasters, not one shared cache entry.
+        let regular = atlas.shape("C")
+        let regularEntry = try #require(atlas.entry(for: regular[0], subpixel: 0))
+        #expect(entry.rect != regularEntry.rect)
+    }
+
     private func demoFrame() -> Frame {
         let cols = 10
         var hello: [Frame.Cell] = []
