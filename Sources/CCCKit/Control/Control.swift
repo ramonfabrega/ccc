@@ -205,12 +205,19 @@ public struct StatsInfo: Codable, Sendable {
     /// has no screen.
     public var paneFramesPresented: Int?
     public var paneLastPresentedSecondsAgo: Double?
+    /// The build serving the socket, so `ccc stats` from a newer command on
+    /// PATH can say "the app is 4 builds behind, restart it" instead of
+    /// meeting a "malformed request" on the next new verb. Optional: an
+    /// older server sends no such key.
+    public var build: BuildInfo?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
                 hosts: [HostPollStats]? = nil,
                 ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double,
-                paneFramesPresented: Int? = nil, paneLastPresentedSecondsAgo: Double? = nil) {
+                paneFramesPresented: Int? = nil, paneLastPresentedSecondsAgo: Double? = nil,
+                build: BuildInfo? = .current) {
+        self.build = build
         self.modelJoin = modelJoin
         self.hosts = hosts
         self.paneFramesPresented = paneFramesPresented

@@ -75,9 +75,16 @@ cut from the branch master fast-forwards to, and rebuild the dev copy after.
 ## First install on a new Mac
 
 Download `https://cdn.ramonfabrega.com/ccc/ccc-latest.zip`, open it, drag
-`ccc.app` to `~/Applications`, launch. Then, for the command:
+`ccc.app` to `~/Applications`, launch. On first launch the app offers to
+install the `ccc` command — a symlink into the bundle, in the first of
+`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` that is writable
+(VS Code's pattern). "Install ‘ccc’ Command…" in the app menu and
+`ccc install-cli` do the same later; by hand it is
 ```sh
 ln -sf ~/Applications/ccc.app/Contents/MacOS/ccc /opt/homebrew/bin/ccc
 ```
 From then on the app updates itself; the symlink survives, since Sparkle
-replaces the bundle at the same path.
+replaces the bundle at the same path. `ccc version` says which build the
+command is; `ccc stats` says which build the app on the socket is, and
+`ccc hosts check` says which build each host's ccc is — skew is a number
+on the row, not a decode failure.

@@ -89,6 +89,19 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      daemon's PTY is last-resize-wins across viewers (§4c), so decide
      whether a secondary viewer renders the session's grid as-is instead
      of resizing it. Nice-to-have; the agents view has the same wart.
+     **Install polish — done 2026-09-02**, the part of this slice a
+     second Mac needed first: the app offers to install its command on
+     first launch when none is on PATH (or the one there dangles), with
+     `ccc install-cli` and a menu item as its twins; `ccc version` reads
+     version and build from the bundle the executable actually lives in
+     (symlinks resolved, so the command on PATH answers for the app);
+     `ccc stats` carries the socket-holder's build and says "N builds
+     older, restart it" instead of meeting a malformed request on the
+     next new verb; `ccc hosts check` asks the far side's `ccc version
+     --json` on the warm master and prints its build and the skew as a
+     number — an older ccc there is named as predating the verb. Proved
+     against `loop`: `ccc 0.1.4 (55)`, skew 0, and the installed v0.1.4
+     reported as the older one.
 - **Release lane — done 2026-09-02, v0.1.0 cut.** The fleet's mux/disk
   flow (docs/DESIGN.md §6, RELEASES.md): Developer ID + hardened runtime,
   notarized (accepted first submission) and stapled, Sparkle appcast on the

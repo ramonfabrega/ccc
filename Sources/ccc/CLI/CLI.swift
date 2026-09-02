@@ -13,6 +13,8 @@ import Foundation
 ///   ccc detach                        detach the pane
 ///   ccc stats [--json]                memory, poll latency, PTY throughput
 ///   ccc replay <bytes> [--cols N --rows N]   render recorded bytes headlessly
+///   ccc version                       which build this is (the bundle's)
+///   ccc install-cli [--dir <dir>]     `ccc` on PATH as a symlink into the bundle
 @MainActor
 enum CLI {
     static func run(_ arguments: [String]) async -> Int32 {
@@ -25,6 +27,11 @@ enum CLI {
             switch verb {
             case "help", "--help", "-h":
                 return usage(to: .standardOutput, status: 0)
+            case "version", "--version", "-v":
+                if json { printJSON(BuildInfo.current) } else { print(BuildInfo.current.description) }
+                return 0
+            case "install-cli":
+                return installCLI(directory: stringFlag("--dir", rest), force: rest.contains("--force"), json: json)
             case "list":
                 return try await list(host: stringFlag("--host", rest), json: json)
             case "hosts":
@@ -254,7 +261,14 @@ enum CLI {
             struct Check: Encodable {
                 var host: String; var ok: Bool; var ms: Double; var reader: String
                 var sessions: Int?; var models: Int?; var home: String?; var error: String?
+                /// The far side's ccc, when that is the reader: its version
+                /// and build, and the build's distance from this Mac's
+                /// (negative = behind). A number, so "air is four builds
+                /// behind studio" is read off the row rather than deduced
+                /// from a decode failure.
+                var ccc: BuildInfo?; var buildSkew: Int?
             }
+            let mine = BuildInfo.current
             var results: [Check] = []
             var learned = false
             for host in targets {
@@ -295,9 +309,22 @@ enum CLI {
                     let ms = elapsedMs(since: started)
                     if cli.rosterSource == .ccc {
                         let rows = try JSONDecoder.roster.decode([SessionRow].self, from: reading.data)
-                        results.append(Check(host: host.name, ok: true, ms: ms, reader: reader,
-                                             sessions: rows.count, models: rows.count { $0.model != nil },
-                                             home: home, error: reading.warning))
+                        var check = Check(host: host.name, ok: true, ms: ms, reader: reader,
+                                          sessions: rows.count, models: rows.count { $0.model != nil },
+                                          home: home, error: reading.warning)
+                        // The roster worked, so the hop is warm: one more
+                        // round trip says which build answered it.
+                        if !host.isLocal {
+                            do {
+                                check.ccc = try await cli.cccVersion()
+                                if let theirs = check.ccc?.build, let ours = mine.build { check.buildSkew = theirs - ours }
+                            } catch let error as ClaudeCLI.RunError where error.status == 2 {
+                                check.error = (check.error.map { $0 + "; " } ?? "") + "ccc there predates `ccc version` (build < 56); update it"
+                            } catch {
+                                check.error = (check.error.map { $0 + "; " } ?? "") + "\(error)"
+                            }
+                        }
+                        results.append(check)
                     } else {
                         let decoded = RosterDecoder.decode(reading.data)
                         results.append(Check(host: host.name, ok: true, ms: ms, reader: reader,
@@ -318,7 +345,13 @@ enum CLI {
                                     : String(format: "FAIL %5.0f ms  %-6@", r.ms, r.reader as NSString)
                     let models = r.models.map { ", \($0) with a model" } ?? ""
                     let home = r.host == Host.localName ? "" : (r.home.map { "  home \($0)" } ?? "  home unknown")
-                    print("\(name)  \(head)\(models)\(home)\(r.error.map { "  \($0)" } ?? "")")
+                    var build = r.ccc.map { "  ccc \($0.short)" } ?? ""
+                    if let skew = r.buildSkew, skew != 0 {
+                        let n = abs(skew), s = n == 1 ? "" : "s"
+                        build += skew < 0 ? " — \(n) build\(s) behind this Mac's \(mine.short)"
+                                          : " — \(n) build\(s) ahead of this Mac's \(mine.short)"
+                    }
+                    print("\(name)  \(head)\(models)\(build)\(home)\(r.error.map { "  \($0)" } ?? "")")
                 }
             }
             return results.allSatisfy(\.ok) ? 0 : 1
@@ -326,6 +359,28 @@ enum CLI {
         default:
             stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check|reconnect)")
             return 2
+        }
+    }
+
+    /// The app's first-launch offer, by hand. Idempotent: an existing link
+    /// to this build is reported, not remade.
+    static func installCLI(directory: String?, force: Bool, json: Bool) -> Int32 {
+        let me = BuildInfo.current
+        guard me.isBundled else {
+            stderr("ccc: this is a dev build (\(me.executablePath)), not an installed app; `scripts/install` links the dev lane")
+            return 1
+        }
+        do {
+            let result = try CLIInstall.install(executable: me.executablePath, directory: directory, force: force)
+            if json {
+                printJSON(["path": result.path, "replaced": result.replaced ?? "", "build": me.short])
+            } else {
+                print("\(result.description)  (\(me.short))")
+            }
+            return 0
+        } catch {
+            stderr("ccc: \(error)")
+            return 1
         }
     }
 
@@ -544,7 +599,17 @@ enum CLI {
     static func printStats(_ s: StatsInfo) {
         func mb(_ b: UInt64?) -> String { b.map { String(format: "%.1f MB", Double($0) / 1_048_576) } ?? "-" }
         func ms(_ v: Double?) -> String { v.map { String(format: "%.0f ms", $0) } ?? "-" }
-        print("ccc pid \(s.pid)  memory \(mb(s.footprintBytes))  uptime \(Int(s.uptimeSeconds))s")
+        let build = s.build.map { " \($0.short)" } ?? ""
+        print("ccc\(build)  pid \(s.pid)  memory \(mb(s.footprintBytes))  uptime \(Int(s.uptimeSeconds))s")
+        // The command on PATH and the app on the socket are the same file
+        // until an update lands while the app is up; then the difference
+        // is a number and a restart, not a "malformed request" on the next
+        // new verb.
+        let mine = BuildInfo.current
+        if let theirs = s.build?.build, let ours = mine.build, theirs != ours {
+            let n = abs(ours - theirs), plural = n == 1 ? "" : "s"
+            print("  ⚠ this command is \(mine.short); the app on the socket is \(n) build\(plural) \(theirs < ours ? "older — restart it" : "newer")")
+        }
         if let child = s.childPID { print("child pid \(child)  memory \(mb(s.childFootprintBytes))") }
         print("roster poll  last \(ms(s.lastPollMs))  mean \(ms(s.meanPollMs))  n=\(s.pollCount)")
         // Per host once there is more than one, or one that is failing:
@@ -613,6 +678,8 @@ enum CLI {
                ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
                ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
+               ccc version [--json]               this build (version, build number, bundle)
+               ccc install-cli [--dir <dir>] [--force]   link `ccc` on PATH into the installed app
 
         """.utf8))
         return status

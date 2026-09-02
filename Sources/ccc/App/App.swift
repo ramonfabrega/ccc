@@ -48,6 +48,7 @@ enum App {
         installStatusItem()
         window.showWindow(nil)
         NSApp.activate()
+        offerCommandLineTool()
         // A relaunch — Sparkle's, or ⌘Q and back — lands on the session the
         // window was in, the way the agents view keeps its focus. After the
         // first poll, so a session that ended meanwhile is not attached to.
@@ -74,6 +75,54 @@ enum App {
 
     func applicationWillTerminate(_ notification: Notification) {
         controller?.stop()
+    }
+
+    // MARK: the command
+
+    private static let cliOfferDeclinedKey = "cliInstallDeclined"
+
+    /// First launch on a new Mac (VS Code's pattern): with no `ccc` on PATH
+    /// — or one whose target is gone — offer to link it into this bundle.
+    /// Once, unless asked again from the menu; a `ccc` that is someone
+    /// else's is left alone. Only an installed app has anything to link:
+    /// the dev lane is `scripts/install`, and a bare binary stays quiet.
+    private func offerCommandLineTool() {
+        guard BuildInfo.current.isBundled else { return }
+        guard !UserDefaults.standard.bool(forKey: Self.cliOfferDeclinedKey) else { return }
+        let status = CLIInstall.status()
+        let why: String
+        switch status {
+        case .installed, .foreign: return
+        case .missing: why = "The `ccc` command is not on your PATH."
+        case .dangling(let path, let target): why = "\(path) points at \(target), which is gone."
+        }
+        let alert = NSAlert()
+        alert.messageText = "Install the ‘ccc’ command?"
+        alert.informativeText = why + " Installing links it into this app, so the command and the app are always the same build — and the link survives updates."
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Not Now")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don’t ask again"
+        let choice = alert.runModal()
+        if alert.suppressionButton?.state == .on {
+            UserDefaults.standard.set(true, forKey: Self.cliOfferDeclinedKey)
+        }
+        guard choice == .alertFirstButtonReturn else { return }
+        installCommandLineTool(nil)
+    }
+
+    /// The menu's twin of `ccc install-cli`: relinks, and says where.
+    @objc private func installCommandLineTool(_ sender: Any?) {
+        do {
+            let result = try CLIInstall.install()
+            window?.showNotice("installed: \(result.description)")
+            UserDefaults.standard.removeObject(forKey: Self.cliOfferDeclinedKey)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could not install the ‘ccc’ command"
+            alert.informativeText = "\(error)\n\nBy hand:\nln -sf \(BuildInfo.current.executablePath) /opt/homebrew/bin/ccc"
+            alert.runModal()
+        }
     }
 
     // MARK: menubar
@@ -105,6 +154,9 @@ enum App {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About ccc", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(updater.menuItem())
+        let install = appMenu.addItem(withTitle: "Install ‘ccc’ Command…", action: #selector(installCommandLineTool(_:)), keyEquivalent: "")
+        install.target = self
+        install.isEnabled = BuildInfo.current.isBundled
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide ccc", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit ccc", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

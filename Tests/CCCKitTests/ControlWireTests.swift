@@ -59,6 +59,16 @@ import Testing
         """.utf8)
         let stats = try JSONDecoder().decode(StatsInfo.self, from: json)
         #expect(stats.hosts == nil)
+        #expect(stats.build == nil)
         #expect(stats.pollCount == 5)
+    }
+
+    /// The far side's `ccc version --json` is read by `hosts check`; a
+    /// newer ccc adding fields there must not break an older reader, and
+    /// the two fields that carry the number are the ones pinned.
+    @Test func versionCrossesTheHopOnTwoFields() throws {
+        let json = Data(#"{"version":"0.1.5","build":57,"executablePath":"/x/ccc.app/Contents/MacOS/ccc","bundlePath":"/x/ccc.app","futureKey":true}"#.utf8)
+        let info = try JSONDecoder().decode(BuildInfo.self, from: json)
+        #expect(info.short == "0.1.5 (57)")
     }
 }

@@ -289,7 +289,7 @@ public struct ClaudeCLI: Sendable {
     public func rosterJSON() async throws -> RosterReading {
         try prepareControlDirectory()
         let accepted: Set<Int32> = rosterSource == .ccc ? [0, 3] : [0]
-        let result = try await run(rosterArgv(), accepting: accepted)
+        let result = try await run(rosterArgv(), accepting: accepted, program: rosterSource == .ccc ? "ccc" : "claude")
         guard result.status != 0 else { return RosterReading(data: result.stdout, warning: nil) }
         let said = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         return RosterReading(data: result.stdout,
@@ -315,13 +315,31 @@ public struct ClaudeCLI: Sendable {
         }
     }
 
-    private func run(_ argv: [String]) async throws -> Data {
-        try await run(argv, accepting: [0]).stdout
+    /// The far side's `ccc version --json` — which build answers this
+    /// host's roster. `nil` when the host reads through the harness (no
+    /// `ccc` there). Rides the same master as the poll, so on a warm
+    /// connection it costs one round trip and no handshake. An older ccc
+    /// with no `version` verb exits 2, which the caller reports as "older
+    /// than the first build that can say".
+    public func cccVersion() async throws -> BuildInfo? {
+        guard let ccc = host.ccc else { return nil }
+        guard let destination = host.ssh else { return BuildInfo.current }
+        try prepareControlDirectory()
+        let out = try await run(sshPrefix(tty: false, destination: destination) + [ccc, "version", "--json"], program: "ccc")
+        do {
+            return try JSONDecoder().decode(BuildInfo.self, from: out)
+        } catch {
+            throw RunError(status: 0, stderr: "`ccc version --json` on \(host.name) answered something that is not a build", host: host.name, program: "ccc")
+        }
+    }
+
+    private func run(_ argv: [String], program: String = "claude") async throws -> Data {
+        try await run(argv, accepting: [0], program: program).stdout
     }
 
     private func run(_ argv: [String],
-                     accepting accepted: Set<Int32>) async throws -> (stdout: Data, stderr: String, status: Int32) {
-        let program = rosterSource == .ccc && argv.contains("list") ? "ccc" : "claude"
+                     accepting accepted: Set<Int32>,
+                     program: String) async throws -> (stdout: Data, stderr: String, status: Int32) {
         let process = Process()
         process.executableURL = URL(filePath: argv[0])
         process.arguments = Array(argv.dropFirst())
