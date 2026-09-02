@@ -17,8 +17,16 @@ final class PaneController {
     /// Called when a session is attached; the window mounts `host.view`.
     var onSessionStarted: ((AttachSession) -> Void)?
     /// The host factory: off-screen for headless, in-window for the app.
+    /// `CCC_CORE=ghostty` selects the v1 pane (libghostty-vt + our Metal
+    /// renderer); the default stays SwiftTerm until the six checks are won.
     var makeHost: @MainActor (Int, Int) -> TerminalHost = { cols, rows in
-        SwiftTermHost(frame: CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows))
+        PaneController.makeDefaultHost(frame: CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows))
+    }
+
+    static var selectedCore: String { ProcessInfo.processInfo.environment["CCC_CORE"] ?? "swiftterm" }
+
+    static func makeDefaultHost(frame: CGRect) -> TerminalHost {
+        selectedCore == "ghostty" ? GhosttyPane(frame: frame) : SwiftTermHost(frame: frame)
     }
     /// Sizes the window (or nothing, headless) wants the next attach to use.
     var defaultSize: (cols: Int, rows: Int) = (120, 40)

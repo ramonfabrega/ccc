@@ -34,7 +34,7 @@ final class MainWindowController: NSWindowController {
         build()
         controller.makeHost = { [weak self] cols, rows in
             let bounds = self?.paneContainer.bounds ?? CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows)
-            return SwiftTermHost(frame: bounds)
+            return PaneController.makeDefaultHost(frame: bounds)
         }
         controller.onSessionStarted = { [weak self] session in self?.mount(session) }
         controller.onSessionEnded = { [weak self] _ in self?.unmount() }
@@ -159,6 +159,11 @@ final class MainWindowController: NSWindowController {
             // hears the size it actually got, not the pre-mount estimate.
             let dims = host.size
             session.viewResized(cols: dims.cols, rows: dims.rows)
+        } else if let pane = session.host as? GhosttyPane {
+            pane.onSizeChanged = { [weak session] cols, rows in session?.viewResized(cols: cols, rows: rows) }
+            let dims = pane.size
+            pane.resize(cols: dims.cols, rows: dims.rows)
+            session.viewResized(cols: dims.cols, rows: dims.rows)
         }
         window?.title = "ccc — \(session.id)"
     }
@@ -210,6 +215,19 @@ final class MainWindowController: NSWindowController {
         guard let window, let content = window.contentView,
               let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return nil }
         content.cacheDisplay(in: content.bounds, to: rep)
+        // A Metal layer is invisible to cacheDisplay; composite the pane's
+        // own offscreen render into its place so peek shows the v1 pane too.
+        if let pane = controller.session?.host as? GhosttyPane, let view = pane.view, let image = pane.snapshotImage(),
+           let context = NSGraphicsContext(bitmapImageRep: rep) {
+            let frameInContent = view.convert(view.bounds, to: content)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            // cacheDisplay draws in the content view's coordinate space (flipped or not);
+            // NSBitmapImageRep contexts are bottom-left, so flip y for a non-flipped content view.
+            let y = content.isFlipped ? content.bounds.height - frameInContent.maxY : frameInContent.minY
+            context.cgContext.draw(image, in: CGRect(x: frameInContent.minX, y: y, width: frameInContent.width, height: frameInContent.height))
+            NSGraphicsContext.restoreGraphicsState()
+        }
         return rep.representation(using: .png, properties: [:])
     }
 }
