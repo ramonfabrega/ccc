@@ -43,6 +43,10 @@ enum CLI {
                 return try request(.stats, json: json)
             case "peek":
                 return try peek(to: rest.first(where: { !$0.hasPrefix("--") }))
+            case "bench":
+                guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
+                                       repeats: intFlag("--repeat", rest) ?? 200, core: stringFlag("--core", rest), json: json)
             case "window":
                 guard let action = rest.first, ["show", "hide", "close"].contains(action) else { return usage() }
                 return try request(.window(action: action), json: json)
@@ -130,6 +134,50 @@ enum CLI {
         let out = path ?? NSTemporaryDirectory() + "ccc-peek-\(Int(Date().timeIntervalSince1970)).png"
         try png.write(to: URL(filePath: out))
         print(out)
+        return 0
+    }
+
+    /// Check 4 of docs/CHECKS.md: streaming throughput of a core. Feeds the
+    /// recording `repeats` times as the PTY would (chunk by chunk) and times
+    /// parse and snapshot separately. `--core` omitted runs both.
+    static func bench(path: String, cols: Int, rows: Int, repeats: Int, core: String?, json: Bool) async throws -> Int32 {
+        let bytes = try Data(contentsOf: URL(filePath: path))
+        let chunks: [Data] = {
+            // Prefer the recording's real chunking when its .events file sits beside it.
+            let events = URL(filePath: path).deletingPathExtension().appendingPathExtension("events")
+            if let text = try? String(contentsOf: events, encoding: .utf8) {
+                var out: [Data] = []
+                for line in text.split(separator: "\n") {
+                    let parts = line.split(separator: " ").compactMap { Int($0) }
+                    guard parts.count == 3, parts[1] + parts[2] <= bytes.count else { continue }
+                    out.append(bytes.subdata(in: parts[1]..<(parts[1] + parts[2])))
+                }
+                if !out.isEmpty { return out }
+            }
+            return stride(from: 0, to: bytes.count, by: 4096).map { bytes.subdata(in: $0..<min($0 + 4096, bytes.count)) }
+        }()
+        struct Result: Encodable { var core: String; var bytes: Int; var repeats: Int; var parseMs: Double; var snapshotMs: Double; var mbPerSecond: Double; var footprintMB: Double }
+        var results: [Result] = []
+        for name in (core.map { [$0] } ?? ["swiftterm", "ghostty"]) {
+            let host: TerminalHost = name == "ghostty" ? GhosttyHost(cols: cols, rows: rows) : HeadlessHost(cols: cols, rows: rows)
+            let clock = ContinuousClock()
+            let parse = clock.measure {
+                for _ in 0..<repeats { for chunk in chunks { host.feed(chunk) } }
+            }
+            let snap = clock.measure { for _ in 0..<repeats { _ = host.snapshot() } }
+            let parseMs = Double(parse.components.seconds) * 1000 + Double(parse.components.attoseconds) / 1e15
+            let snapMs = Double(snap.components.seconds) * 1000 + Double(snap.components.attoseconds) / 1e15
+            let total = Double(bytes.count * repeats)
+            results.append(Result(core: name, bytes: bytes.count, repeats: repeats, parseMs: parseMs, snapshotMs: snapMs,
+                                  mbPerSecond: total / 1_048_576 / (parseMs / 1000),
+                                  footprintMB: Double(ProcessStats.footprint(of: getpid()) ?? 0) / 1_048_576))
+        }
+        if json { printJSON(results) } else {
+            for r in results {
+                print(String(format: "%-9@ parse %8.1f ms (%6.1f MB/s)   snapshot %7.2f ms/frame   footprint %.1f MB",
+                             r.core as NSString, r.parseMs, r.mbPerSecond, r.snapshotMs / Double(max(1, repeats)), r.footprintMB))
+            }
+        }
         return 0
     }
 
@@ -224,6 +272,7 @@ enum CLI {
                ccc peek [out.png]                 PNG of the app window (no screen permission)
                ccc window show|hide|close         the window's own gestures (close = Cmd-W)
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
+               ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
 
         """.utf8))
         return status

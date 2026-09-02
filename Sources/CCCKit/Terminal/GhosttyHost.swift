@@ -10,7 +10,11 @@ import GhosttyVt
 /// first check is "does the new core produce the v0 golden grids".
 @MainActor
 public final class GhosttyHost: TerminalHost {
-    private var terminal: GhosttyTerminal?
+    /// Internal, non-owning read for `GhosttyKeys` (the encoder syncs its
+    /// options from this terminal's live modes). Nothing outside the package
+    /// touches the raw handle.
+    private(set) var terminal: GhosttyTerminal?
+    private var keys: GhosttyKeys?
     private var renderState: GhosttyRenderState?
     private var rowIterator: GhosttyRenderStateRowIterator?
     private var rowCells: GhosttyRenderStateRowCells?
@@ -84,10 +88,20 @@ public final class GhosttyHost: TerminalHost {
         _ = ghostty_terminal_resize(terminal, cols, rows, cellSize.width, cellSize.height)
     }
 
-    /// Keys are the core's job (CLAUDE.md), and the core ships an encoder;
-    /// wiring `ghostty_key_encoder_*` to `NamedKey` is the next step. Until
-    /// then this host cannot press keys.
-    public func press(_ key: NamedKey) -> Bool { false }
+    /// Keys are the core's job (CLAUDE.md): `GhosttyKeys` hands the event to
+    /// `ghostty_key_encoder_encode`, whose options are synced from this
+    /// terminal first, so the bytes match what the child negotiated (kitty
+    /// CSI-u, DECCKM, DECBKM). False when the core produced nothing — a bare
+    /// modifier, or an unmapped key.
+    public func press(_ key: NamedKey) -> Bool {
+        guard terminal != nil else { return false }
+        let keys = self.keys ?? GhosttyKeys(terminal: terminal)
+        self.keys = keys
+        let bytes = keys.encode(key)
+        guard !bytes.isEmpty else { return false }
+        onOutput?(bytes)
+        return true
+    }
 
     // MARK: snapshot
 
