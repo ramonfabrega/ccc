@@ -50,12 +50,14 @@ Each line cost a crash or a wrong byte before it was written down.
   with `consume: false`.
 - `GhosttyCell` is a packed `uint64_t`, passed **by value** to
   `ghostty_cell_get`.
-- **Sized structs** (`GhosttyStyle`, `GhosttyRenderStateColors`,
-  `GhosttyPaste`, and every struct with a leading `size_t size`): set
-  `size = MemoryLayout<T>.size` before passing them in, or the library
-  fills nothing and returns success. Swift's `T()` zero-initializes
-  `size`. Cost: every default-colored cell drew black on black, found by
-  `ccc peek` and misdiagnosed as a bold-glyph bug for an hour.
+- **Sized structs — a library-wide convention, not a gotcha.** Every struct
+  with a leading `size_t size` (`GhosttyStyle`, `GhosttyRenderStateColors`,
+  `GhosttyPaste`, `GhosttyMouseEncoderSize`, …): set
+  `size = MemoryLayout<T>.size` before the call. **A zeroed one succeeds
+  and does nothing.** Swift's `T()` zero-initializes `size`. Instances so
+  far: default fg drawn black on black (misdiagnosed as a bold-glyph bug
+  for an hour); mouse encoder sized 1×1 so every position but (0,0)
+  encoded to silence.
 - `modes.h`'s `GHOSTTY_MODE_*` are macros over a static inline and do not
   import into Swift; call `ghostty_mode_new(n, false)`.
 - `GhosttyKey.rawValue` imports as `Int32`.
