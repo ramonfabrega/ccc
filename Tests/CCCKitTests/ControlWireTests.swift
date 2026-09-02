@@ -36,4 +36,29 @@ import Testing
         #expect(wheel == nil)
         #expect(paste == nil)
     }
+
+    @Test func reconnectCarriesAnOptionalHost() throws {
+        guard case .reconnect(let host) = try roundTrip(.reconnect(host: "studio")) else {
+            Issue.record("not a reconnect")
+            return
+        }
+        #expect(host == "studio")
+        guard case .reconnect(let all) = try roundTrip(.reconnect(host: nil)) else {
+            Issue.record("not a reconnect")
+            return
+        }
+        #expect(all == nil)
+    }
+
+    /// A v1 server sends no `hosts` key in its stats; this CLI must still
+    /// read them.
+    @Test func statsWithoutHostsStillDecode() throws {
+        let json = Data("""
+        {"pid":1,"footprintBytes":2,"lastPollMs":3,"meanPollMs":4,"pollCount":5,
+         "ptyBytesIn":6,"ptyBytesPerSecond":7,"uptimeSeconds":8}
+        """.utf8)
+        let stats = try JSONDecoder().decode(StatsInfo.self, from: json)
+        #expect(stats.hosts == nil)
+        #expect(stats.pollCount == 5)
+    }
 }

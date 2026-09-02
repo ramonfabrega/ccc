@@ -47,6 +47,11 @@ import Testing
         // sockaddr_un caps a unix socket path near 104 bytes, which is why
         // the name in it is the host's, not the ssh destination's.
         #expect(socket.utf8.count < 104)
+        // `-o ControlPath=` is parsed like a config line: a space in the
+        // path is "extra arguments at end of line" and every ssh fails.
+        // (Application Support has one; Caches does not.)
+        let hasWhitespace = socket.contains { $0.isWhitespace }
+        #expect(!hasWhitespace)
     }
 
     @Test func remotePollFailsFastRatherThanHangingATick() {

@@ -32,10 +32,28 @@ Each milestone is comparable against `claude agents` on its own. Experiments
        `done · idle` in the roster after. Ctrl+Z crosses the hop.
      - `ccc list` with no remote host is unchanged from v1: no host column,
        model column populated.
-  2. **Poll fan-out.** One poller per host, merged; per-host error and shape
-     issues (one unreachable host must never blank the roster or raise a
-     global banner); concurrent ticks so a 5 s timeout on one host cannot
-     delay the 149 ms local poll. **Reframed 2026-09-02 (docs/DESIGN.md
+  2. **Poll fan-out — done 2026-09-02.** One `HostPoller` per host, merged
+     at read time (`RosterPoller.State.hosts`); a failed host keeps its last
+     rows marked stale, its error is one line naming it, and the roster's
+     own error exists only when *every* host failed. One in-flight tick per
+     host, ticks concurrent: live, `local 187 ms · loop 216 ms · dead
+     5013 ms` in one `ccc list` of 5.0 s wall, exit 0 with 20 rows and one
+     stderr line for `dead`. Eviction of a wedged master on a degraded poll
+     or a failed hop (`evictions` in `ccc stats`), `NSWorkspace.didWake` →
+     `PaneController.reconnect()`, and its twin `ccc hosts reconnect
+     [<name>]` (through the app's socket, or evict-and-check without one;
+     an older app answering "malformed" falls back the same way). The cwd
+     `~` bug is fixed by learning the far side's home at `hosts add` /
+     `check` (`Host.home`, `HostConfig.shortCwd`). `ccc list` now spans
+     every host, `--host` narrows — and the remote reader asks
+     `--host local`, or two Macs that list each other would poll forever.
+     **Found by doing it:** the default control-socket directory under
+     Application Support has a space, which `-o ControlPath=` rejects
+     ("extra arguments at end of line"); every ssh through the default path
+     had been failing, hidden by slice 1's `CCC_SSH_CONTROL_DIR` override.
+     Sockets now live under `~/Library/Caches/ccc/ssh`. Remote-pane
+     reattach on wake is in (`sshExit` within 20 s of wake → same argv)
+     but has not been through a real sleep yet. **Reframed 2026-09-02 (docs/DESIGN.md
      §4b): the thing that sleeps is the client, not the host** — air runs no
      sessions and studio is always up — so the slice's real content is
      reconnect hygiene, and the measured bug to fix is that ssh never evicts
@@ -44,7 +62,7 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      both roster faces shorten a cwd by substituting *this* Mac's home path,
      which is wrong for a host whose username differs (invisible against
      `loop`, since it is the same machine; real now — air's user is
-     `rf-air`, studio's is `rf-studio`). **Measured with a real lid
+     `rf-air`, studio's is `rf-studio`; fixed above). **Measured with a real lid
      2026-09-02 (docs/DESIGN.md §4b):** a two-minute sleep on the tailnet
      is clean — the master survives, first poll 2.1 s, no eviction needed.
      Eviction stays as insurance until a long sleep is measured; the

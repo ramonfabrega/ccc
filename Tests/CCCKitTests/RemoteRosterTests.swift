@@ -15,7 +15,9 @@ import Testing
     @Test func aRemoteHostWithCCCReadsThroughOurOwnTwin() {
         let cli = ClaudeCLI(executable: "~/.local/bin/claude", host: remoteHost)
         #expect(cli.rosterSource == .ccc)
-        #expect(cli.rosterArgv().suffix(3) == ["~/.local/bin/ccc", "list", "--json"])
+        // `--host local`, or the far side would poll every host *it* knows —
+        // which may include us, which would poll it, which…
+        #expect(cli.rosterArgv().suffix(5) == ["~/.local/bin/ccc", "list", "--json", "--host", "local"])
         // Still one round trip on the shared master, like every other call.
         #expect(cli.rosterArgv().contains("ControlPath=\(cli.sshControlPath)"))
         #expect(!cli.rosterArgv().contains("-t"))

@@ -66,10 +66,17 @@ public struct ClaudeCLI: Sendable {
     /// the first of a 2 s poll pays a TCP + auth handshake. `ControlPersist`
     /// keeps it warm across polls, and well past the interval so a run of
     /// failures does not re-handshake every tick.
+    ///
+    /// Under `~/Library/Caches`, not Application Support: `-o ControlPath=`
+    /// is parsed like a config line, so a path with a space
+    /// ("Application Support") fails with "extra arguments at end of line"
+    /// — found 2026-09-02, the day the default path was first used without
+    /// `CCC_SSH_CONTROL_DIR` set. Sockets are ephemeral, which is what
+    /// Caches is for.
     public static var sshControlDirectory: String {
         if let override = ProcessInfo.processInfo.environment["CCC_SSH_CONTROL_DIR"], !override.isEmpty { return override }
         return FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appending(path: "ccc/ssh").path
     }
 
@@ -83,6 +90,17 @@ public struct ClaudeCLI: Sendable {
         try FileManager.default.createDirectory(atPath: Self.sshControlDirectory,
                                                 withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
+    }
+
+    /// Unlink this host's master socket, so the next ssh makes a fresh
+    /// master instead of retrying a wedged one (docs/DESIGN.md §4b: ssh
+    /// itself never evicts it). The orphaned master, if any, exits on its
+    /// own once `ControlPersist` runs out. `false` when there was nothing
+    /// to evict — a local host, or no socket.
+    @discardableResult
+    public func evictControlMaster() -> Bool {
+        guard !host.isLocal else { return false }
+        return unlink(sshControlPath) == 0
     }
 
     /// `arguments` as ccc would run them on `host`. Local: the executable
@@ -136,10 +154,33 @@ public struct ClaudeCLI: Sendable {
     }
 
     /// The argv that produces this host's roster, whichever reader that is.
+    ///
+    /// `--host local` is not optional: `ccc list` spans every host it
+    /// knows, and the far side may well list *us*. Without it, air asking
+    /// studio would have studio ask air, which asks studio…
     public func rosterArgv() -> [String] {
         guard rosterSource == .ccc, let ccc = host.ccc else { return agentsArgv() }
-        guard let destination = host.ssh else { return [ccc, "list", "--json"] }
-        return sshPrefix(tty: false, destination: destination) + [ccc, "list", "--json"]
+        let words = [ccc, "list", "--json", "--host", Host.localName]
+        guard let destination = host.ssh else { return words }
+        return sshPrefix(tty: false, destination: destination) + words
+    }
+
+    /// The far side's home directory, by asking its login shell to expand
+    /// `~` — the same expansion every remote path here relies on. This is
+    /// what makes `~/code` mean the right thing on a host whose username
+    /// differs (air is `rf-air`, studio is `rf-studio`). Local answers
+    /// without a process.
+    public func home() async throws -> String {
+        guard let destination = host.ssh else {
+            return FileManager.default.homeDirectoryForCurrentUser.path
+        }
+        try prepareControlDirectory()
+        let out = try await run(sshPrefix(tty: false, destination: destination) + ["echo", "~"])
+        let path = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard path.hasPrefix("/") else {
+            throw RunError(status: 0, stderr: "`echo ~` on \(host.name) answered '\(path)', not a path", host: host.name)
+        }
+        return path
     }
 
     /// The argv for attaching. The PTY execs this.
@@ -194,6 +235,9 @@ public struct ClaudeCLI: Sendable {
         public var status: Int32
         public var stderr: String
         public var host: String
+        /// What was run on the far side — `claude`, or `ccc` for the roster
+        /// twin — so "exited 127" names the missing binary.
+        public var program: String = "claude"
         /// ssh's own failures exit 255 and say nothing about `claude`; naming
         /// the hop is the difference between "the Mac is asleep" and "the
         /// harness is broken".
@@ -201,7 +245,8 @@ public struct ClaudeCLI: Sendable {
             let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             if status == 255 { return "ssh to \(host) failed: \(detail.isEmpty ? "no route or auth refused" : detail)" }
             let where_ = host == Host.localName ? "" : " on \(host)"
-            return "claude\(where_) exited \(status): \(detail)"
+            let hint = status == 127 && program == "ccc" ? " (`ccc hosts add \(host) --ccc <path>` fixes the path, `--no-ccc` reads the harness instead)" : ""
+            return "\(program)\(where_) exited \(status): \(detail)\(hint)"
         }
     }
 
@@ -211,6 +256,7 @@ public struct ClaudeCLI: Sendable {
 
     private func run(_ argv: [String],
                      accepting accepted: Set<Int32>) async throws -> (stdout: Data, stderr: String, status: Int32) {
+        let program = rosterSource == .ccc && argv.contains("list") ? "ccc" : "claude"
         let process = Process()
         process.executableURL = URL(filePath: argv[0])
         process.arguments = Array(argv.dropFirst())
@@ -225,7 +271,7 @@ public struct ClaudeCLI: Sendable {
         process.waitUntilExit()
         let text = String(decoding: stderr, as: UTF8.self)
         guard accepted.contains(process.terminationStatus) else {
-            throw RunError(status: process.terminationStatus, stderr: text, host: host.name)
+            throw RunError(status: process.terminationStatus, stderr: text, host: host.name, program: program)
         }
         return (stdout, text, process.terminationStatus)
     }

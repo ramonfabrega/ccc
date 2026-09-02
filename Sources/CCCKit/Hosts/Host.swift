@@ -31,15 +31,32 @@ public struct Host: Codable, Sendable, Equatable, Identifiable {
     /// `nil` falls back to `claude agents --json --all`, which is exactly
     /// v2 slice 1's behaviour: a correct roster with a blank model column.
     public var ccc: String?
+    /// The far side's home directory, learned by `ccc hosts add` / `check`
+    /// (`ClaudeCLI.home()`), so a cwd can be shortened with *that* Mac's
+    /// `~` rather than this one's — the two differ as soon as the usernames
+    /// do. `nil` until learned; a cwd is then shown in full, which is
+    /// honest, rather than guessed.
+    public var home: String?
 
     public var id: String { name }
     public var isLocal: Bool { ssh == nil }
 
-    public init(name: String, ssh: String? = nil, claude: String? = nil, ccc: String? = nil) {
+    public init(name: String, ssh: String? = nil, claude: String? = nil, ccc: String? = nil, home: String? = nil) {
         self.name = name
         self.ssh = ssh
         self.claude = claude
         self.ccc = ccc
+        self.home = home
+    }
+
+    /// `cwd` with this host's home shortened to `~`. Local uses this
+    /// process's home; a remote host needs `home` learned first.
+    public func shortCwd(_ cwd: String) -> String {
+        let home = isLocal ? FileManager.default.homeDirectoryForCurrentUser.path : self.home
+        guard let home, !home.isEmpty, home != "/" else { return cwd }
+        if cwd == home { return "~" }
+        if cwd.hasPrefix(home + "/") { return "~" + cwd.dropFirst(home.count) }
+        return cwd
     }
 
     public static let localName = "local"
@@ -139,5 +156,13 @@ public struct HostConfig: Codable, Sendable, Equatable {
 
     public func host(named name: String) -> Host? {
         hosts.first { $0.name == name }
+    }
+
+    /// One definition for both faces (the window's row and `ccc list`): a
+    /// row's cwd shortened with the home of the host that answered it. A
+    /// host not in the list — a row from before it was removed — is shown
+    /// in full.
+    public func shortCwd(_ cwd: String, host name: String) -> String {
+        (host(named: name) ?? (name == Host.localName ? .local : nil))?.shortCwd(cwd) ?? cwd
     }
 }

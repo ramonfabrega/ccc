@@ -76,7 +76,7 @@ final class MainWindowController: NSWindowController {
 
         split.isVertical = true
         split.dividerStyle = .thin
-        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, attach: { [weak self] ref in
+        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, hosts: controller.hosts, attach: { [weak self] ref in
             self?.attach(ref)
         }, detach: { [weak self] in
             self?.detachAction(nil)
@@ -122,7 +122,13 @@ final class MainWindowController: NSWindowController {
         var parts: [String] = []
         if let noticeText { parts.append(noticeText) }
         let state = controller.poller.state
-        if let error = state.error { parts.append("harness: \(error)") }
+        // Per host, never roster-wide: studio asleep is one line about
+        // studio, above a roster that still shows this Mac's sessions and
+        // studio's last known ones (marked stale in the footer).
+        for failed in state.failures {
+            let kept = failed.rows.isEmpty ? "" : " — showing its \(failed.rows.count) sessions from \(Self.age(since: failed.lastSuccessAt))"
+            parts.append("\(failed.host): \(failed.error ?? "unreachable")\(kept)")
+        }
         if !state.issues.isEmpty {
             parts.append("roster shape changed — showing what still decodes: " +
                          state.issues.prefix(3).map(\.description).joined(separator: "; ") +
@@ -217,6 +223,16 @@ final class MainWindowController: NSWindowController {
 
     @objc func refreshAction(_ sender: Any?) {
         Task { await controller.poller.tick() }
+    }
+
+    /// "42 s ago", "3 min ago", or "a while ago" when there never was a
+    /// success to date from.
+    static func age(since date: Date?) -> String {
+        guard let date else { return "before" }
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 90 { return "\(seconds) s ago" }
+        if seconds < 5400 { return "\(seconds / 60) min ago" }
+        return "\(seconds / 3600) h ago"
     }
 
     /// The whole window as PNG via our own view hierarchy — TCC-free eyes on

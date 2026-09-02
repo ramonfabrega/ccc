@@ -1,208 +1,136 @@
 import Foundation
 import Observation
 
-/// The 2 s poll (CLAUDE.md "The poll is the first notifier"). Runs
-/// `claude agents --json --all`, decodes leniently, joins the model column
-/// from each session's transcript tail, and publishes one `RosterState`.
-/// The GUI observes it; the CLI runs one tick.
+/// The roster across every host: one `HostPoller` per host, ticking
+/// concurrently, merged when read. Nothing is shared between the pollers —
+/// no row array written from N tasks — so a host that is asleep, wedged, or
+/// misconfigured can only ever affect its own slot (docs/DESIGN.md §4b).
+/// The GUI observes `state`; the CLI runs one `tick()`.
 @MainActor
 @Observable
 public final class RosterPoller {
+    /// The merged view. Built on read from the hosts' slots; nothing here
+    /// is stored twice.
     public struct State: Sendable, Equatable {
-        public var rows: [SessionRow] = []
-        /// Non-empty when the roster changed shape; shown as the banner.
-        public var issues: [RosterShapeIssue] = []
-        /// The harness could not be run at all (not on PATH, non-zero exit).
-        public var error: String?
-        public var lastPolledAt: Date?
-        public var lastPollMs: Double?
-        public var meanPollMs: Double?
-        public var pollCount: Int = 0
-        /// The model join, timed apart from the roster call it rides on.
-        /// The two have different natures — `claude agents` is a process
-        /// spawn we cannot make cheaper, the join is filesystem work we
-        /// control — so one number covering both hides which is which.
-        public var lastModelJoinMs: Double?
-        public var meanModelJoinMs: Double?
-        public var modelCounters: ModelProbe.Counters?
-        /// Calls into `WellPath.locateTranscript` and how many came back
-        /// empty. A miss is the expensive shape: the direct path fails and
-        /// the fallback stats every well (~100 here), and for a session
-        /// whose transcript never appears that repeats every single tick.
-        public var transcriptLookups: Int = 0
-        public var transcriptUnresolved: Int = 0
-        public init() {}
+        public var hosts: [HostPoll]
+
+        public init(hosts: [HostPoll] = []) {
+            self.hosts = hosts
+        }
+
+        /// Every host's rows, stale ones included (`HostPoll.isStale`).
+        public var rows: [SessionRow] { hosts.flatMap(\.rows) }
+        public var issues: [RosterShapeIssue] { hosts.flatMap(\.issues) }
+
+        /// Hosts whose last poll failed. Per host by construction: the
+        /// banner names the host, the others keep their rows.
+        public var failures: [HostPoll] { hosts.filter { $0.error != nil } }
+        /// Every host failed — the only case that is a roster-wide error.
+        /// (One host, as in v1, is the same sentence it always was.)
+        public var error: String? {
+            guard !hosts.isEmpty, failures.count == hosts.count else { return nil }
+            return failures.map { hosts.count == 1 ? $0.error! : "\($0.host): \($0.error!)" }.joined(separator: "; ")
+        }
+        public var anyHostAnswered: Bool { hosts.contains { $0.error == nil && $0.pollCount > 0 } }
+
+        /// The slowest *answering* host's last poll: what the footer shows,
+        /// since the rows are only as fresh as the slowest answer. A host
+        /// that is failing contributes no fresh rows, so its 5 s timeout
+        /// is its own line (`failures`, `ccc stats`), not the roster's
+        /// number — unless nothing answered at all.
+        public var lastPollMs: Double? { measured(\.lastPollMs) }
+        public var meanPollMs: Double? { measured(\.meanPollMs) }
+        private func measured(_ key: KeyPath<HostPoll, Double?>) -> Double? {
+            let healthy = hosts.filter { $0.error == nil }.compactMap { $0[keyPath: key] }
+            return healthy.max() ?? hosts.compactMap { $0[keyPath: key] }.max()
+        }
+        public var pollCount: Int { hosts.map(\.pollCount).max() ?? 0 }
+        public var lastPolledAt: Date? { hosts.compactMap(\.lastPolledAt).max() }
+        /// The local host's join; a remote host's join happened on the far
+        /// side and is not ours to measure.
+        public var modelJoin: ModelJoinStats? { hosts.first { $0.host == Host.localName }?.modelJoin }
+
+        public func host(_ name: String) -> HostPoll? { hosts.first { $0.host == name } }
+
+        /// Presentation order: live and blocked first, then by most recent
+        /// start, across hosts.
+        public var sorted: [SessionRow] {
+            rows.sorted { a, b in
+                let ra = a.session.rank, rb = b.session.rank
+                if ra != rb { return ra < rb }
+                return a.session.startedAt > b.session.startedAt
+            }
+        }
     }
 
-    public private(set) var state = State()
-    public var interval: Duration
-    public var attachedRef: SessionRef?
+    public let pollers: [HostPoller]
+    public var attachedRef: SessionRef? {
+        didSet { for poller in pollers { poller.attachedRef = attachedRef } }
+    }
 
-    private let cli: ClaudeCLI?
-    private let probe = ModelProbe()
-    private var task: Task<Void, Never>?
-    private var totalPollMs: Double = 0
-    private var totalJoinMs: Double = 0
-    private var joinCount: Int = 0
-    /// sessionId → transcript path, once found; saves the well scan.
-    private var transcriptPaths: [String: URL] = [:]
+    public var state: State { State(hosts: pollers.map(\.state)) }
 
-    public init(cli: ClaudeCLI? = ClaudeCLI.locate(), interval: Duration = .seconds(2)) {
-        self.cli = cli
-        self.interval = interval
+    public init(pollers: [HostPoller]) {
+        self.pollers = pollers
+    }
+
+    /// One host — what v1 had, and what `ccc list --host` still wants.
+    public convenience init(cli: ClaudeCLI? = ClaudeCLI.locate(), interval: Duration = .seconds(2)) {
+        self.init(pollers: [HostPoller(cli: cli, interval: interval)])
+    }
+
+    /// Every usable host in a config. A host `ClaudeCLI.of` refuses still
+    /// gets a slot, with the refusal as its error: the roster must say
+    /// "studio: no claude path" rather than quietly listing one host fewer.
+    public convenience init(hosts: HostConfig, interval: Duration = .seconds(2)) {
+        self.init(pollers: hosts.hosts.map { host in
+            HostPoller(cli: ClaudeCLI.of(host), hostName: host.name, interval: interval)
+        })
+    }
+
+    public var interval: Duration {
+        get { pollers.first?.interval ?? .seconds(2) }
+        set { for poller in pollers { poller.interval = newValue } }
     }
 
     public func start() {
-        guard task == nil else { return }
-        task = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await self.tick()
-                try? await Task.sleep(for: self.interval)
-            }
-        }
+        for poller in pollers { poller.start() }
     }
 
     public func stop() {
-        task?.cancel()
-        task = nil
+        for poller in pollers { poller.stop() }
     }
 
-    /// One poll. Public so the CLI and tests can drive it without a loop.
+    /// One poll of every host, concurrently; returns when the slowest has
+    /// answered or timed out. Each host's own in-flight guard means this
+    /// never doubles up on a poller that is already mid-tick.
     public func tick() async {
-        guard let cli else {
-            state.error = "claude not found on PATH (set CCC_CLAUDE to its path)"
-            return
-        }
-        let started = ContinuousClock.now
-        let reading: ClaudeCLI.RosterReading
-        do {
-            reading = try await cli.rosterJSON()
-        } catch {
-            state.error = "\(error)"
-            record(started)
-            return
-        }
-        let data = reading.data
-        // A warning crossed the hop: the far side's banner becomes ours, so
-        // "roster shape changed" on studio is visible from air.
-        let remoteIssues = reading.warning.map { [RosterShapeIssue(message: $0)] } ?? []
-        // The far side's own ccc already did the transcript join, so its
-        // rows arrive finished: take them, and only re-stamp what is ours to
-        // know (which host answered, and what this process is attached to).
-        if cli.rosterSource == .ccc {
-            let hostName = cli.host.name
-            let attached = attachedRef
-            do {
-                let remote = try JSONDecoder.roster.decode([SessionRow].self, from: data)
-                state.rows = remote.map { row in
-                    var row = row
-                    row.host = hostName
-                    row.attached = SessionRef(host: hostName, id: row.session.id) == attached
-                    return row
-                }
-                state.issues = remoteIssues
-                state.error = nil
-            } catch {
-                // Do not silently fall back to the harness reader: that would
-                // trade the model column for a slower tick without saying so.
-                state.error = "\(hostName): could not read `ccc list --json` (\(error.localizedDescription)); "
-                    + "is the remote ccc older than this one? `ccc hosts add \(hostName) --no-ccc` falls back to the harness"
+        await withTaskGroup(of: Void.self) { group in
+            for poller in pollers {
+                group.addTask { await poller.tick() }
             }
-            record(started)
-            return
         }
-        let decoded = RosterDecoder.decode(data)
-        let probe = self.probe
-        let attached = attachedRef
-        let known = transcriptPaths
-        let hostName = cli.host.name
-        // Model lookups touch the filesystem; keep them off the main actor.
-        let isLocal = cli.host.isLocal
-        let joinStarted = ContinuousClock.now
-        let (rows, found, lookups, unresolved) = await Task.detached(priority: .utility) {
-            var found: [String: URL] = [:]
-            var lookups = 0, unresolved = 0
-            let rows = decoded.sessions.map { session -> SessionRow in
-                var model: String?
-                // The transcript is a file under the *session's* `~/.claude`,
-                // so this join only works where the daemon and the filesystem
-                // are the same machine. A remote row shows no model rather
-                // than this Mac's answer to a question about another one;
-                // reading it over the hop is its own decision (docs/DESIGN.md
-                // "The model column over ssh").
-                if isLocal, let id = session.sessionId {
-                    // A cached path can go stale: the transcript follows the
-                    // session's CURRENT worktree well on every entry (lore
-                    // canon e085cbb), so a populated well empties under us.
-                    let cached = known[id].flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
-                    var url = cached
-                    if url == nil {
-                        lookups += 1
-                        url = WellPath.locateTranscript(sessionId: id, cwd: session.cwd)
-                        if url == nil { unresolved += 1 }
-                    }
-                    if let url {
-                        found[id] = url
-                        model = probe.model(forTranscriptAt: url)?.model
-                    }
-                }
-                let ref = SessionRef(host: hostName, id: session.id)
-                return SessionRow(session: session, host: hostName, model: model, attached: ref == attached)
+    }
+
+    /// The wake-up gesture (docs/DESIGN.md §4b): drop every remote host's
+    /// ssh master and poll again at once, so a stale socket costs one fresh
+    /// handshake instead of a 5 s discovery per tick. `host` narrows it.
+    /// Returns what was evicted and what each host answered, for the
+    /// command twin to print.
+    @discardableResult
+    public func reconnect(host name: String? = nil) async -> [HostPoll] {
+        let targets = pollers.filter { name == nil || $0.hostName == name }
+        for poller in targets { poller.evictControlMaster() }
+        await withTaskGroup(of: Void.self) { group in
+            for poller in targets {
+                group.addTask { await poller.tick() }
             }
-            return (rows, found, lookups, unresolved)
-        }.value
-        transcriptPaths.merge(found) { _, new in new }
-        state.rows = rows
-        state.issues = decoded.issues + remoteIssues
-        state.error = nil
-        state.transcriptLookups += lookups
-        state.transcriptUnresolved += unresolved
-        state.modelCounters = probe.stats
-        recordJoin(joinStarted)
-        record(started)
-    }
-
-    private func recordJoin(_ started: ContinuousClock.Instant) {
-        let ms = Self.milliseconds(since: started)
-        state.lastModelJoinMs = ms
-        totalJoinMs += ms
-        joinCount += 1
-        state.meanModelJoinMs = totalJoinMs / Double(joinCount)
-    }
-
-    static func milliseconds(since started: ContinuousClock.Instant) -> Double {
-        let elapsed = started.duration(to: .now)
-        return Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15
-    }
-
-    private func record(_ started: ContinuousClock.Instant) {
-        let ms = Self.milliseconds(since: started)
-        state.lastPolledAt = Date()
-        state.lastPollMs = ms
-        state.pollCount += 1
-        totalPollMs += ms
-        state.meanPollMs = totalPollMs / Double(state.pollCount)
-    }
-}
-
-extension RosterPoller.State {
-    /// The join's cost as `ccc stats` reports it. `nil` before the first
-    /// tick, so an idle process does not claim a measurement it never took.
-    public var modelJoin: ModelJoinStats? {
-        guard let counters = modelCounters else { return nil }
-        return ModelJoinStats(lastMs: lastModelJoinMs, meanMs: meanModelJoinMs,
-                              reads: counters.reads, hits: counters.hits, misses: counters.misses,
-                              lookups: transcriptLookups, unresolved: transcriptUnresolved)
-    }
-
-    /// Presentation order: live and blocked first, then by most recent start.
-    public var sorted: [SessionRow] {
-        rows.sorted { a, b in
-            let ra = a.session.rank, rb = b.session.rank
-            if ra != rb { return ra < rb }
-            return a.session.startedAt > b.session.startedAt
         }
+        return targets.map(\.state)
+    }
+
+    public func poller(for host: String) -> HostPoller? {
+        pollers.first { $0.hostName == host }
     }
 }
 

@@ -46,6 +46,14 @@ enum App {
         installStatusItem()
         window.showWindow(nil)
         NSApp.activate()
+        // What sleeps is this Mac (docs/DESIGN.md §4b): on wake, drop every
+        // remote ssh master and poll at once rather than let a 2 s tick
+        // discover a stale socket the slow way. Same gesture as
+        // `ccc hosts reconnect`.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
+                                                          queue: .main) { [weak controller] _ in
+            Task { @MainActor in await controller?.reconnect() }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

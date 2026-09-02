@@ -87,4 +87,40 @@ import Testing
     @Test func localNeedsNoClaudePath() {
         #expect(Host.local.validate() == nil)
     }
+
+    // MARK: the far side's home
+
+    /// A cwd shortens with the home of the host that answered it — air's
+    /// user is `rf-air`, studio's `rf-studio`, so this Mac's `~` is the
+    /// wrong one for every remote row. Unknown home: shown in full, not
+    /// guessed.
+    @Test func aRemoteCwdShortensWithTheRemoteHome() {
+        let studio = Host(name: "studio", ssh: "studio", claude: "/c", home: "/Users/rf-studio")
+        #expect(studio.shortCwd("/Users/rf-studio/code/fun") == "~/code/fun")
+        #expect(studio.shortCwd("/Users/rf-studio") == "~")
+        #expect(studio.shortCwd("/Users/rf-studios/code") == "/Users/rf-studios/code")   // a prefix, not the home
+        let unknown = Host(name: "air", ssh: "air", claude: "/c")
+        #expect(unknown.shortCwd("/Users/rf-air/code") == "/Users/rf-air/code")
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(Host.local.shortCwd(home + "/code") == "~/code")
+    }
+
+    @Test func theConfigShortensByHostName() {
+        let config = HostConfig(hosts: [.local, Host(name: "studio", ssh: "studio", claude: "/c", home: "/Users/rf-studio")])
+        #expect(config.shortCwd("/Users/rf-studio/code", host: "studio") == "~/code")
+        // A host the config no longer knows: full path, never a crash.
+        #expect(config.shortCwd("/Users/x/code", host: "gone") == "/Users/x/code")
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(config.shortCwd(home + "/code", host: Host.localName) == "~/code")
+    }
+
+    @Test func homeRoundTripsAndAnOlderFileWithoutItLoads() throws {
+        try withTempConfig(#"{"hosts":[{"name":"studio","ssh":"studio","claude":"~/.local/bin/claude"}]}"#) { path in
+            var loaded = HostConfig.load(path: path)
+            #expect(loaded.config.host(named: "studio")?.home == nil)
+            loaded.config.hosts[1].home = "/Users/rf-studio"
+            try loaded.config.save(path: path)
+            #expect(HostConfig.load(path: path).config.host(named: "studio")?.home == "/Users/rf-studio")
+        }
+    }
 }

@@ -42,11 +42,21 @@ final class PaneController {
     let hosts: HostConfig
     let hostIssues: [String]
 
+    /// The last attach and how it ended, for the wake-up reattach: a remote
+    /// pane whose ssh died across a sleep comes back on its own.
+    private var lastRef: SessionRef?
+    private var lastExitStatus: Int32?
+    private var wokeAt: ContinuousClock.Instant?
+
     init(cli: ClaudeCLI, hosts: HostConfig.Loaded = HostConfig.load()) {
         self.cli = cli
         self.hosts = hosts.config
         self.hostIssues = hosts.issues
-        self.poller = RosterPoller(cli: cli)
+        // One poller per host, `local` reading through this process's own
+        // resolved `claude` (the config's `local` has no path of its own).
+        self.poller = RosterPoller(pollers: hosts.config.hosts.map { host in
+            HostPoller(cli: host.isLocal ? cli : ClaudeCLI.of(host), hostName: host.name)
+        })
     }
 
     /// The CLI for one host — this process's own `claude` for `local`, the
@@ -100,9 +110,13 @@ final class PaneController {
         session.onExit = { [weak self] status in
             guard let self else { return }
             self.poller.attachedRef = nil
+            self.lastExitStatus = status
             self.onSessionEnded?(status)
+            self.reattachIfSleepKilledIt(ref: ref, status: status)
         }
         self.session = session
+        self.lastRef = ref
+        self.lastExitStatus = nil
         poller.attachedRef = ref
         onSessionStarted?(session)
     }
@@ -110,6 +124,35 @@ final class PaneController {
     func detach() async {
         guard let session, session.isRunning else { return }
         await session.detach()
+    }
+
+    /// The wake-up gesture: evict every remote ssh master and poll again,
+    /// then bring back a remote pane the sleep killed. Called by the app on
+    /// `NSWorkspace.didWakeNotification` and by `ccc hosts reconnect`.
+    @discardableResult
+    func reconnect(host: String? = nil) async -> [HostPoll] {
+        wokeAt = .now
+        let polls = await poller.reconnect(host: host)
+        // Already dead when we woke: ssh noticed before we did.
+        if let lastRef, session?.isRunning != true, lastExitStatus == Self.sshExit, lastRef.host != Host.localName,
+           host == nil || host == lastRef.host {
+            try? attach(ref: lastRef)
+        }
+        return polls
+    }
+
+    /// ssh's own exit status; `claude attach` ending by Ctrl+Z exits 0 and
+    /// must never be re-run behind the user's back.
+    private static let sshExit: Int32 = 255
+
+    /// A remote attach that exits with ssh's status within a short window
+    /// after wake is the sleep's doing, not the user's: run the same argv
+    /// again. The draft lives with the session (experiment 5), so nothing
+    /// typed is lost.
+    private func reattachIfSleepKilledIt(ref: SessionRef, status: Int32) {
+        guard status == Self.sshExit, ref.host != Host.localName,
+              let wokeAt, wokeAt.duration(to: .now) < .seconds(20) else { return }
+        try? attach(ref: ref)
     }
 
     enum AttachError: Error, CustomStringConvertible {
@@ -180,11 +223,23 @@ final class PaneController {
                 return .stats(session.stats(pollState: poller.state))
             }
             let me = getpid()
+            let state = poller.state
             return .stats(StatsInfo(pid: me, footprintBytes: ProcessStats.footprint(of: me) ?? 0, childPID: nil,
-                                    childFootprintBytes: nil, lastPollMs: poller.state.lastPollMs,
-                                    meanPollMs: poller.state.meanPollMs, pollCount: poller.state.pollCount,
-                                    modelJoin: poller.state.modelJoin,
+                                    childFootprintBytes: nil, lastPollMs: state.lastPollMs,
+                                    meanPollMs: state.meanPollMs, pollCount: state.pollCount,
+                                    modelJoin: state.modelJoin, hosts: state.hosts.map(HostPollStats.init),
                                     ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 0))
+        case .reconnect(let host):
+            if let host, poller.poller(for: host) == nil {
+                return .error(AttachError.unknownHost(host, known: hosts.hosts.map(\.name)).description)
+            }
+            let polls = await reconnect(host: host)
+            let report = polls.map { poll -> String in
+                let ms = poll.lastPollMs.map { String(format: "%.0f ms", $0) } ?? "-"
+                let evicted = poll.evictions > 0 ? "" : " (no master to evict)"
+                return poll.error.map { "\(poll.host) FAILED \(ms): \($0)" } ?? "\(poll.host) ok \(ms), \(poll.rows.count) sessions\(evicted)"
+            }
+            return .ok("reconnected: " + report.joined(separator: "; "))
         }
     }
 }

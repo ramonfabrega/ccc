@@ -6,6 +6,10 @@ import SwiftUI
 /// Enter or double-click attaches; the attached row is marked.
 struct RosterView: View {
     let poller: RosterPoller
+    /// For shortening a row's cwd with the home of the host that answered
+    /// it — `~/code` on studio is not `~/code` on air once the usernames
+    /// differ.
+    let hosts: HostConfig
     let attach: (SessionRef) -> Void
     let detach: () -> Void
     /// The exact command the pane would run for a row — asked of the
@@ -19,7 +23,8 @@ struct RosterView: View {
             header
             Divider()
             List(poller.state.sorted, selection: $selection) { row in
-                RosterRow(row: row, showsHost: showsHost)
+                RosterRow(row: row, showsHost: showsHost, shortCwd: hosts.shortCwd(row.session.cwd, host: row.host),
+                          stale: poller.state.host(row.host)?.isStale ?? false)
                     .tag(row.ref)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { attach(row.ref) }
@@ -70,6 +75,11 @@ struct RosterView: View {
                 Text(String(format: "poll %.0f ms", ms))
             }
             Text("\(poller.state.rows.count) sessions")
+            ForEach(poller.state.failures, id: \.host) { failed in
+                // "stale" when its last rows are still on screen, "down"
+                // when it never answered; the banner has the sentence.
+                Text("\(failed.host) \(failed.rows.isEmpty ? "down" : "stale")").foregroundStyle(.orange)
+            }
             Spacer()
             if let at = poller.state.lastPolledAt {
                 Text(at, style: .time)
@@ -84,10 +94,14 @@ struct RosterView: View {
 struct RosterRow: View {
     let row: SessionRow
     var showsHost: Bool = false
+    var shortCwd: String
+    /// The host stopped answering; this row is its last known state.
+    var stale: Bool = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8).padding(.top, 2)
+                .opacity(stale ? 0.35 : 1)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     if showsHost {
@@ -113,7 +127,8 @@ struct RosterRow: View {
             }
         }
         .padding(.vertical, 2)
-        .help("\(row.ref) · \(row.session.cwd)")
+        .opacity(stale ? 0.6 : 1)
+        .help("\(row.ref) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
     }
 
     private var stateText: String {
@@ -132,10 +147,6 @@ struct RosterRow: View {
         case .stopped: return Color.secondary.opacity(0.5)
         case nil: return row.session.pid != nil ? .blue : .secondary
         }
-    }
-
-    private var shortCwd: String {
-        row.session.cwd.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
     }
 
     private func shortModel(_ m: String) -> String { m.replacingOccurrences(of: "claude-", with: "") }

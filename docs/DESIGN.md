@@ -245,6 +245,18 @@ insurance (it is twenty lines and a false eviction costs one handshake), and
 the wake notification's immediate re-poll is worth having regardless — it
 turns "up to 2 s of tick plus 2.1 s" into 2.1 s.
 
+**Shipped 2026-09-02** as v2 slice 2 (docs/MILESTONES.md): per-host slots
+merged at read time, one in-flight tick per host, eviction on a degraded or
+failed hop, the wake re-poll and its `ccc hosts reconnect` twin. And one
+finding that only the default path could produce: the master socket lived
+under `~/Library/Application Support`, whose space `-o ControlPath=`
+rejects outright — every ssh through the default location had been failing
+since slice 1, invisibly, because every measurement above ran with
+`CCC_SSH_CONTROL_DIR` pointed elsewhere. The sockets are under
+`~/Library/Caches/ccc/ssh` now, and the argv test pins "no whitespace".
+The lesson is the project's usual one: the override that makes an
+experiment convenient is also what keeps the default path unmeasured.
+
 ## 4c. The daemon multiplexes viewers (v2, 2026-09-02)
 
 The v2 design nearly grew a second layer. With "single attach" taken as

@@ -79,14 +79,20 @@ enum CLI {
 
     // MARK: verbs
 
-    /// One poll, printed. Does not need a running app: the roster is the
-    /// harness's, not ours. `--host` polls one named host instead of this
-    /// Mac — the same `claude agents --json --all`, behind the ssh prefix.
-    /// (The app's poller is still one host; the fan-out is the next slice.)
+    /// One poll of every host, printed — what the window shows. Does not
+    /// need a running app: the roster is the harness's, not ours. `--host`
+    /// narrows it to one (this is how another ccc reads us over ssh:
+    /// `--host local`, so the hop never fans out again on the far side).
+    ///
+    /// Exit: 0 with rows; 3 when a roster changed shape (rows still
+    /// printed); 1 only when *no* host answered. A host that failed is one
+    /// line on stderr and its last known rows are kept — never a blank
+    /// roster over one sleeping Mac.
     static func list(host name: String?, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
         let poller: RosterPoller
         if let name {
-            let loaded = HostConfig.load()
             guard let host = loaded.config.host(named: name) else {
                 stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
                 return 2
@@ -97,14 +103,14 @@ enum CLI {
             }
             poller = RosterPoller(cli: cli)
         } else {
-            poller = RosterPoller()
+            poller = RosterPoller(hosts: loaded.config)
         }
         await poller.tick()
         let state = poller.state
-        if let error = state.error {
-            stderr("ccc: \(error)")
-            return 1
+        for failed in state.failures {
+            stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")")
         }
+        guard state.anyHostAnswered else { return 1 }
         if json {
             printJSON(state.sorted)
             // stdout stays pure JSON, but the banner must not vanish just
@@ -113,7 +119,7 @@ enum CLI {
             // crosses the ssh hop when another ccc polls this one.
             for issue in state.issues { stderr("⚠ roster shape changed: \(issue.description)") }
         } else {
-            printRoster(state.sorted, issues: state.issues)
+            printRoster(state.sorted, issues: state.issues, hosts: loaded.config)
         }
         return state.issues.isEmpty ? 0 : 3
     }
@@ -135,7 +141,8 @@ enum CLI {
             for host in loaded.config.hosts {
                 let name = host.name.padding(toLength: width, withPad: " ", startingAt: 0)
                 let reader = host.isLocal ? "" : "  roster via \(host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)")"
-                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")\(reader)")
+                let home = host.isLocal ? "" : "  home \(host.home ?? "(unknown; `ccc hosts check` learns it)")"
+                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")\(reader)\(home)")
             }
             print("\n\(HostConfig.defaultPath)")
             return loaded.issues.isEmpty ? 0 : 3
@@ -149,19 +156,64 @@ enum CLI {
             // (docs/DESIGN.md §4a), so it is the default rather than an
             // opt-in; `--no-ccc` falls back to the harness reader.
             let remoteCCC = rest.contains("--no-ccc") ? nil : (stringFlag("--ccc", rest) ?? "~/.local/bin/ccc")
-            let host = Host(name: name, ssh: stringFlag("--ssh", rest) ?? name,
+            var host = Host(name: name, ssh: stringFlag("--ssh", rest) ?? name,
                             claude: stringFlag("--claude", rest) ?? "~/.local/bin/claude",
                             ccc: remoteCCC)
             if let problem = host.validate() {
                 stderr("ccc: \(problem)")
                 return 2
             }
+            // The far side's home, so its cwds shorten with *its* `~`. One
+            // ssh now; a host that is down is still added, and `check`
+            // learns it later.
+            var homeNote = ""
+            if let cli = ClaudeCLI.of(host) {
+                do { host.home = try await cli.home() } catch { homeNote = "; home unknown (\(error)), `ccc hosts check` will learn it" }
+            }
             loaded.config.hosts.removeAll { $0.name == name }
             loaded.config.hosts.append(host)
             try loaded.config.save()
             let reader = host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)"
-            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)); `ccc hosts check \(name)` to prove it")
+            let home = host.home.map { ", home \($0)" } ?? ""
+            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)\(home))\(homeNote); `ccc hosts check \(name)` to prove it")
             return 0
+
+        case "reconnect":
+            // The wake-up gesture by hand (docs/DESIGN.md §4b). The app owns
+            // the pollers, so ask it; with no app running, evict the masters
+            // here and prove the hop with the same check the poller runs.
+            let wanted = rest.dropFirst().first
+            if let wanted, loaded.config.host(named: wanted) == nil {
+                stderr("ccc: no host '\(wanted)'")
+                return 1
+            }
+            var note = "no app running"
+            if let response = try? ControlClient().send(.reconnect(host: wanted)) {
+                note = "the running ccc is older and has no `reconnect` (restart it to pick up the new build)"
+                switch response {
+                case .error(let message) where message.contains("malformed"):
+                    // An older ccc holds the socket and has no reconnect;
+                    // its pollers keep their wedged masters until it is
+                    // restarted, but evicting here still helps every new
+                    // ssh, including its next poll.
+                    break
+                case .error(let message):
+                    stderr("ccc: \(message)")
+                    return 1
+                case .ok(let message):
+                    if json { printJSON(["ok": message]) } else { print(message) }
+                    return 0
+                default:
+                    stderr("ccc: unexpected reply to reconnect")
+                    return 1
+                }
+            }
+            var evicted: [String] = []
+            for host in loaded.config.hosts where !host.isLocal && (wanted == nil || host.name == wanted) {
+                if ClaudeCLI.of(host)?.evictControlMaster() == true { evicted.append(host.name) }
+            }
+            stderr("ccc: \(note); evicted \(evicted.isEmpty ? "no masters (none were open)" : "the master for " + evicted.joined(separator: ", ")), checking")
+            return try await hosts(["check"] + (wanted.map { [$0] } ?? []), json: json)
 
         case "remove":
             guard let name = rest.dropFirst().first else { return usage() }
@@ -191,35 +243,63 @@ enum CLI {
             // side exists.
             struct Check: Encodable {
                 var host: String; var ok: Bool; var ms: Double; var reader: String
-                var sessions: Int?; var models: Int?; var error: String?
+                var sessions: Int?; var models: Int?; var home: String?; var error: String?
             }
             var results: [Check] = []
+            var learned = false
             for host in targets {
                 let started = ContinuousClock.now
                 guard let cli = ClaudeCLI.of(host) else {
                     results.append(Check(host: host.name, ok: false, ms: 0, reader: "-", sessions: nil, models: nil,
-                                         error: host.validate() ?? "claude not found"))
+                                         home: host.home, error: host.validate() ?? "claude not found"))
                     continue
                 }
                 let reader = cli.rosterSource.rawValue
+                // A reachable host is the moment to learn its home if we
+                // never did (`add` may have run while it was down). Before
+                // the roster read, so a host whose ssh works but whose
+                // `ccc` path is wrong still gets its home — and the two
+                // share one master, so this is not a second handshake.
+                var home = host.home
+                if !host.isLocal, home == nil {
+                    do {
+                        let found = try await cli.home()
+                        if let i = loaded.config.hosts.firstIndex(where: { $0.name == host.name }) {
+                            loaded.config.hosts[i].home = found
+                            home = found
+                            learned = true
+                        }
+                    } catch let error as ClaudeCLI.RunError where error.status == 255 {
+                        // ssh itself failed: the roster read would only pay
+                        // the same timeout again to say the same thing.
+                        results.append(Check(host: host.name, ok: false, ms: elapsedMs(since: started), reader: reader,
+                                             sessions: nil, models: nil, home: nil, error: "\(error)"))
+                        continue
+                    } catch {
+                        // Anything else (an odd shell answer) is not the
+                        // host's fault; the roster read decides.
+                    }
+                }
                 do {
                     let reading = try await cli.rosterJSON()
+                    let ms = elapsedMs(since: started)
                     if cli.rosterSource == .ccc {
                         let rows = try JSONDecoder.roster.decode([SessionRow].self, from: reading.data)
-                        results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started), reader: reader,
+                        results.append(Check(host: host.name, ok: true, ms: ms, reader: reader,
                                              sessions: rows.count, models: rows.count { $0.model != nil },
-                                             error: reading.warning))
+                                             home: home, error: reading.warning))
                     } else {
                         let decoded = RosterDecoder.decode(reading.data)
-                        results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started), reader: reader,
-                                             sessions: decoded.sessions.count, models: nil,
+                        results.append(Check(host: host.name, ok: true, ms: ms, reader: reader,
+                                             sessions: decoded.sessions.count, models: nil, home: home,
                                              error: decoded.issues.isEmpty ? nil : decoded.issues.map(\.description).joined(separator: "; ")))
                     }
                 } catch {
                     results.append(Check(host: host.name, ok: false, ms: elapsedMs(since: started), reader: reader,
-                                         sessions: nil, models: nil, error: "\(error)"))
+                                         sessions: nil, models: nil, home: host.home, error: "\(error)"))
                 }
             }
+            if learned { try loaded.config.save() }
             if json { printJSON(results) } else {
                 let width = results.map(\.host.count).max() ?? 0
                 for r in results {
@@ -227,13 +307,14 @@ enum CLI {
                     let head = r.ok ? String(format: "ok   %5.0f ms  %-6@ %d sessions", r.ms, r.reader as NSString, r.sessions ?? 0)
                                     : String(format: "FAIL %5.0f ms  %-6@", r.ms, r.reader as NSString)
                     let models = r.models.map { ", \($0) with a model" } ?? ""
-                    print("\(name)  \(head)\(models)\(r.error.map { "  \($0)" } ?? "")")
+                    let home = r.host == Host.localName ? "" : (r.home.map { "  home \($0)" } ?? "  home unknown")
+                    print("\(name)  \(head)\(models)\(home)\(r.error.map { "  \($0)" } ?? "")")
                 }
             }
             return results.allSatisfy(\.ok) ? 0 : 1
 
         default:
-            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check)")
+            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check|reconnect)")
             return 2
         }
     }
@@ -407,7 +488,7 @@ enum CLI {
         case .ok(let message):
             if json { printJSON(["ok": message]) } else { print(message) }
         case .list(let rows):
-            if json { printJSON(rows) } else { printRoster(rows, issues: []) }
+            if json { printJSON(rows) } else { printRoster(rows, issues: [], hosts: HostConfig.load().config) }
         case .snapshot(let info):
             if json { printJSON(info) } else if let grid = info.grid { print(grid.rendered()) } else { print("(nothing attached)") }
         case .stats(let stats):
@@ -421,7 +502,7 @@ enum CLI {
 
     // MARK: rendering
 
-    static func printRoster(_ rows: [SessionRow], issues: [RosterShapeIssue]) {
+    static func printRoster(_ rows: [SessionRow], issues: [RosterShapeIssue], hosts: HostConfig) {
         if !issues.isEmpty {
             print("⚠ roster shape changed: \(issues.map(\.description).joined(separator: "; "))")
         }
@@ -441,7 +522,7 @@ enum CLI {
             let name = (s.name ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
             let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
             let model = row.model.map { shortModel($0) } ?? "-"
-            let cwd = s.cwd.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
+            let cwd = hosts.shortCwd(s.cwd, host: row.host)
             print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)")
         }
     }
@@ -456,6 +537,17 @@ enum CLI {
         print("ccc pid \(s.pid)  memory \(mb(s.footprintBytes))  uptime \(Int(s.uptimeSeconds))s")
         if let child = s.childPID { print("child pid \(child)  memory \(mb(s.childFootprintBytes))") }
         print("roster poll  last \(ms(s.lastPollMs))  mean \(ms(s.meanPollMs))  n=\(s.pollCount)")
+        // Per host once there is more than one, or one that is failing:
+        // the fleet numbers above are the slowest host's, and this says which.
+        if let hosts = s.hosts, hosts.count > 1 || hosts.contains(where: { $0.error != nil }) {
+            let width = hosts.map(\.host.count).max() ?? 0
+            for h in hosts {
+                let name = h.host.padding(toLength: width, withPad: " ", startingAt: 0)
+                let evicted = h.evictions > 0 ? "  evictions \(h.evictions)" : ""
+                let health = h.error.map { "  FAILING ×\(h.failures)\(h.stale ? " (rows stale)" : ""): \($0)" } ?? ""
+                print("  \(name)  last \(ms(h.lastMs))  mean \(ms(h.meanMs))  n=\(h.count)  rows \(h.rows)\(evicted)\(health)")
+            }
+        }
         if let j = s.modelJoin {
             print("model join   last \(ms(j.lastMs))  mean \(ms(j.meanMs))  reads \(j.reads)  cached \(j.hits)  gone \(j.misses)  well lookups \(j.lookups) (\(j.unresolved) unresolved)")
         }
@@ -489,7 +581,8 @@ enum CLI {
         usage: ccc                              open the app
                ccc hosts [list|check [<name>]]     the machines ccc can reach (check runs the real poll)
                ccc hosts add <name> [--ssh <dest> --claude <path>] | remove <name>
-               ccc list [--host <name>] [--json]
+               ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
+               ccc list [--host <name>] [--json]  every host's roster; --host narrows to one
                ccc attach <ref> [--headless [--cols N --rows N]]
                                                   <ref> is `id` (this Mac) or `host:id`
                ccc snapshot [--json]

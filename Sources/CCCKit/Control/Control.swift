@@ -41,6 +41,11 @@ public enum ControlRequest: Codable, Sendable {
     /// `show` brings the window forward, `hide` orders it out, `close` is
     /// exactly ⌘W (so the reopen path can be exercised without a hand).
     case window(action: String)
+    /// The wake-up gesture's twin (docs/DESIGN.md §4b): drop the ssh
+    /// master of every remote host — or of `host` — and poll again now.
+    /// The app does this itself on `NSWorkspace.didWakeNotification`; this
+    /// is how a hand or a script does the same.
+    case reconnect(host: String?)
 }
 
 public enum ControlResponse: Codable, Sendable {
@@ -142,6 +147,35 @@ public struct ModelJoinStats: Codable, Sendable, Equatable {
     }
 }
 
+/// One host's poll as `ccc stats` reports it. The fleet-wide numbers on
+/// `StatsInfo` are the slowest host's; these say which.
+public struct HostPollStats: Codable, Sendable, Equatable {
+    public var host: String
+    public var rows: Int
+    public var lastMs: Double?
+    public var meanMs: Double?
+    public var count: Int
+    /// Consecutive failures, and the last error when there is one.
+    public var failures: Int
+    public var error: String?
+    public var stale: Bool
+    public var evictions: Int
+    public var lastSuccessAt: Date?
+
+    public init(_ poll: HostPoll) {
+        host = poll.host
+        rows = poll.rows.count
+        lastMs = poll.lastPollMs
+        meanMs = poll.meanPollMs
+        count = poll.pollCount
+        failures = poll.failures
+        error = poll.error
+        stale = poll.isStale
+        evictions = poll.evictions
+        lastSuccessAt = poll.lastSuccessAt
+    }
+}
+
 public struct StatsInfo: Codable, Sendable {
     public var pid: Int32
     /// phys_footprint — the number Activity Monitor calls "Memory".
@@ -156,6 +190,9 @@ public struct StatsInfo: Codable, Sendable {
     /// on. Optional as one field so an older server (which sends no such
     /// key) still decodes here — the wire rule in `ControlWireTests`.
     public var modelJoin: ModelJoinStats?
+    /// Per host, once there is more than one (v2). Optional for the same
+    /// wire reason as `modelJoin`.
+    public var hosts: [HostPollStats]?
     /// Bytes fed to the terminal since attach, and the rate over the last second.
     public var ptyBytesIn: UInt64
     public var ptyBytesPerSecond: Double
@@ -163,8 +200,10 @@ public struct StatsInfo: Codable, Sendable {
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
+                hosts: [HostPollStats]? = nil,
                 ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double) {
         self.modelJoin = modelJoin
+        self.hosts = hosts
         self.pid = pid
         self.footprintBytes = footprintBytes
         self.childPID = childPID

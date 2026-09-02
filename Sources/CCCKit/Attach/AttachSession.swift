@@ -118,6 +118,7 @@ public final class AttachSession {
             meanPollMs: pollState?.meanPollMs,
             pollCount: pollState?.pollCount ?? 0,
             modelJoin: pollState?.modelJoin,
+            hosts: pollState?.hosts.map(HostPollStats.init),
             ptyBytesIn: throughput.total,
             ptyBytesPerSecond: throughput.bytesPerSecond(),
             uptimeSeconds: Date().timeIntervalSince(startedAt)
