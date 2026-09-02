@@ -9,7 +9,12 @@ what is *not* settled.
 Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 144 tests green.
 `master` fast-forwards to it (a merge of master into this branch keeps that
 true; do it again after every master sync or the branches re-diverge).
-No release is owed yet; cadence is "actionable only".
+**v0.1.5 (build 61) is cut and on the feed** (2026-09-02); origin master
+is at the tag — the main checkout wants a `git pull --ff-only`. Studio
+stays on the dev lane (build > 61, never offered a downgrade);
+`scripts/install --dist` puts the cut back. **Air owes its update:**
+Check for Updates… → v0.1.5, then answer the notification permission
+banner, then `ccc install-cli` there so `ccc hosts add air` finds it.
 
 ## Current: v3 notifications
 

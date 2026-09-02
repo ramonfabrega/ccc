@@ -123,7 +123,11 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   `CAMetalLayer` never gets `updateLayer`, and `ccc peek` composites an
   offscreen render, so only the human could see it (docs/DESIGN.md §7).
   Draws on `render()` now; `ccc stats` counts frames presented. Plus the
-  Sparkle guard for unbundled runs and the `hosts add` probe.
+  Sparkle guard for unbundled runs and the `hosts add` probe. **v0.1.5,
+  same day (build 61):** install polish, the dev/release lane split,
+  v3 slice 1, `ccc rm`. Notarized first submission; feed verified
+  (length 3182607 both sides); master fast-forwarded to the tag. The
+  first release whose `hosts check` can read the far side's build.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
