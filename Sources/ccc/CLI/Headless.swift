@@ -10,7 +10,7 @@ import Foundation
 /// user sees.
 enum Headless {
     @MainActor
-    static func run(id: String, cols: Int, rows: Int) -> Int32 {
+    static func run(ref: SessionRef, cols: Int, rows: Int) -> Int32 {
         // AppKit views need an NSApplication even with no window; .prohibited
         // keeps us out of the Dock and off the screen.
         let app = NSApplication.shared
@@ -30,13 +30,13 @@ enum Headless {
         controller.poller.start()
 
         do {
-            try controller.attach(id: id, cols: cols, rows: rows)
+            try controller.attach(ref: ref, cols: cols, rows: rows)
         } catch {
             CLI.stderr("ccc: attach failed: \(error)")
             controller.stop()
             return 1
         }
-        CLI.stderr("ccc: attached \(id) headless (\(cols)x\(rows)); socket \(controller.server?.path ?? "-"); `ccc snapshot` to look, `ccc detach` to leave")
+        CLI.stderr("ccc: attached \(ref) headless (\(cols)x\(rows)); socket \(controller.server?.path ?? "-"); `ccc snapshot` to look, `ccc detach` to leave")
 
         nonisolated(unsafe) var exitCode: Int32 = 0
         controller.onSessionEnded = { status in

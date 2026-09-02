@@ -6,33 +6,37 @@ import SwiftUI
 /// Enter or double-click attaches; the attached row is marked.
 struct RosterView: View {
     let poller: RosterPoller
-    let attach: (String) -> Void
+    let attach: (SessionRef) -> Void
     let detach: () -> Void
-    @State private var selection: String?
+    /// The exact command the pane would run for a row — asked of the
+    /// controller rather than rebuilt here, so the copied line and the
+    /// attached child can never disagree about the ssh hop.
+    let attachCommandLine: (SessionRef) -> String
+    @State private var selection: SessionRef?
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            List(poller.state.sorted, id: \.session.id, selection: $selection) { row in
-                RosterRow(row: row)
-                    .tag(row.session.id)
+            List(poller.state.sorted, selection: $selection) { row in
+                RosterRow(row: row, showsHost: showsHost)
+                    .tag(row.ref)
                     .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { attach(row.session.id) }
+                    .onTapGesture(count: 2) { attach(row.ref) }
                     .contextMenu {
-                        Button("Attach") { attach(row.session.id) }.disabled(!row.session.isAttachable)
+                        Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
                         if row.attached { Button("Detach") { detach() } }
                         if let sid = row.session.sessionId {
                             Button("Copy session id") { NSPasteboard.general.setString(sid, forType: .string) }
                         }
-                        Button("Copy `claude attach \(row.session.id)`") {
-                            NSPasteboard.general.setString("claude attach \(row.session.id)", forType: .string)
+                        Button("Copy attach command") {
+                            NSPasteboard.general.setString(attachCommandLine(row.ref), forType: .string)
                         }
                     }
             }
             .listStyle(.inset)
             .onKeyPress(.return) {
-                guard let selection, let row = poller.state.rows.first(where: { $0.session.id == selection }),
+                guard let selection, let row = poller.state.rows.first(where: { $0.ref == selection }),
                       row.session.isAttachable else { return .ignored }
                 attach(selection)
                 return .handled
@@ -40,6 +44,12 @@ struct RosterView: View {
             footer
         }
         .frame(minWidth: 320)
+    }
+
+    /// One Mac looks exactly like v1: the host is only worth a column once
+    /// there is more than one answer to "which".
+    private var showsHost: Bool {
+        poller.state.rows.contains { $0.host != Host.localName }
     }
 
     private var header: some View {
@@ -73,12 +83,20 @@ struct RosterView: View {
 
 struct RosterRow: View {
     let row: SessionRow
+    var showsHost: Bool = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8).padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
+                    if showsHost {
+                        Text(row.host)
+                            .font(.caption2.monospaced())
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
+                            .foregroundStyle(.secondary)
+                    }
                     Text(row.session.name ?? row.session.id).fontWeight(row.attached ? .semibold : .regular).lineLimit(1)
                     if row.attached { Image(systemName: "rectangle.connected.to.line.below").font(.caption2) }
                     Spacer()
@@ -95,7 +113,7 @@ struct RosterRow: View {
             }
         }
         .padding(.vertical, 2)
-        .help("\(row.session.id) · \(row.session.cwd)")
+        .help("\(row.ref) · \(row.session.cwd)")
     }
 
     private var stateText: String {

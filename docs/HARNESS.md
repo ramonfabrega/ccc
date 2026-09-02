@@ -147,7 +147,11 @@ is the sanctioned inbound surface (not investigated).
    screen left (`?1049l`), kitty keyboard popped (`CSI <u`), "Connection to
    localhost closed", ssh exit status 0, session still alive in the roster.
    Remote command must be the absolute path (`~/.local/bin/claude`);
-   non-interactive ssh has no `claude` on PATH. Detach byte tail:
+   non-interactive ssh has no `claude` on PATH — now enforced by
+   `Host.validate`, which refuses a remote host without one and says this.
+   **Mechanized 2026-09-02 (v2 slice 1):** `ccc hosts check <name>` runs the
+   real poll command on a host and reports what came back, so the hop is a
+   command anyone can re-run instead of a one-off Python pty script. Detach byte tail:
    `ESC 7 ESC 8 ESC [<u ESC [>4m`.
 4. Find how the TUI's peek/reply reaches the daemon (`rendezvousSock` /
    `ptySock` in the roster) — a v2 exploration, not a v0 dependency.

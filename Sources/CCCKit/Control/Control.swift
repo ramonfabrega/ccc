@@ -8,8 +8,15 @@ import Foundation
 public enum ControlRequest: Codable, Sendable {
     /// The roster as the server last polled it, with model column.
     case list
-    /// Attach the pane to a session (the click's twin).
-    case attach(id: String)
+    /// Attach the pane to a session (the click's twin). The payload is a
+    /// `SessionRef`, so an agent on this Mac can drive a session on another.
+    ///
+    /// The label stays `id` because a case label *is* the wire key: a v1
+    /// `ccc` on PATH sends `{"attach":{"id":"a1b2"}}`, and a `SessionRef`
+    /// decodes from that bare string as the local ref it always meant. The
+    /// suite's rule (an older side must keep working) costs one comment here
+    /// instead of a hand-written decoder for eleven cases.
+    case attach(id: SessionRef)
     /// Detach the pane from its session by ending the child process the way
     /// the harness documents (Ctrl+Z is the default; see `DetachGesture`).
     case detach
@@ -46,22 +53,33 @@ public enum ControlResponse: Codable, Sendable {
 }
 
 /// One roster row as ccc shows it: the harness's session plus what ccc adds
-/// (the model that is actually serving it).
-public struct SessionRow: Codable, Sendable, Equatable {
+/// — the host it was polled from, and the model that is actually serving it.
+///
+/// `host` lives here and not on `Session` on purpose: `Session` is the
+/// harness's shape, decoded leniently at the boundary, and the daemon has no
+/// idea other Macs exist. Which daemon answered is ccc's knowledge.
+public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     public var session: Session
+    public var host: String
     public var model: String?
     public var attached: Bool
-    public init(session: Session, model: String?, attached: Bool) {
+
+    /// The address: what `ccc attach` takes and the roster's row identity.
+    public var ref: SessionRef { SessionRef(host: host, id: session.id) }
+    public var id: SessionRef { ref }
+
+    public init(session: Session, host: String = Host.localName, model: String?, attached: Bool) {
         self.session = session
+        self.host = host
         self.model = model
         self.attached = attached
     }
 }
 
 public struct SnapshotInfo: Codable, Sendable {
-    public var attachedTo: String?
+    public var attachedTo: SessionRef?
     public var grid: Grid?
-    public init(attachedTo: String?, grid: Grid?) {
+    public init(attachedTo: SessionRef?, grid: Grid?) {
         self.attachedTo = attachedTo
         self.grid = grid
     }

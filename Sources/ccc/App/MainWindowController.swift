@@ -76,10 +76,12 @@ final class MainWindowController: NSWindowController {
 
         split.isVertical = true
         split.dividerStyle = .thin
-        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, attach: { [weak self] id in
-            self?.attach(id)
+        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, attach: { [weak self] ref in
+            self?.attach(ref)
         }, detach: { [weak self] in
             self?.detachAction(nil)
+        }, attachCommandLine: { [weak self] ref in
+            self?.controller.attachCommandLine(for: ref) ?? "claude attach \(ref.id)"
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -165,7 +167,7 @@ final class MainWindowController: NSWindowController {
             pane.resize(cols: dims.cols, rows: dims.rows)
             session.viewResized(cols: dims.cols, rows: dims.rows)
         }
-        window?.title = "ccc — \(session.id)"
+        window?.title = "ccc — \(session.ref)"
     }
 
     private func unmount() {
@@ -174,10 +176,10 @@ final class MainWindowController: NSWindowController {
         window?.title = "ccc"
     }
 
-    private func attach(_ id: String) {
+    private func attach(_ ref: SessionRef) {
         controller.defaultSize = gridSize()
         do {
-            try controller.attach(id: id)
+            try controller.attach(ref: ref)
         } catch {
             showNotice("\(error)")
         }

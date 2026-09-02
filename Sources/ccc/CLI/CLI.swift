@@ -3,8 +3,11 @@ import Foundation
 
 /// The command face. Each verb is a click's twin.
 ///
+///   ccc hosts [add|remove|check]      the machines ccc can reach
 ///   ccc list [--json]                 the roster, with the model column
-///   ccc attach <id> [--headless]      attach; headless drives a PTY and serves the socket
+///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
+///
+/// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
 ///   ccc snapshot [--json]             the pane's grid as text
 ///   ccc send <text> | --key <name>… | --paste <text>   type into the pane
 ///   ccc detach                        detach the pane
@@ -23,13 +26,19 @@ enum CLI {
             case "help", "--help", "-h":
                 return usage(to: .standardOutput, status: 0)
             case "list":
-                return try await list(json: json)
+                return try await list(host: stringFlag("--host", rest), json: json)
+            case "hosts":
+                return try await hosts(rest, json: json)
             case "attach":
-                guard let id = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
-                if rest.contains("--headless") {
-                    return Headless.run(id: id, cols: intFlag("--cols", rest) ?? 120, rows: intFlag("--rows", rest) ?? 40)
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
                 }
-                return try request(.attach(id: id), json: json)
+                if rest.contains("--headless") {
+                    return Headless.run(ref: ref, cols: intFlag("--cols", rest) ?? 120, rows: intFlag("--rows", rest) ?? 40)
+                }
+                return try request(.attach(id: ref), json: json)
             case "snapshot":
                 return try request(.snapshot, json: json)
             case "send":
@@ -71,9 +80,25 @@ enum CLI {
     // MARK: verbs
 
     /// One poll, printed. Does not need a running app: the roster is the
-    /// harness's, not ours.
-    static func list(json: Bool) async throws -> Int32 {
-        let poller = RosterPoller()
+    /// harness's, not ours. `--host` polls one named host instead of this
+    /// Mac — the same `claude agents --json --all`, behind the ssh prefix.
+    /// (The app's poller is still one host; the fan-out is the next slice.)
+    static func list(host name: String?, json: Bool) async throws -> Int32 {
+        let poller: RosterPoller
+        if let name {
+            let loaded = HostConfig.load()
+            guard let host = loaded.config.host(named: name) else {
+                stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+                return 2
+            }
+            guard let cli = ClaudeCLI.of(host) else {
+                stderr("ccc: \(host.validate() ?? "claude not found for host '\(name)'")")
+                return 1
+            }
+            poller = RosterPoller(cli: cli)
+        } else {
+            poller = RosterPoller()
+        }
         await poller.tick()
         let state = poller.state
         if let error = state.error {
@@ -86,6 +111,107 @@ enum CLI {
             printRoster(state.sorted, issues: state.issues)
         }
         return state.issues.isEmpty ? 0 : 3
+    }
+
+    /// The machines ccc can reach, and the gestures on that list. `check`
+    /// is the one that proves something: it runs the *real* poll command on
+    /// each host — `claude agents --json --all` behind the ssh prefix — and
+    /// reports what came back and how long it took. Run it twice and the
+    /// second is the multiplexed connection (`ControlPersist`) not paying a
+    /// handshake, which is the whole reason the master socket exists.
+    static func hosts(_ rest: [String], json: Bool) async throws -> Int32 {
+        let action = rest.first.flatMap { $0.hasPrefix("--") ? nil : $0 } ?? "list"
+        var loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        switch action {
+        case "list":
+            if json { printJSON(loaded.config.hosts); return 0 }
+            let width = loaded.config.hosts.map(\.name.count).max() ?? 0
+            for host in loaded.config.hosts {
+                let name = host.name.padding(toLength: width, withPad: " ", startingAt: 0)
+                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")")
+            }
+            print("\n\(HostConfig.defaultPath)")
+            return loaded.issues.isEmpty ? 0 : 3
+
+        case "add":
+            guard let name = rest.dropFirst().first, !name.hasPrefix("--") else {
+                stderr("ccc: usage: ccc hosts add <name> --ssh <destination> [--claude <absolute path>]")
+                return 2
+            }
+            let host = Host(name: name, ssh: stringFlag("--ssh", rest) ?? name,
+                            claude: stringFlag("--claude", rest) ?? "~/.local/bin/claude")
+            if let problem = host.validate() {
+                stderr("ccc: \(problem)")
+                return 2
+            }
+            loaded.config.hosts.removeAll { $0.name == name }
+            loaded.config.hosts.append(host)
+            try loaded.config.save()
+            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-")); `ccc hosts check \(name)` to prove it")
+            return 0
+
+        case "remove":
+            guard let name = rest.dropFirst().first else { return usage() }
+            guard name != Host.localName else {
+                stderr("ccc: local is this Mac and cannot be removed")
+                return 2
+            }
+            guard loaded.config.host(named: name) != nil else {
+                stderr("ccc: no host '\(name)'")
+                return 1
+            }
+            loaded.config.hosts.removeAll { $0.name == name }
+            try loaded.config.save()
+            print("removed \(name)")
+            return 0
+
+        case "check":
+            let wanted = rest.dropFirst().first
+            let targets = loaded.config.hosts.filter { wanted == nil || $0.name == wanted }
+            if targets.isEmpty {
+                stderr("ccc: no host '\(wanted ?? "")'")
+                return 1
+            }
+            struct Check: Encodable { var host: String; var ok: Bool; var ms: Double; var sessions: Int?; var error: String? }
+            var results: [Check] = []
+            for host in targets {
+                let started = ContinuousClock.now
+                guard let cli = ClaudeCLI.of(host) else {
+                    results.append(Check(host: host.name, ok: false, ms: 0, sessions: nil,
+                                         error: host.validate() ?? "claude not found"))
+                    continue
+                }
+                do {
+                    let data = try await cli.agentsJSON(all: true)
+                    let decoded = RosterDecoder.decode(data)
+                    results.append(Check(host: host.name, ok: true, ms: elapsedMs(since: started),
+                                         sessions: decoded.sessions.count,
+                                         error: decoded.issues.isEmpty ? nil : decoded.issues.map(\.description).joined(separator: "; ")))
+                } catch {
+                    results.append(Check(host: host.name, ok: false, ms: elapsedMs(since: started), sessions: nil, error: "\(error)"))
+                }
+            }
+            if json { printJSON(results) } else {
+                let width = results.map(\.host.count).max() ?? 0
+                for r in results {
+                    let name = r.host.padding(toLength: width, withPad: " ", startingAt: 0)
+                    let head = r.ok ? String(format: "ok   %5.0f ms  %d sessions", r.ms, r.sessions ?? 0)
+                                    : String(format: "FAIL %5.0f ms", r.ms)
+                    print("\(name)  \(head)\(r.error.map { "  \($0)" } ?? "")")
+                }
+            }
+            return results.allSatisfy(\.ok) ? 0 : 1
+
+        default:
+            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check)")
+            return 2
+        }
+    }
+
+    static func elapsedMs(since started: ContinuousClock.Instant) -> Double {
+        let d = started.duration(to: .now)
+        return Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
     }
 
     /// `--paste` takes one argument and goes through the host's paste path,
@@ -272,16 +398,22 @@ enum CLI {
         }
         if rows.isEmpty { print("(no sessions)"); return }
         let width = rows.map { ($0.session.name ?? "").count }.max() ?? 0
+        // One Mac prints exactly what v1 printed; the column appears with
+        // the second host, and then every id is shown as the ref that
+        // `ccc attach` will take.
+        let showsHost = rows.contains { $0.host != Host.localName }
+        let hostWidth = rows.map(\.host.count).max() ?? 0
         for row in rows {
             let s = row.session
             let marker = row.attached ? "●" : " "
+            let host = showsHost ? row.host.padding(toLength: hostWidth, withPad: " ", startingAt: 0) + "  " : ""
             let state = s.state?.rawValue ?? (s.kind == .interactive ? "interactive" : "-")
             let live = s.pid != nil ? (s.status?.rawValue ?? "live") : ""
             let name = (s.name ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
             let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
             let model = row.model.map { shortModel($0) } ?? "-"
             let cwd = s.cwd.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
-            print("\(marker) \(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)")
+            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)")
         }
     }
 
@@ -323,8 +455,11 @@ enum CLI {
     static func usage(to handle: FileHandle = .standardError, status: Int32 = 2) -> Int32 {
         handle.write(Data("""
         usage: ccc                              open the app
-               ccc list [--json]
-               ccc attach <id> [--headless [--cols N --rows N]]
+               ccc hosts [list|check [<name>]]     the machines ccc can reach (check runs the real poll)
+               ccc hosts add <name> [--ssh <dest> --claude <path>] | remove <name>
+               ccc list [--host <name>] [--json]
+               ccc attach <ref> [--headless [--cols N --rows N]]
+                                                  <ref> is `id` (this Mac) or `host:id`
                ccc snapshot [--json]
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)

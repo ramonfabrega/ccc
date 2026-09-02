@@ -36,9 +36,36 @@ final class PaneController {
     /// show / hide / close, when there is a window. Returns false if unknown.
     var windowAction: (@MainActor (String) -> Bool)?
 
-    init(cli: ClaudeCLI) {
+    /// The hosts ccc knows about, and why any were dropped. Loaded once at
+    /// start: a host list that changes under a running attach would change
+    /// what the pane is talking to.
+    let hosts: HostConfig
+    let hostIssues: [String]
+
+    init(cli: ClaudeCLI, hosts: HostConfig.Loaded = HostConfig.load()) {
         self.cli = cli
+        self.hosts = hosts.config
+        self.hostIssues = hosts.issues
         self.poller = RosterPoller(cli: cli)
+    }
+
+    /// The CLI for one host — this process's own `claude` for `local`, the
+    /// ssh prefix for anything else. The single place a ref becomes a command.
+    func cli(for ref: SessionRef) throws -> ClaudeCLI {
+        guard let host = hosts.host(named: ref.host) else {
+            throw AttachError.unknownHost(ref.host, known: hosts.hosts.map(\.name))
+        }
+        if host.isLocal { return cli }
+        if let problem = host.validate() { throw AttachError.badHost(problem) }
+        guard let remote = ClaudeCLI.of(host) else { throw AttachError.badHost("host '\(host.name)' is not usable") }
+        return remote
+    }
+
+    /// The attach command for a ref, as a pasteable line (the roster's
+    /// "copy" and the pane run the same words).
+    func attachCommandLine(for ref: SessionRef) -> String {
+        guard let cli = try? cli(for: ref) else { return "claude attach \(ref.id)" }
+        return cli.attachCommandLine(id: ref.id)
     }
 
     func serve(path: String = ControlSocket.defaultPath) throws {
@@ -58,21 +85,25 @@ final class PaneController {
 
     // MARK: gestures
 
-    func attach(id: String, cols: Int? = nil, rows: Int? = nil) throws {
+    func attach(ref: SessionRef, cols: Int? = nil, rows: Int? = nil) throws {
         if let session, session.isRunning {
-            throw AttachError.busy(session.id)
+            throw AttachError.busy(session.ref)
         }
+        let cli = try cli(for: ref)
+        // The master socket's directory must exist before ssh is exec'd:
+        // the PTY child has no way to report a mkdir failure back to us.
+        try cli.prepareControlDirectory()
         let size = (cols ?? defaultSize.cols, rows ?? defaultSize.rows)
         let host = makeHost(size.0, size.1)
-        let session = try AttachSession(id: id, argv: cli.attachArgv(id: id), host: host,
+        let session = try AttachSession(ref: ref, argv: cli.attachArgv(id: ref.id), host: host,
                                         options: .init(cols: size.0, rows: size.1))
         session.onExit = { [weak self] status in
             guard let self else { return }
-            self.poller.attachedID = nil
+            self.poller.attachedRef = nil
             self.onSessionEnded?(status)
         }
         self.session = session
-        poller.attachedID = id
+        poller.attachedRef = ref
         onSessionStarted?(session)
     }
 
@@ -82,12 +113,17 @@ final class PaneController {
     }
 
     enum AttachError: Error, CustomStringConvertible {
-        case busy(String)
+        case busy(SessionRef)
         case nothingAttached
+        case unknownHost(String, known: [String])
+        case badHost(String)
         var description: String {
             switch self {
-            case .busy(let id): return "already attached to \(id); detach first"
+            case .busy(let ref): return "already attached to \(ref); detach first"
             case .nothingAttached: return "nothing attached"
+            case .unknownHost(let name, let known):
+                return "unknown host '\(name)' (known: \(known.joined(separator: ", "))); add it with `ccc hosts add`"
+            case .badHost(let problem): return problem
             }
         }
     }
@@ -99,20 +135,21 @@ final class PaneController {
         case .list:
             await poller.tick()
             return .list(poller.state.sorted)
-        case .attach(let id):
+        case .attach(let ref):    // a SessionRef; the label is the wire key
+
             do {
-                try attach(id: id)
-                return .ok("attached \(id)")
+                try attach(ref: ref)
+                return .ok("attached \(ref)")
             } catch {
                 return .error("\(error)")
             }
         case .detach:
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             await session.detach()
-            return .ok("detached \(session.id)")
+            return .ok("detached \(session.ref)")
         case .snapshot:
             guard let session else { return .snapshot(SnapshotInfo(attachedTo: nil, grid: nil)) }
-            return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.id : nil, grid: session.host.snapshot()))
+            return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.ref : nil, grid: session.host.snapshot()))
         case .send(let text, let keys, let wheel, let paste):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             if let text { session.send(text: text) }

@@ -23,7 +23,7 @@ public final class RosterPoller {
 
     public private(set) var state = State()
     public var interval: Duration
-    public var attachedID: String?
+    public var attachedRef: SessionRef?
 
     private let cli: ClaudeCLI?
     private let probe = ModelProbe()
@@ -70,14 +70,22 @@ public final class RosterPoller {
         }
         let decoded = RosterDecoder.decode(data)
         let probe = self.probe
-        let attached = attachedID
+        let attached = attachedRef
         let known = transcriptPaths
+        let hostName = cli.host.name
         // Model lookups touch the filesystem; keep them off the main actor.
+        let isLocal = cli.host.isLocal
         let (rows, found) = await Task.detached(priority: .utility) {
             var found: [String: URL] = [:]
             let rows = decoded.sessions.map { session -> SessionRow in
                 var model: String?
-                if let id = session.sessionId {
+                // The transcript is a file under the *session's* `~/.claude`,
+                // so this join only works where the daemon and the filesystem
+                // are the same machine. A remote row shows no model rather
+                // than this Mac's answer to a question about another one;
+                // reading it over the hop is its own decision (docs/DESIGN.md
+                // "The model column over ssh").
+                if isLocal, let id = session.sessionId {
                     // A cached path can go stale: the transcript follows the
                     // session's CURRENT worktree well on every entry (lore
                     // canon e085cbb), so a populated well empties under us.
@@ -88,7 +96,8 @@ public final class RosterPoller {
                         model = probe.model(forTranscriptAt: url)?.model
                     }
                 }
-                return SessionRow(session: session, model: model, attached: session.id == attached)
+                let ref = SessionRef(host: hostName, id: session.id)
+                return SessionRow(session: session, host: hostName, model: model, attached: ref == attached)
             }
             return (rows, found)
         }.value
