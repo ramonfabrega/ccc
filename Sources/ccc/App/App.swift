@@ -18,6 +18,7 @@ enum App {
     private var controller: PaneController?
     private var window: MainWindowController?
     private var statusItem: NSStatusItem?
+    private var notifier: Notifier?
     private let updater = Updater()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -45,6 +46,15 @@ enum App {
             window.showNotice("\(error)")
         }
         controller.poller.start()
+        // The poll is the first notifier (v3): one banner per transition,
+        // click to attach. Same detector as `ccc watch`.
+        let notifier = Notifier(poller: controller.poller) { [weak window] ref in
+            window?.showWindow(nil)
+            window?.attach(ref)
+        }
+        notifier.start()
+        self.notifier = notifier
+        controller.notificationStats = { [weak notifier] in notifier?.stats() }
         installStatusItem()
         window.showWindow(nil)
         NSApp.activate()
@@ -74,6 +84,7 @@ enum App {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        notifier?.stop()
         controller?.stop()
     }
 

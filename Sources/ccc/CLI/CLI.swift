@@ -5,6 +5,7 @@ import Foundation
 ///
 ///   ccc hosts [add|remove|check]      the machines ccc can reach
 ///   ccc list [--json]                 the roster, with the model column
+///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
 ///
 /// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
@@ -34,6 +35,8 @@ enum CLI {
                 return installCLI(directory: stringFlag("--dir", rest), force: rest.contains("--force"), json: json)
             case "list":
                 return try await list(host: stringFlag("--host", rest), json: json)
+            case "watch":
+                return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2, json: json)
             case "hosts":
                 return try await hosts(rest, json: json)
             case "attach":
@@ -129,6 +132,58 @@ enum CLI {
             printRoster(state.sorted, issues: state.issues, hosts: loaded.config)
         }
         return state.issues.isEmpty ? 0 : 3
+    }
+
+    /// The notification center's twin (v3): the same poll, the same
+    /// `TransitionDetector`, one line per event on stdout until interrupted.
+    /// Needs no running app, like `list`. The first poll is the baseline
+    /// and prints what is already blocked to stderr, so a reader knows the
+    /// standing state without it counting as news.
+    static func watch(host name: String?, interval: Int, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        let config: HostConfig
+        if let name {
+            guard let host = loaded.config.host(named: name) else {
+                stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+                return 2
+            }
+            config = HostConfig(hosts: [host])
+        } else {
+            config = loaded.config
+        }
+        let poller = RosterPoller(hosts: config, interval: .seconds(interval))
+        var detector = TransitionDetector()
+        await poller.tick()
+        var state = poller.state
+        for failed in state.failures { stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")") }
+        guard state.anyHostAnswered else { return 1 }
+        _ = detector.observe(state)
+        let blocked = state.rows.filter { $0.session.state == .blocked }
+        stderr("ccc: watching \(config.hosts.count) host\(config.hosts.count == 1 ? "" : "s"), \(state.rows.count) sessions, \(blocked.count) blocked"
+               + (blocked.isEmpty ? "" : ": " + blocked.map { "\($0.session.name ?? $0.ref.description)" }.joined(separator: ", ")))
+        let clock = DateFormatter()
+        clock.dateFormat = "HH:mm:ss"
+        var reported = Set<String>()
+        while true {
+            try? await Task.sleep(for: .seconds(interval))
+            await poller.tick()
+            state = poller.state
+            // A host's failure is said once per outage, not every tick.
+            for failed in state.failures where reported.insert(failed.host).inserted {
+                stderr("ccc: \(failed.host): \(failed.error ?? "unreachable") (rows kept; silent until it answers)")
+            }
+            for host in state.hosts where host.error == nil { reported.remove(host.host) }
+            for event in detector.observe(state) {
+                if json {
+                    printJSON(event)
+                } else {
+                    let mark = event.kind == .blocked ? "⏸" : (event.kind == .done ? "✓" : "✗")
+                    print("\(clock.string(from: event.at))  \(mark) \(event.kind.rawValue.padding(toLength: 7, withPad: " ", startingAt: 0))  \(event.ref.description.padding(toLength: 14, withPad: " ", startingAt: 0))  \(event.headline)")
+                }
+                fflush(stdout)
+            }
+        }
     }
 
     /// The machines ccc can reach, and the gestures on that list. `check`
@@ -626,6 +681,14 @@ enum CLI {
         if let j = s.modelJoin {
             print("model join   last \(ms(j.lastMs))  mean \(ms(j.meanMs))  reads \(j.reads)  cached \(j.hits)  gone \(j.misses)  well lookups \(j.lookups) (\(j.unresolved) unresolved)")
         }
+        if let n = s.notifications {
+            // Posted but not authorized is the banner that never reached
+            // the screen: say it in the same breath as the count.
+            let warn = n.posted > 0 && n.authorization != "authorized" && n.authorization != "provisional"
+                ? "  ⚠ events were posted but notifications are \(n.authorization) — none reached the screen" : ""
+            let last = n.lastEvent.map { "  last \"\($0)\"" } ?? ""
+            print("notifications  \(n.authorization)  posted \(n.posted)\(last)\(warn)")
+        }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames
         // presented means the human sees nothing while snapshots look fine.
@@ -666,6 +729,7 @@ enum CLI {
                                                   (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
                ccc list [--host <name>] [--json]  every host's roster; --host narrows to one
+               ccc watch [--host <name>] [--interval S] [--json]   one line per transition (blocked, done, failed, stopped)
                ccc attach <ref> [--headless [--cols N --rows N]]
                                                   <ref> is `id` (this Mac) or `host:id`
                ccc snapshot [--json]

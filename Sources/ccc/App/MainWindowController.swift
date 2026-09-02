@@ -182,7 +182,7 @@ final class MainWindowController: NSWindowController {
         window?.title = BuildInfo.current.appTitle
     }
 
-    private func attach(_ ref: SessionRef) {
+    func attach(_ ref: SessionRef) {
         controller.defaultSize = gridSize()
         do {
             try controller.attach(ref: ref)

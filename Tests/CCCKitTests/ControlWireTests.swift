@@ -60,6 +60,7 @@ import Testing
         let stats = try JSONDecoder().decode(StatsInfo.self, from: json)
         #expect(stats.hosts == nil)
         #expect(stats.build == nil)
+        #expect(stats.notifications == nil)
         #expect(stats.pollCount == 5)
     }
 

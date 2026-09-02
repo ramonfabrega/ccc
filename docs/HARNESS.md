@@ -38,7 +38,11 @@ behind `ssh`.
   hook. It also brought a **third `status` value, `waiting`**, which no doc
   lists; the lenient decoder flagged it as an unknown value and the banner
   is how we learned about it, exactly as designed. Only the blocked row
-  carries it.
+  carries it. **Not always, though (2026-09-02, v3's proof):** eight
+  sessions spawned with a prompt that calls `AskUserQuestion` all came
+  back `{state: "blocked", status: "idle"}` with **no `waitingFor`** — the
+  pairing is real but the reason is optional, and the transition detector
+  keys on `state` with `waitingFor` as detail, never as the trigger.
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.

@@ -35,6 +35,8 @@ final class PaneController {
     var peekProvider: (@MainActor () -> Data?)?
     /// show / hide / close, when there is a window. Returns false if unknown.
     var windowAction: (@MainActor (String) -> Bool)?
+    /// The notifier's state, when there is one (the window face).
+    var notificationStats: (@MainActor () -> NotificationStats?)?
 
     /// The hosts ccc knows about, and why any were dropped. Loaded once at
     /// start: a host list that changes under a running attach would change
@@ -246,16 +248,20 @@ final class PaneController {
             guard let windowAction else { return .error("no window (headless)") }
             return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (show|hide|close)")
         case .stats:
+            var stats: StatsInfo
             if let session {
-                return .stats(session.stats(pollState: poller.state))
+                stats = session.stats(pollState: poller.state)
+            } else {
+                let me = getpid()
+                let state = poller.state
+                stats = StatsInfo(pid: me, footprintBytes: ProcessStats.footprint(of: me) ?? 0, childPID: nil,
+                                  childFootprintBytes: nil, lastPollMs: state.lastPollMs,
+                                  meanPollMs: state.meanPollMs, pollCount: state.pollCount,
+                                  modelJoin: state.modelJoin, hosts: state.hosts.map(HostPollStats.init),
+                                  ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 0)
             }
-            let me = getpid()
-            let state = poller.state
-            return .stats(StatsInfo(pid: me, footprintBytes: ProcessStats.footprint(of: me) ?? 0, childPID: nil,
-                                    childFootprintBytes: nil, lastPollMs: state.lastPollMs,
-                                    meanPollMs: state.meanPollMs, pollCount: state.pollCount,
-                                    modelJoin: state.modelJoin, hosts: state.hosts.map(HostPollStats.init),
-                                    ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 0))
+            stats.notifications = notificationStats?()
+            return .stats(stats)
         case .reconnect(let host):
             if let host, poller.poller(for: host) == nil {
                 return .error(AttachError.unknownHost(host, known: hosts.hosts.map(\.name)).description)

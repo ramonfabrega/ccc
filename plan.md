@@ -11,20 +11,20 @@ Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 144 tests green.
 true; do it again after every master sync or the branches re-diverge).
 No release is owed yet; cadence is "actionable only".
 
-## Current: v3 notifications, slice 1
+## Current: v3 notifications
 
-The roster already carries `blocked` / `waitingFor` for every host, so
-"it's your turn" on every Mac needs no forwarding. Cut as:
+Slice 1 landed (docs/MILESTONES.md v3): detector, `ccc watch`, banners
+with click-to-attach, `notifications` in `ccc stats`. Studio's app is
+**authorized** (System Settings → Notifications → Claude Code Command; the
+first automated answer to the permission banner hit "Don't Allow", and
+`ccc stats` is how that was seen). Air will get the permission banner on
+its first launch of a build ≥ 58.
 
-- **Transition detector** in the poller: a session that becomes blocked,
-  or whose `waitingFor` changes, is one event; deduped per session and
-  prompt so a 2 s poll never repeats. Also: a session that ends. Testable
-  headless against two roster snapshots.
-- **`ccc watch`** streams the same events as lines or `--json` — the
-  command twin, how an agent sees what the notification center shows.
-- **One macOS notification per event** (UNUserNotificationCenter, needs
-  the bundle id — the dev lane has it), click → attach. The Notification
-  hook stays banked; it supplements only what the roster cannot show.
+Slice 2 candidates, none started: a session stopped by your own hand
+still banners ("stopped"); a per-host mute; the Notification hook for
+what the roster cannot show (permission prompts carry no text in the
+roster). The eight `ccc-v3-*` proof sessions sit stopped/done in studio's
+roster until v4's archive exists.
 
 Polish parked until the pane is the subject again: the banner draws under
 the title bar (fix when touching the window controller for click-to-attach)

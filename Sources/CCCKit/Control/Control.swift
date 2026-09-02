@@ -176,6 +176,24 @@ public struct HostPollStats: Codable, Sendable, Equatable {
     }
 }
 
+/// Whether "it's your turn" can reach the screen (v3). The black-pane
+/// lesson (docs/DESIGN.md §7) applied to banners: events detected but
+/// none authorized is a silent Mac, and the number has to say so.
+public struct NotificationStats: Codable, Sendable, Equatable {
+    /// `authorized`, `denied`, `notDetermined`, `provisional`, or
+    /// `unavailable` (no bundle, so no notification center).
+    public var authorization: String
+    /// Events handed to the notification center since launch.
+    public var posted: Int
+    public var lastEvent: String?
+
+    public init(authorization: String, posted: Int, lastEvent: String?) {
+        self.authorization = authorization
+        self.posted = posted
+        self.lastEvent = lastEvent
+    }
+}
+
 public struct StatsInfo: Codable, Sendable {
     public var pid: Int32
     /// phys_footprint — the number Activity Monitor calls "Memory".
@@ -210,6 +228,8 @@ public struct StatsInfo: Codable, Sendable {
     /// meeting a "malformed request" on the next new verb. Optional: an
     /// older server sends no such key.
     public var build: BuildInfo?
+    /// The window face's notifier; `nil` headless or from an older server.
+    public var notifications: NotificationStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,

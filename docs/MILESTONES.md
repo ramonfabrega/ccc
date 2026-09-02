@@ -127,6 +127,27 @@ Each milestone is comparable against `claude agents` on its own. Experiments
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.
+  **Slice 1 — done 2026-09-02.** `TransitionDetector` (CCCKit) turns two
+  roster states into events: became blocked or blocked on something new,
+  or a live session ended (done / failed / stopped). Dedup is structural
+  (an event is a change in a session's state + waitingFor pair); each
+  host's first answer is its silent baseline; a failing host's stale rows
+  say nothing and its catch-up is one event; a session that leaves is
+  forgotten. `ccc watch` is the twin: same poll, same detector, one line
+  or one JSON object per event, no app needed. The window face's
+  `Notifier` runs the same detector on the poll it already has and posts
+  one banner per event (request id = the ref, so a newer question
+  replaces the older banner), click → attach. `ccc stats` grew a
+  `notifications` line (authorization, posted, last) because a banner
+  denied at the permission prompt is the black pane again — and it was:
+  the first proof posted two events to a `denied` app, which stats named.
+  **Proved live:** spawned sessions crossed `ccc watch` as `✓ done` and
+  `⏸ blocked`, the banner "ccc-v3-click is waiting — Click to attach"
+  reached the screen 7 s after the spawn, and pressing it attached the
+  window to that session (`ccc snapshot` showed its TUI). Found by doing
+  it (docs/HARNESS.md): a blocked row does not always carry `waitingFor`.
+  Open for slice 2: whether a session *you* just stopped by hand deserves
+  a banner; a per-host mute; the hook for what the roster cannot show.
 - **v4 — the roster, ours.** Archive, pin, group, sort in an overlay keyed by
   session id under Application Support; done vs stopped vs archived.
 - **v5 — spawn.** `claude --bg` with cwd, model, prompt, agent; drafts via
