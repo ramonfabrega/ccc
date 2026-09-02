@@ -34,6 +34,16 @@ behind `ssh`.
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.
+- **The roster forgets done sessions, on a rule not yet known.** Session
+  `1b1140d9` (done, live pid) was listed at 03:00 and absent from
+  `roster.json` itself by 04:05 (lore: the file is the store, not a view;
+  daemon.log shows `bg settled` at 08:12:51Z). Falsified 2026-09-02 04:15:
+  "dropped at the next roster rewrite" — a spawn rewrote the store and the
+  done row `78bb5bd1` stayed. Open candidates: worker process exit, a
+  daemon idle-exit/restart rebuilding the store, or attach/detach on the
+  session. Consequence for ccc regardless: a target seen last tick may be
+  gone this tick; `claude attach` on a forgotten id prints "No job
+  matching" and exits, which the pane shows as its first row.
 
 **`claude attach <id>`** — no flags. Fullscreen TUI. Detach: `←` on an empty
 prompt, `/exit`, `Ctrl+Z` (back to where you started), double `Ctrl+C` or
