@@ -1,0 +1,167 @@
+[
+  {
+    "id": "a76974d4",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1780729502912,
+    "sessionId": "a76974d4-6d2c-4c50-a65e-0f378507b3e2",
+    "name": "mobile",
+    "state": "done"
+  },
+  {
+    "id": "b9ef1298",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1786480924878,
+    "sessionId": "b9ef1298-658c-4664-8b0f-719f2f8c5d1e",
+    "name": "android translation checkout bug",
+    "state": "done"
+  },
+  {
+    "id": "755a5779",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1786980406081,
+    "sessionId": "755a5779-25e4-4004-bf98-83853e3ff5b1",
+    "name": "migrate babyhouse.club theme",
+    "state": "done"
+  },
+  {
+    "id": "1fd92acc",
+    "cwd": "/Users/rf-studio/code/fun/centaur",
+    "kind": "background",
+    "startedAt": 1787293845139,
+    "sessionId": "1fd92acc-350f-40d1-8047-be54e8665f67",
+    "name": "centaur mev",
+    "state": "done"
+  },
+  {
+    "id": "2d567704",
+    "cwd": "/Users/rf-studio/code/work/centaur",
+    "kind": "background",
+    "startedAt": 1787328666004,
+    "sessionId": "2d567704-cd79-43e9-9ab7-e78da9d23736",
+    "name": "centaur cuanto",
+    "state": "stopped"
+  },
+  {
+    "id": "277ffc3b",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787697971389,
+    "sessionId": "277ffc3b-d936-409b-8f0d-4426d2960ebd",
+    "name": "sentry migration assessment",
+    "state": "done"
+  },
+  {
+    "id": "5df0fa59",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787774693960,
+    "sessionId": "5df0fa59-8b0b-4472-a17f-ad0b640114ec",
+    "name": "pr review and testing",
+    "state": "stopped"
+  },
+  {
+    "id": "63c02b9d",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787930110921,
+    "sessionId": "63c02b9d-0844-42e5-b0b9-f6f381d8a9cb",
+    "name": "slack message retrieval",
+    "state": "done"
+  },
+  {
+    "id": "6dd0d4b4",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787930521432,
+    "sessionId": "6dd0d4b4-62fe-4f8e-b593-6158ddf9fd77",
+    "name": "mobile session invalidation research",
+    "state": "done"
+  },
+  {
+    "id": "9f61204a",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1787961009338,
+    "sessionId": "9f61204a-fb1a-4817-9620-c8c1afa6c368",
+    "name": "polish",
+    "state": "done"
+  },
+  {
+    "pid": 32093,
+    "id": "a18a763f",
+    "cwd": "/Users/rf-studio/code/fun/lore",
+    "kind": "background",
+    "startedAt": 1788288840703,
+    "sessionId": "2d03cb5d-a7a8-43bf-b8e1-fe5147e4711d",
+    "name": "lore",
+    "status": "idle",
+    "state": "blocked"
+  },
+  {
+    "id": "1e743056",
+    "cwd": "/Users/rf-studio/code/work/cuanto",
+    "kind": "background",
+    "startedAt": 1788297387508,
+    "sessionId": "1e743056-e7ec-4423-8522-252726dbcb1b",
+    "name": "investigate delayed alerts slack",
+    "state": "done"
+  },
+  {
+    "pid": 12994,
+    "id": "e2f16177",
+    "cwd": "/Users/rf-studio/code/work/cuanto/.claude/worktrees/storefront-shell-refactor",
+    "kind": "background",
+    "startedAt": 1788302447897,
+    "sessionId": "dc2c171a-b601-4310-9713-a35bced59dd3",
+    "name": "storefront",
+    "status": "idle",
+    "state": "done"
+  },
+  {
+    "pid": 47469,
+    "id": "c394a894",
+    "cwd": "/Users/rf-studio/code/work/cuanto/.claude/worktrees/cua-483-bill-email",
+    "kind": "background",
+    "startedAt": 1788305220791,
+    "sessionId": "5e657089-ab71-4567-99bc-177b52363740",
+    "name": "bill-api",
+    "status": "idle",
+    "state": "done"
+  },
+  {
+    "pid": 93152,
+    "id": "1622e5f0",
+    "cwd": "/Users/rf-studio/code/work/cuanto/.claude/worktrees/annotate-cleanup",
+    "kind": "background",
+    "startedAt": 1788305714991,
+    "sessionId": "64eb096e-bcc7-4080-ac3c-05da68353aca",
+    "name": "annotate",
+    "status": "idle",
+    "state": "done"
+  },
+  {
+    "pid": 36812,
+    "id": "3c382923",
+    "cwd": "/Users/rf-studio/code/fun/attrition/.claude/worktrees/replan-pdb",
+    "kind": "background",
+    "startedAt": 1788331412498,
+    "sessionId": "1b259282-dc23-42a2-9a25-90c823e64561",
+    "name": "attrition",
+    "status": "busy",
+    "state": "working"
+  },
+  {
+    "pid": 85001,
+    "id": "b3919c35",
+    "cwd": "/Users/rf-studio/code/fun/ccc/.claude/worktrees/v0",
+    "kind": "background",
+    "startedAt": 1788331923028,
+    "sessionId": "57084123-50ff-46c8-9e1b-431ac517df70",
+    "name": "ccc",
+    "status": "busy",
+    "state": "working"
+  }
+]
