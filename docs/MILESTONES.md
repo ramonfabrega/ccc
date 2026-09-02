@@ -32,12 +32,18 @@ Each milestone is comparable against `claude agents` on its own. Experiments
        `done · idle` in the roster after. Ctrl+Z crosses the hop.
      - `ccc list` with no remote host is unchanged from v1: no host column,
        model column populated.
-  2. **Poll fan-out.** One poller per host, merged; a sleeping host degrades
-     to a stale/offline row (never a blank roster, never the shape banner);
-     per-host issues. Carries one known display bug from slice 1: both
-     roster faces shorten a cwd by substituting *this* Mac's home path, which
-     is wrong for a host whose username differs (invisible against `loop`,
-     since it is the same machine).
+  2. **Poll fan-out.** One poller per host, merged; per-host error and shape
+     issues (one unreachable host must never blank the roster or raise a
+     global banner); concurrent ticks so a 5 s timeout on one host cannot
+     delay the 149 ms local poll. **Reframed 2026-09-02 (docs/DESIGN.md
+     §4b): the thing that sleeps is the client, not the host** — air runs no
+     sessions and studio is always up — so the slice's real content is
+     reconnect hygiene, and the measured bug to fix is that ssh never evicts
+     a wedged master (a 215 ms poll becomes a permanent 5.3 s one; unlinking
+     the socket restores it). Carries one known display bug from slice 1:
+     both roster faces shorten a cwd by substituting *this* Mac's home path,
+     which is wrong for a host whose username differs (invisible against
+     `loop`, since it is the same machine).
   3. **The model column over ssh — done 2026-09-02.** Settled by
      measurement (docs/DESIGN.md §4a): the local join is 9 ms of a 199 ms
      poll, so its cadence is left alone; the remote host is read by its own

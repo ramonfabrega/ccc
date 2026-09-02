@@ -177,6 +177,54 @@ first:
 - **`ccc list --json` writes its issues to stderr.** Exit 3 alone told a
   caller *that* something changed and never *what*; stdout stays pure JSON.
 
+## 4b. What actually sleeps is the client (v2, 2026-09-02)
+
+The fan-out was first designed for "N hosts, several of them Macs that come
+and go", which is the wrong shape for this fleet. **air is a client only —
+it never runs sessions.** Every session runs on studio, so from air the host
+list is `{local (empty), studio}` and studio is essentially always up
+(barring a rare lock/sleep with caffeine off). What sleeps is *the machine
+doing the polling*: the lid closes mid-sentence, nothing on studio stops, and
+on wake our sockets are stale.
+
+So the everyday failure is not "a host is unreachable" but "our own
+connection is wedged", and the two need different answers. Backoff against a
+dead host is near-worthless here; **reconnect hygiene is the feature.**
+
+**Measured 2026-09-02** (release, host `loop` = localhost through the ssh
+path; a suspended master, `kill -STOP`, is the lid-close shape — socket
+present, peer not answering):
+
+| case | how it was made | result |
+|---|---|---|
+| healthy warm poll | — | **215–364 ms** |
+| master died (`kill -9`), stale socket left behind | process gone | **316 ms — recovers by itself.** ssh sees the dead socket and connects fresh; a non-issue |
+| unreachable host | `--ssh 192.0.2.1` (RFC 5737 TEST-NET) | **5083 ms, clean failure**, `ssh to dead failed: … Operation timed out`. `ConnectTimeout=5` holds |
+| **wedged master** | `kill -STOP` the mux process | **5281 ms and then SUCCEEDS** — and *every* subsequent poll pays it again (5258 ms), forever |
+| same, after evicting the socket | `rm loop.sock` | **364 ms** — back to healthy immediately |
+
+Two corrections to what we believed going in:
+
+- **`ConnectTimeout` does bound the mux wait**, not just the initial TCP
+  connect. The prediction that a wedged master would hang for minutes was
+  wrong; it degrades to `ConnectTimeout` and then falls back to a direct
+  connection. Good news, and it means `ServerAliveInterval` is not the
+  missing piece it looked like.
+- **But ssh never evicts the bad socket.** It re-tries the wedged mux on
+  every single invocation, so a 215 ms poll becomes a *permanent* 5.3 s poll
+  against a 2 s tick — the poller is then always behind and burns 5 s a
+  turn. This is the real bug, and it is ours to fix, not ssh's.
+
+The fix therefore is not timeout tuning: it is **evicting the master when a
+poll comes back degraded** (unlink the socket, or `ssh -O exit`), which
+restores full speed on the next tick. `NSWorkspace.didWakeNotification` is
+the cheap proactive half — on wake, drop the master and re-poll at once
+instead of waiting for one 5 s tick to discover it. Open, and worth a
+measurement rather than a guess: whether a real lid-close/wake produces the
+wedged shape at all, or whether macOS tears the socket down cleanly (in
+which case the `kill -9` row above is the true everyday path and there is
+almost nothing to do).
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past
