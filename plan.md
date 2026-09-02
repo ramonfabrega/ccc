@@ -10,9 +10,8 @@ Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 173 tests green.
 `master` fast-forwards to it (a merge of master into this branch keeps that
 true; do it again after every master sync or the branches re-diverge).
 **v0.1.6 (build 68) is cut and on the feed** (2026-09-02, tag pushed,
-GitHub Release up); **origin master is still at v0.1.5** — the main
-checkout wants `git merge --ff-only worktree-v2` on master and a push,
-which this session left to a hand (it never pushes master). Studio runs
+GitHub Release up); origin master fast-forwarded to the branch the same
+evening (bc52554), so the two are level again. Studio runs
 the cut (`scripts/install --dist`). **Air is on v0.1.5** and will be
 offered v0.1.6 by Sparkle; that update is what gives air the v4 verbs
 and the icon. Left there: answer the notification permission banner
