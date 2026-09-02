@@ -39,11 +39,18 @@ behind `ssh`.
   `roster.json` itself by 04:05 (lore: the file is the store, not a view;
   daemon.log shows `bg settled` at 08:12:51Z). Falsified 2026-09-02 04:15:
   "dropped at the next roster rewrite" — a spawn rewrote the store and the
-  done row `78bb5bd1` stayed. Open candidates: worker process exit, a
-  daemon idle-exit/restart rebuilding the store, or attach/detach on the
-  session. Consequence for ccc regardless: a target seen last tick may be
-  gone this tick; `claude attach` on a forgotten id prints "No job
-  matching" and exits, which the pane shows as its first row.
+  done row `78bb5bd1` stayed. Lore then read daemon.log and `ps` and
+  killed every mechanism proposed: the host process of `1b1140d9` is still
+  alive after its row vanished; the supervisor (pid 9226) has been up
+  since 2026-09-01 with no restart; no attach/detach in the window; and
+  the log has **no lines at all** between `settled` and the poll that found
+  the row gone. **It is a plain age threshold on settled rows, between
+  8.7 and 52 minutes** (15 and 30 fit, 60 does not); pin it by polling,
+  not by spawning. "Starts on demand, exits idle" in this file describes
+  worker hosts, not the supervisor. Consequence for ccc regardless of the
+  number: a target seen last tick may be gone this tick; `claude attach`
+  on a forgotten id prints "No job matching" and exits, which the pane
+  shows as its first row.
 
 **`claude attach <id>`** — no flags. Fullscreen TUI. Detach: `←` on an empty
 prompt, `/exit`, `Ctrl+Z` (back to where you started), double `Ctrl+C` or
