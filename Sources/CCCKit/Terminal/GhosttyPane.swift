@@ -33,6 +33,9 @@ public final class GhosttyPane: TerminalHost {
     public var onSizeChanged: ((Int, Int) -> Void)?
     public var view: NSView? { container }
     public var metrics: CellMetrics { metalView.metrics }
+    public var presentation: (frames: Int, lastAt: Date?)? {
+        (metalView.presentedFrames, metalView.lastPresentedAt)
+    }
 
     public init(frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600), font: NSFont? = nil) {
         let scale = NSScreen.main?.backingScaleFactor ?? 2

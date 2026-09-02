@@ -197,13 +197,24 @@ public struct StatsInfo: Codable, Sendable {
     public var ptyBytesIn: UInt64
     public var ptyBytesPerSecond: Double
     public var uptimeSeconds: Double
+    /// Frames the pane actually handed to its on-screen layer, and how long
+    /// ago the last one was. Bytes in without frames presented is a pane
+    /// that is black to the human while every snapshot looks fine to the
+    /// agent (2026-09-02) — the two must be able to read the same number.
+    /// Optional: an older server sends no such key, and a headless pane
+    /// has no screen.
+    public var paneFramesPresented: Int?
+    public var paneLastPresentedSecondsAgo: Double?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
                 hosts: [HostPollStats]? = nil,
-                ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double) {
+                ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double,
+                paneFramesPresented: Int? = nil, paneLastPresentedSecondsAgo: Double? = nil) {
         self.modelJoin = modelJoin
         self.hosts = hosts
+        self.paneFramesPresented = paneFramesPresented
+        self.paneLastPresentedSecondsAgo = paneLastPresentedSecondsAgo
         self.pid = pid
         self.footprintBytes = footprintBytes
         self.childPID = childPID

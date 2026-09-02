@@ -93,6 +93,11 @@ it should break while being awesome.**
   replay every renderer change is judged against; headless render tests exist
   from day one. Pixels (argent screenshots) judge feel; the text grid judges
   correctness.
+- **The human's screen is the oracle for presentation.** `ccc peek` composites
+  the pane from an offscreen render, so it can show a perfect TUI over a pane
+  that is black on screen — it did, for a day (docs/DESIGN.md §7). Judge "is it
+  visible" with a real `screencapture`, and read `ccc stats`' presented-frame
+  count: bytes in with zero frames is the black pane, stated as a number.
 
 ## Hard constraints
 

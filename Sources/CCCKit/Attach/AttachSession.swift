@@ -121,7 +121,9 @@ public final class AttachSession {
             hosts: pollState?.hosts.map(HostPollStats.init),
             ptyBytesIn: throughput.total,
             ptyBytesPerSecond: throughput.bytesPerSecond(),
-            uptimeSeconds: Date().timeIntervalSince(startedAt)
+            uptimeSeconds: Date().timeIntervalSince(startedAt),
+            paneFramesPresented: host.presentation?.frames,
+            paneLastPresentedSecondsAgo: host.presentation?.lastAt.map { Date().timeIntervalSince($0) }
         )
     }
 }

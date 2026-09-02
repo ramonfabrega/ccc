@@ -22,6 +22,12 @@ public protocol TerminalHost: AnyObject {
     func snapshot() -> Grid
     /// The AppKit view, if this host renders. Headless hosts return nil.
     var view: NSView? { get }
+    /// What reached the screen: frames handed to the on-screen layer and
+    /// when the last one was. `nil` for a host with no screen. This is the
+    /// number that lets an agent and a human agree on whether the pane is
+    /// actually visible (docs/DESIGN.md §7): the snapshot says what the
+    /// core holds, this says what was presented.
+    var presentation: (frames: Int, lastAt: Date?)? { get }
     /// Press a named key. The host encodes it (kitty protocol, application
     /// cursor mode, whatever the child negotiated) exactly as it would for
     /// the user — CLAUDE.md "Keys are the core's job". Returns false when
@@ -34,6 +40,12 @@ public protocol TerminalHost: AnyObject {
     /// false when this host cannot paste or nothing was written.
     @discardableResult
     func paste(_ text: String) -> Bool
+}
+
+extension TerminalHost {
+    /// Hosts without a screen (the headless replay host, SwiftTerm's stock
+    /// view which draws through AppKit and needs no count) report nothing.
+    public var presentation: (frames: Int, lastAt: Date?)? { nil }
 }
 
 /// The keys `ccc send --key` accepts. Spelled the way a human types them:

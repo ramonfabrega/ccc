@@ -21,7 +21,7 @@ public final class MetalPaneView: NSView {
     public var metrics: CellMetrics {
         didSet {
             reportGridIfChanged()
-            needsDisplay = true
+            drawCurrentFrame()
         }
     }
 
@@ -34,6 +34,13 @@ public final class MetalPaneView: NSView {
     public init(frame frameRect: NSRect, metrics: CellMetrics = CellMetrics()) {
         self.metrics = metrics
         super.init(frame: frameRect)
+        // The layer comes from `makeBackingLayer()`, never from assigning
+        // `layer` after `wantsLayer`: a layer assigned by hand is one AppKit
+        // does not display for us — `updateLayer` was never called, the pane
+        // stayed black on screen, and only the offscreen `snapshotImage`
+        // path (what `ccc peek` and the six checks look at) ever drew.
+        // Found 2026-09-02 with a real `screencapture`; the checks had been
+        // judging the renderer, not the presentation.
         wantsLayer = true
         layerContentsRedrawPolicy = .duringViewResize
 
@@ -51,11 +58,15 @@ public final class MetalPaneView: NSView {
         metalLayer.presentsWithTransaction = false
         metalLayer.contentsScale = window?.backingScaleFactor ?? metrics.scale
         metalLayer.drawableSize = drawableSize()
-        layer = metalLayer
         // Seeded so the first `setFrameSize` inside the same cell does not
         // report a "change"; the owner bootstraps with `gridSize()`.
         lastReportedGrid = metrics.gridSize(for: frameRect.size)
     }
+
+    /// AppKit asks for this when `wantsLayer` is set; answering with our
+    /// `CAMetalLayer` makes it the view's backing layer, with AppKit as its
+    /// delegate — which is what routes `needsDisplay` to `updateLayer`.
+    public override func makeBackingLayer() -> CALayer { metalLayer }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("MetalPaneView is created in code") }
@@ -66,13 +77,25 @@ public final class MetalPaneView: NSView {
 
     // MARK: - Frames
 
-    /// Hand the view the frame to show. Cheap: it stores and invalidates, and
-    /// the actual encode happens in `updateLayer` on the next display pass, so
-    /// a burst of output that produces ten frames before the next vsync costs
-    /// one draw, not ten.
+    /// Frames handed to the layer's drawable, and when the last one was.
+    /// A Metal layer that is drawn to but never presented is black on
+    /// screen while every offscreen snapshot looks perfect — which is what
+    /// happened for a whole day (2026-09-02): `ccc peek` composites the
+    /// snapshot, so the agent saw text and the human saw black. This number
+    /// is the one both can read (`ccc stats`).
+    public private(set) var presentedFrames: Int = 0
+    public private(set) var lastPresentedAt: Date?
+
+    /// Hand the view the frame to show — and draw it now. A `CAMetalLayer`
+    /// owns its contents: `needsDisplay` on the view is a no-op for it
+    /// (AppKit reports the flag false straight after it is set, measured)
+    /// and `updateLayer` never comes, so the invalidate-and-wait pattern
+    /// that works for every other layer-backed view shows nothing here.
+    /// Coalescing is the caller's job (`GhosttyPane.scheduleFrame` paces
+    /// output to one frame per few milliseconds).
     public func render(_ frame: Frame) {
         frameToDraw = frame
-        needsDisplay = true
+        drawCurrentFrame()
     }
 
     public override func updateLayer() {
@@ -89,9 +112,11 @@ public final class MetalPaneView: NSView {
         guard size.width >= 1, size.height >= 1 else { return }
         if metalLayer.drawableSize != size { metalLayer.drawableSize = size }
         // One drawable per pass, and never a stall: if the pool is empty the
-        // frame is dropped and the next display pass draws the same state.
+        // frame is dropped and the next call draws the same state.
         guard let drawable = metalLayer.nextDrawable() else { return }
         renderer.draw(frame: frame, into: drawable, size: size, metrics: metrics)
+        presentedFrames += 1
+        lastPresentedAt = Date()
     }
 
     // MARK: - Geometry
@@ -112,7 +137,7 @@ public final class MetalPaneView: NSView {
         super.setFrameSize(newSize)
         metalLayer.drawableSize = drawableSize()
         reportGridIfChanged()
-        needsDisplay = true
+        drawCurrentFrame()
     }
 
     public override func viewDidChangeBackingProperties() {
@@ -127,7 +152,7 @@ public final class MetalPaneView: NSView {
             metalLayer.drawableSize = drawableSize()
             reportGridIfChanged()
         }
-        needsDisplay = true
+        drawCurrentFrame()
     }
 
     private func reportGridIfChanged() {

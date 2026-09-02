@@ -562,6 +562,13 @@ enum CLI {
             print("model join   last \(ms(j.lastMs))  mean \(ms(j.meanMs))  reads \(j.reads)  cached \(j.hits)  gone \(j.misses)  well lookups \(j.lookups) (\(j.unresolved) unresolved)")
         }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
+        // The number a black pane cannot hide behind: bytes in but no frames
+        // presented means the human sees nothing while snapshots look fine.
+        if let frames = s.paneFramesPresented {
+            let ago = s.paneLastPresentedSecondsAgo.map { String(format: "%.1f s ago", $0) } ?? "never"
+            let warn = s.ptyBytesIn > 0 && frames == 0 ? "  ⚠ bytes arrived but nothing was presented — the pane is black on screen" : ""
+            print("pane    \(frames) frames presented  last \(ago)\(warn)")
+        }
     }
 
     static func printJSON(_ value: some Encodable) {

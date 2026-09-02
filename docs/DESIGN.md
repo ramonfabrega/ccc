@@ -321,6 +321,40 @@ UserDefaults and reattaches after a relaunch, the way the agents view keeps
 its focus. Lore's note that a third consumer is the extraction threshold
 for a shared release package is a fleet chore, recorded, not ccc's.
 
+## 7. The human's screen is the oracle for presentation (2026-09-02)
+
+The Metal pane was black on screen for the whole of v1 and v2, and every
+check passed. `ccc peek` composites the pane from `snapshotImage()` — an
+offscreen render of the same frame — so the agent saw a perfect TUI while
+the human saw black, and the six checks (docs/CHECKS.md) had been judging
+the *renderer*, never the *presentation*. The user noticed; the agent
+could not have.
+
+Two causes, one lesson.
+
+- **The bug:** the view invalidated (`needsDisplay = true`) and waited for
+  AppKit's `updateLayer`, the pattern every layer-backed view uses. A
+  `CAMetalLayer` owns its contents: AppKit reports `needsDisplay` false
+  right after it is set (measured with a trace), and `updateLayer` never
+  comes. The pane now draws the moment a frame arrives, as every Metal view
+  does; coalescing stays in `GhosttyPane.scheduleFrame`. (`makeBackingLayer`
+  over assigning `layer` was also made right along the way, and was not
+  the fix on its own.)
+- **The gap:** nothing in the app could say "frames reached the layer".
+  `TerminalHost.presentation` now counts drawables presented and when the
+  last one was, `ccc stats` prints it, and bytes-in with zero frames is a
+  warning line. That is the number both sides can read.
+
+The lesson is the parity rule turned on ourselves: **the agent and the
+human must see the same thing, and where they cannot, the agent needs a
+number that says so.** `ccc peek` stays as the layout composite (it is
+TCC-free and works while unfocused); a real `screencapture` is the oracle
+for "is it on screen", and CHECKS.md's window row is re-judged with one.
+The same day found `Updater` blocking the main thread in a modal Sparkle
+alert when run unbundled — visible only as a control socket that never
+answered, diagnosed with `sample`. Same shape: the face the agent uses
+(the socket) went quiet, and nothing said why.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past
