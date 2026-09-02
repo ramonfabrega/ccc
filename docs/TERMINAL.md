@@ -74,7 +74,14 @@ protocol TerminalHost {
 ```
 
 Two implementations: `SwiftTermHost` (stock view; v0 stand-in, MIT, pin a
-tag — a lifecycle/IO rewrite is in flight ahead of its 2.0) and
+tag — a lifecycle/IO rewrite is in flight ahead of its 2.0; **checked
+2026-09-02: no 2.x tag exists, `v1.20.0` is the latest release, 2.0 lives on
+`main` with commits two days old. Its migration guide removes
+`TerminalView.getTerminal()`, which `SwiftTermHost` uses for the grid
+snapshot and dims; the replacements are `terminalDimensions` and
+`getBufferAsData(kind:encoding:)`, and `HeadlessTerminal.terminal` stays
+public so the replay host is unaffected. That is the one break to absorb
+when 2.0.0 tags — inside `SwiftTermHost`, nothing above the seam moves**) and
 `GhosttyHost` (libghostty-vt + our renderer). The six checks that decide the
 swap, run against a recorded `claude attach` session: kitty keyboard /
 shift-enter, bracketed paste, mouse scroll in the transcript, streaming
