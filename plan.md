@@ -54,7 +54,10 @@ back on studio afterwards. **Owed by a hand:** paste the `--settings`
 entry into `~/.claude/settings.json` (or the dotfiles' copy of it) and
 see the first real hook fire; click the View menu's submenu once. Left
 as decided: a session stopped by your own hand still banners, until it
-annoys. Next cut carries both; air gets them through Sparkle.
+annoys. **v0.1.9 (build 80) is cut and on the feed** (2026-09-02, the
+second cut through ota, verified live: version 80, length 4541512;
+GitHub release v0.1.9); studio runs it, air takes it through Sparkle.
+Master wants `git merge --ff-only worktree-v2` again.
 
 Polish parked until the pane is the subject again: the banner draws under
 the title bar (fix when touching the window controller for click-to-attach)
