@@ -148,6 +148,25 @@ final class PaneController {
         onSessionStarted?(session)
     }
 
+    /// The click's attach (v6, the same night as the shell pane): the
+    /// pane follows the click. Nothing attached: attach. The same ref:
+    /// nothing to do. Another ref: leave it — Ctrl+Z, the harness's own
+    /// detach, which keeps the session and its draft — and attach the
+    /// new one. The "busy" refusal was v0's guard, and every gesture that
+    /// met it (⇧⌘N's attach-when-started, a second row's ⏎) had to work
+    /// around it. Returns the sentence.
+    func switchTo(ref: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> String {
+        if let session, session.isRunning {
+            if session.ref == ref { return "already attached to \(ref)" }
+            let previous = session.ref
+            await session.detach()
+            try attach(ref: ref, cols: cols, rows: rows)
+            return "attached \(ref) (left \(previous))"
+        }
+        try attach(ref: ref, cols: cols, rows: rows)
+        return "attached \(ref)"
+    }
+
     /// Spawn (v5): `claude --bg` on `hostName` with the request's words —
     /// what `ccc spawn --host <name>` runs — then a poll so the roster
     /// carries the row before the sheet closes. The one place the sheet's
@@ -203,14 +222,17 @@ final class PaneController {
     /// something, saying so. Returns the sentence, and whether a pane was
     /// opened (false when the open one was focused).
     @discardableResult
-    func openShell(_ ref: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> (said: String, opened: Bool) {
+    func openShell(_ ref: SessionRef, atRepo: Bool = false, cols: Int? = nil, rows: Int? = nil) async throws -> (said: String, opened: Bool) {
         guard onShellStarted != nil else { throw AttachError.badHost("no window for a shell pane (headless)") }
         guard let row = poller.state.rows.first(where: { $0.ref == ref }) else {
             throw AttachError.badHost("no session '\(ref)' in the roster")
         }
+        // The repository's main checkout (`atRepo`): git's answer when the
+        // row has one, the harness's path convention otherwise.
+        let folder = atRepo ? (row.worktree?.repo ?? RepoPath.root(of: row.session.cwd)) : row.session.cwd
         if let shell, shell.isRunning {
             let where_ = hosts.shortCwd(shellCwd ?? "", host: shell.ref.host)
-            if shellCwd == row.session.cwd && shell.ref.host == ref.host {
+            if shellCwd == folder && shell.ref.host == ref.host {
                 return ("the shell pane is already open, in \(where_)", false)
             }
             guard shell.isAtPrompt else {
@@ -231,8 +253,8 @@ final class PaneController {
         let host = makeHost(size.0, size.1)
         // Local: the shell's cwd is the PTY's. Remote: the `cd` is in the
         // words, and the PTY's own cwd means nothing to ssh.
-        let cwd = ref.isLocal ? row.session.cwd : nil
-        let shell = try AttachSession(ref: ref, argv: cli.shellArgv(cwd: row.session.cwd), host: host,
+        let cwd = ref.isLocal ? folder : nil
+        let shell = try AttachSession(ref: ref, argv: cli.shellArgv(cwd: folder), host: host,
                                       options: .init(cols: size.0, rows: size.1, cwd: cwd))
         shell.onExit = { [weak self] _ in
             guard let self else { return }
@@ -241,9 +263,9 @@ final class PaneController {
             self.onShellEnded?()
         }
         self.shell = shell
-        self.shellCwd = row.session.cwd
+        self.shellCwd = folder
         onShellStarted?(shell)
-        return ("shell in \(hosts.shortCwd(row.session.cwd, host: ref.host))" + (ref.isLocal ? "" : " on \(ref.host)"), true)
+        return ("shell in \(hosts.shortCwd(folder, host: ref.host))" + (ref.isLocal ? "" : " on \(ref.host)"), true)
     }
 
     /// ⇧⌘T's twin: SIGHUP to the shell; `onExit` unmounts the pane.
@@ -323,10 +345,8 @@ final class PaneController {
             await poller.tick()
             return .list(poller.state.sorted)
         case .attach(let ref):    // a SessionRef; the label is the wire key
-
             do {
-                try attach(ref: ref)
-                return .ok("attached \(ref)")
+                return .ok(try await switchTo(ref: ref))
             } catch {
                 return .error("\(error)")
             }
@@ -391,9 +411,9 @@ final class PaneController {
         case .hook(let event):
             guard let hookSink else { return .error("no notifier (headless)") }
             return .ok(hookSink(event))
-        case .shell(let ref):
+        case .shell(let ref, let repo):
             do {
-                return .ok(try await openShell(ref).said)
+                return .ok(try await openShell(ref, atRepo: repo ?? false).said)
             } catch {
                 return .error("\(error)")
             }

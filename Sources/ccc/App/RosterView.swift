@@ -34,7 +34,7 @@ struct RosterView: View {
     /// The submenu's Push items (v6 slice 3): `ccc push <ref> [--base]`.
     let push: (SessionRef, PushTarget) -> Void
     /// Open in Terminal (v6 slice 4): `ccc shell <ref>`.
-    let openShell: (SessionRef) -> Void
+    let openShell: (SessionRef, _ atRepo: Bool) -> Void
     /// The window keeps the selection for ⌘T when nothing is attached.
     let selectionChanged: (SessionRef?) -> Void
     @State private var selection: SessionRef?
@@ -104,7 +104,7 @@ struct RosterView: View {
             .onKeyPress("a") { press { mark($0, marks($0)?.archived == true ? .unarchive : .archive) } }
             .onKeyPress("p") { press { mark($0, marks($0)?.pinned == true ? .unpin : .pin) } }
             .onKeyPress("n") { press(newSessionHere) }
-            .onKeyPress("t") { press(openShell) }
+            .onKeyPress("t") { press { openShell($0, false) } }
             .onChange(of: selection) { _, new in selectionChanged(new) }
             footer
         }
@@ -154,7 +154,10 @@ struct RosterView: View {
         Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
         if row.attached { Button("Detach") { detach() } }
         Button("New Session Here…") { newSessionHere(row.ref) }
-        Button("Open in Terminal") { openShell(row.ref) }
+        Button("Open in Terminal") { openShell(row.ref, false) }
+        if row.worktree != nil {
+            Button("Open in Terminal at Repository") { openShell(row.ref, true) }
+        }
         // The worktree's landing (v6): three strategies, each enabled by
         // what the row measures — fast-forward only while master has not
         // moved, merge and squash whenever there is work — and the

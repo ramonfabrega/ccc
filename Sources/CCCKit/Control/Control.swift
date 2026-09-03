@@ -54,7 +54,9 @@ public enum ControlRequest: Codable, Sendable {
     /// the session `id` names — the user's login shell, over `ssh -t` when
     /// the session is remote. One at a time; asking again focuses it.
     /// Headless servers have no second pane and say so.
-    case shell(id: SessionRef)
+    /// `repo` asks for the repository's main checkout instead of the
+    /// worktree — where `git merge --ff-only` and `scripts/install` run.
+    case shell(id: SessionRef, repo: Bool? = nil)
     /// Close the shell pane (SIGHUP to its shell), if one is open.
     case shellClose
 }

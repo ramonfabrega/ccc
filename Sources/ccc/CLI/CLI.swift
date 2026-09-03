@@ -101,7 +101,7 @@ enum CLI {
                     stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
                     return 2
                 }
-                return try request(.shell(id: ref), json: json)
+                return try request(.shell(id: ref, repo: rest.contains("--repo") ? true : nil), json: json)
             case "push":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -1129,7 +1129,8 @@ enum CLI {
                ccc hook [--settings]              the harness's Notification hook: JSON on stdin → a banner from the app
                                                   for what the roster cannot show; --settings prints the settings.json entry
                ccc attach <ref> [--headless [--cols N --rows N]]
-                                                  <ref> is `id` (this Mac) or `host:id`
+                                                  <ref> is `id` (this Mac) or `host:id`; the pane follows: an attached
+                                                  session is left (Ctrl+Z, the harness's detach) for the new one
                ccc snapshot [--json]
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)
@@ -1146,8 +1147,9 @@ enum CLI {
                                                   where the repo is; --ff-only (default) refuses when master moved;
                                                   every strategy refuses a dirty or wrong-branch checkout and backs
                                                   out of a conflict (exit 1 with the reason; nothing is ever lost)
-               ccc shell <ref> | --close          a shell pane under the session pane, in <ref>'s folder (over ssh -t
-                                                  when remote) — ⌘T's twin; --close is ⇧⌘T
+               ccc shell <ref> [--repo] | --close a shell pane under the session pane, in <ref>'s folder (over ssh -t
+                                                  when remote) — ⌘T's twin; --repo is the repository's main checkout
+                                                  instead of the worktree (⌥⌘T); --close is ⇧⌘T
                ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
                                                   default branch — to origin, never forced; git's own refusal is the
                                                   answer (exit 1; nothing changes anywhere)

@@ -102,8 +102,8 @@ final class MainWindowController: NSWindowController {
             self?.merge(ref, strategy)
         }, push: { [weak self] ref, target in
             self?.push(ref, target)
-        }, openShell: { [weak self] ref in
-            self?.openShell(ref)
+        }, openShell: { [weak self] ref, atRepo in
+            self?.openShell(ref, atRepo: atRepo)
         }, selectionChanged: { [weak self] ref in
             self?.currentSelection = ref
         }))
@@ -258,10 +258,12 @@ final class MainWindowController: NSWindowController {
 
     func attach(_ ref: SessionRef) {
         controller.defaultSize = gridSize()
-        do {
-            try controller.attach(ref: ref)
-        } catch {
-            showNotice("\(error)", kind: .problem)
+        Task { @MainActor in
+            do {
+                _ = try await controller.switchTo(ref: ref)
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
         }
     }
 
@@ -328,10 +330,7 @@ final class MainWindowController: NSWindowController {
                 showNotice(result.description)
                 if model.attachAfter {
                     // One pane: ⇧⌘N starts the new session beside the one on
-                    // screen, and attach refuses while one is attached — so
-                    // leave it first. `detach()` returns once the child has
-                    // exited, which is what attach checks.
-                    await controller.detach()
+                    // screen; the switch leaves that one first.
                     attach(result.ref)
                 }
             } catch {
@@ -382,10 +381,10 @@ final class MainWindowController: NSWindowController {
     /// Open in Terminal (v6 slice 4): from the row's menu, `t` on the
     /// selected row, or ⌘T for the attached session (else the selected
     /// row). An open shell is focused rather than doubled.
-    func openShell(_ ref: SessionRef) {
+    func openShell(_ ref: SessionRef, atRepo: Bool = false) {
         Task { @MainActor in
             do {
-                let result = try await controller.openShell(ref, cols: gridSize().cols)
+                let result = try await controller.openShell(ref, atRepo: atRepo, cols: gridSize().cols)
                 if result.opened {
                     showNotice(result.said)
                 } else {
@@ -405,6 +404,16 @@ final class MainWindowController: NSWindowController {
             return
         }
         openShell(ref)
+    }
+
+    /// ⌥⌘T: the same, at the repository's main checkout — where the
+    /// nightly `git merge --ff-only` and `scripts/install` actually run.
+    @objc func openRepoShellAction(_ sender: Any?) {
+        guard let ref = controller.poller.attachedRef ?? currentSelection else {
+            showNotice("select or attach a session first", kind: .problem)
+            return
+        }
+        openShell(ref, atRepo: true)
     }
 
     @objc func closeShellAction(_ sender: Any?) {

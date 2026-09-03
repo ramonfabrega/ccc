@@ -448,7 +448,7 @@ import Testing
     @Test func theWireCarriesShell() throws {
         let data = try JSONEncoder().encode(ControlRequest.shell(id: SessionRef(host: "studio", id: "a1b2")))
         let back = try JSONDecoder().decode(ControlRequest.self, from: data)
-        if case .shell(let ref) = back { #expect(ref == SessionRef(host: "studio", id: "a1b2")) } else { Issue.record("not shell") }
+        if case .shell(let ref, let repo) = back { #expect(ref == SessionRef(host: "studio", id: "a1b2") && repo == nil) } else { Issue.record("not shell") }
         let close = try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(ControlRequest.shellClose))
         if case .shellClose = close {} else { Issue.record("not shellClose") }
     }

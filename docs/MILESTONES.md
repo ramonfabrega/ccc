@@ -568,7 +568,25 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   hide and show — was weighed and left: a PTY and a process per row, a
   lifecycle tied to rows that come and go, and nothing described needs
   it. 237 tests.
-  **The banner goes — done 2026-09-02, late.** Noticed by the user on
+  **Slice 5 — done 2026-09-02, late: the pane follows the click.** The
+  user's question after the shell pane: attach while attached should
+  switch, not refuse. It does: the same ref is "already attached",
+  another ref is left by Ctrl+Z — the harness's own detach, which
+  keeps the session and its draft — and the new one attached, the
+  answer "attached b (left a)". `PaneController.switchTo`, behind the
+  window's ⏎ and double-click and the socket's `.attach`, so `ccc
+  attach` switches too; ⇧⌘N's attach-when-started no longer detaches by
+  hand. The "busy" refusal was v0's guard and every gesture that met it
+  had worked around it. `attach(ref:)` keeps the guard for the wake-up
+  reattach, which must never switch behind the user's back. **And the
+  repository shell**, from the user's evening (a fast-forward of lore
+  and a `scripts/install`, both of which run in the main checkout, not
+  the worktree): **Open in Terminal at Repository** on a worktree row,
+  ⌥⌘T for the attached session, `ccc shell <ref> --repo` — the same
+  pane, at git's answer for the repository (the harness's path
+  convention when the row has no reading). The follow-the-click rule
+  compares against the folder chosen, so the worktree and its
+  repository are two different asks. 237 tests. — done 2026-09-02, late.** Noticed by the user on
   the first Fast-forward from the row: the banner sat in the window's
   vertical stack, so every sentence resized the pane, which resized the
   PTY, which reflowed the TUI — the shift was the terminal redrawing.
@@ -600,26 +618,43 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   `VStack` still takes a header's height, so the roster had a gap at the
   top until the header became conditional. 226 tests.
 - **next** (what plan.md carried when it was retired 2026-09-02, late;
-  the queue is this file from here on):
-  1. **Host picker** off `tailscale status --json` (MagicDNS names are
+  the queue is this file from here on). The sequence agreed the same
+  night, one confirmed before the next, comes first:
+  1. **Update from master** (v6 slice 6): GitHub's "Update branch" as a
+     submenu item enabled while `↓` is above zero — `git merge <base>`
+     *inside the worktree*, a merge, never a rewrite; refuses a dirty
+     worktree (so it only acts at a commit boundary, which is what makes
+     it safe under a running session) and backs out of a conflict. Twin
+     `ccc update <ref>`. On a conflict, the refusal offers the one thing
+     a menu cannot and a session can: **Ask the session to merge
+     master**, which sends "merge master into this branch and resolve
+     the conflicts" as a prompt through the pane (`ccc send`'s road).
+  2. **Fetch, and Pull master** (v6 slice 7): `⇣N` marks from the
+     last-fetched remote refs; Fetch on demand from the submenu, once on
+     launch and on wake (a timer only after those are measured), twin
+     `ccc fetch <ref>`; Pull master fast-forward only, the mirror of
+     Push master, twin `ccc pull <ref>`. Into the worktree branch is
+     rebase's problem by another name and stays out.
+  Then, in no order:
+  3. **Host picker** off `tailscale status --json` (MagicDNS names are
      the ssh destinations; Bonjour never crosses the tailnet). With it,
      the §4c question: whether a secondary viewer renders the shared grid
      as-is instead of resizing it (last-resize-wins today). Needs air.
-  2. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
+  4. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
      its timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
      nonblocking read before the host list grows.
-  3. **Small leftovers:** a sort by model; the Session menu's archive/pin
+  5. **Small leftovers:** a sort by model; the Session menu's archive/pin
      items (the context menu has them); `ccc window show` when another
      app holds focus — measured 2026-09-02 with a Wine window in front:
      `NSApp.activate()` is cooperative since macOS 14 and the window
      stayed behind, while `open -a` brought it front, so the CLI side of
      `show` should activate through `NSWorkspace`.
-  4. **Open measurements, on air:** the long sleep (`~/lidtest.py` left
+  6. **Open measurements, on air:** the long sleep (`~/lidtest.py` left
      running on air, appending to `~/lidtest.log`; `scp` it to studio
      when air is up — it decides whether the eviction ever fires,
      `ccc stats` → `evictions`), and the first real sleep for the
      remote-pane reattach (`PaneController.reattachIfSleepKilledIt`).
-  5. **Housekeeping:** remote branches `hotfix-gridbuilder`,
+  7. **Housekeeping:** remote branches `hotfix-gridbuilder`,
      `worktree-icon`, `worktree-v0`, `worktree-v1` are merged history;
      delete when convenient.
   Dropped 2026-09-02: a "forked from" mark on the row; permission mode,
