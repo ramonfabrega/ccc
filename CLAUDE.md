@@ -55,6 +55,12 @@ it should break while being awesome.**
 - **PTY is always local; remote is the same command behind `ssh -t`.** Roster
   poll, attach, spawn: one prefix per host, one multiplexed ssh connection per
   host. Folders, git, worktrees fall out as cwd choices. No daemon of our own.
+- **The fleet has one hop, and it points one way: air → studio.** Decided
+  2026-09-03. Studio is always the host — the always-on Mac the agents run
+  on; air is the roaming client that joins. **Nothing ever ssh's into air**,
+  which is also why every update is a pull (RELEASES.md). Any-Mac-to-any-Mac
+  is a someday, not a goal, and no work here should assume it. The hop is
+  gated on Remote Login being on for studio (docs/QUEUE.md item 3).
 - **TERM starts as `xterm-256color`.** Upgrade to `xterm-ghostty` (install the
   terminfo on our own hosts) only when a feature needs it.
 - **Keys are the core's job.** AppKit key events → libghostty-vt's encoder.
@@ -76,7 +82,8 @@ it should break while being awesome.**
   behind `ssh -t` when remote, and no ccc ever depends on another ccc. The
   draft lives with the session. The shared PTY is last-resize-wins across
   viewers; whether a secondary viewer renders the grid as-is instead of
-  resizing it is slice 4's question.
+  resizing it is still open (docs/DESIGN.md §4c, docs/QUEUE.md item 3) and
+  comes due the first time air joins a session studio already has up.
 - **No tmux, ever.** The daemon is the multiplexer.
 - **Every Mac runs the release build.** Developer ID + notarized + Sparkle
   over the CDN (`scripts/package`, RELEASES.md, docs/DESIGN.md §6) — the
@@ -100,6 +107,11 @@ it should break while being awesome.**
   that is black on screen — it did, for a day (docs/DESIGN.md §7). Judge "is it
   visible" with a real `screencapture`, and read `ccc stats`' presented-frame
   count: bytes in with zero frames is the black pane, stated as a number.
+  Since 2026-09-03 that oracle has its twin: **`ccc capture`** shoots the
+  window through `screencapture -l` and **`ccc pixel --cell … --expect`**
+  makes the exit code the answer, so a colour is judged rather than looked at.
+  The capture runs in the CLI and never in the app — Screen Recording
+  permission belongs to whoever asks, and `peek` must stay permission-free.
 
 ## Hard constraints
 

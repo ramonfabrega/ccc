@@ -12,49 +12,42 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**v8 is done.** Both complaints the user raised while using the app are
-answered, and the second one is answered *with a number*. The theme (8):
-the pane wears the user's own iTerm palette. The attach transition (9):
-the incoming session runs behind the outgoing one, so the pane never goes
-blank and the ← guard — off for the whole of that blank — stays armed.
-The oracle (10): `ccc capture` and `ccc pixel` mean a colour can be
-judged from the command line, and the first thing they judged closed 8b —
-ccc's pane and iTerm land on **bit-identical** pixels in one composite,
-so the colour-management residual the item assumed does not exist
-(docs/EVIDENCE.md "8b: there is no colour-management residual").
+**v8 is done** — the theme (8), the attach transition (9) and the colour
+oracle (10) all shipped 2026-09-03, and the last of them measured the
+first: ccc's pane and iTerm land on bit-identical pixels, so the
+colour-management residual v8 assumed does not exist (docs/EVIDENCE.md
+"8b: there is no colour-management residual"). Those three items have
+left; what survived them is item 12.
 
-**The frontier is now item 3**, and it is a question only the user can
-answer: which Mac is ever the far side of an ssh hop. Everything remote —
-§4c, item 6, the ssh-clipboard question, item 9's over-ssh half — is
-behind it, and nothing else on this board is blocked at all.
+**The frontier is item 3, and it is now one toggle.** Decided by the user
+2026-09-03: **studio is always the host, air always joins.** That makes
+`ssh studio` the only hop ccc needs, Remote Login on *studio* the only
+thing standing in front of it, and items 6, 9 and DESIGN.md §4c
+answerable the moment it is on.
 
 ## Open
 
-### 3. Host picker, and the shared-size question
+### 3. The hop: one toggle on studio
 
-Off `tailscale status --json` (MagicDNS names are the ssh destinations;
-Bonjour never crosses the tailnet). With it, the question deferred in
-DESIGN.md §4c: the daemon's PTY is last-resize-wins across viewers, so
-decide whether a secondary viewer renders the shared grid as-is instead of
-resizing it.
+**Decided 2026-09-03: studio is always the host, air always joins.** Not
+symmetric and not meant to be — studio is the always-on Mac where the
+agents run, air is the roaming client, and nothing ever ssh's into air
+(which is also why the release flow is a pull; RELEASES.md's first
+paragraph). Generalising to any-Mac-to-any-Mac is a someday, not a goal.
 
-**Not blocked on a toggle — blocked on there being a destination.**
-This file said four threads waited on turning Remote Login on for air.
-That was wrong, and the user said so 2026-09-03: **air is never an ssh
-destination.** It is the Mac you drive *from*, and the reason the whole
-release flow is a pull (RELEASES.md's own first paragraph says air cannot
-be pushed to). Measured the same day: neither Mac listens on 22, and the
-host list holds `local` alone, so every ssh proof to date is `localhost`
-wearing a costume — that part stands.
+**Blocked on Sharing ▸ Remote Login on studio.** Measured 2026-09-03:
+nothing listens on 22 on either Mac and `ccc hosts` holds `local` alone,
+so every ssh proof to date is `localhost` wearing a costume. With it on,
+in order: `ccc hosts add studio --ssh studio` from air, prove one real
+`ccc attach studio:<id>`, then the picker off `tailscale status --json`
+(MagicDNS names are the ssh destinations; Bonjour never crosses the
+tailnet) — a picker is a convenience over a host list that has never held
+a real remote.
 
-What is actually open is which Mac is ever the far side. The shape the
-fleet has is air (roaming client) → studio (always-on, where the agents
-run), which would make studio the one thing to enable and air the one
-thing to run the proof from — but that is inference, not a decision, and
-nothing here should assume it. **Until a real destination exists, this
-item is a picker over a host list that can only ever hold one row**, and
-§4c, item 6 and the ssh-clipboard question have no way to be answered at
-all.
+With the hop live, the question deferred in DESIGN.md §4c comes due: the
+daemon's PTY is last-resize-wins across viewers, so decide whether a
+secondary viewer renders the shared grid as-is instead of resizing it.
+Air joining a session studio already has on screen is exactly that case.
 
 ### 4. Debt: the blocking poll read
 
@@ -70,91 +63,61 @@ has them). `ccc window show` when another app holds focus — measured
 since macOS 14 and the window stayed behind while `open -a` brought it
 front, so `show`'s CLI side should activate through `NSWorkspace`.
 
-### 6. Open measurements that need a real hop
+### 6. Two measurements that need the hop
 
-The long sleep: `~/lidtest.py` is running on air appending to
-`~/lidtest.log`, and its log is what decides whether the ssh master
-eviction ever fires (`ccc stats` → `evictions`) — the file comes off air
-by air's own hand, not by an `scp` from here (item 3: nothing ssh's into
-air). And the first real sleep for the remote-pane reattach — `sshExit`
-within 20 s of wake replays the same argv
-(`PaneController.reattachIfSleepKilledIt`), never yet through a real lid.
-Both wait on item 3 having a destination.
+Both wait on item 3, and both are lid-driven, so neither can be forced.
 
-### 7. Housekeeping
+- **The ssh master's eviction.** `~/lidtest.py` runs on air appending to
+  `~/lidtest.log`; that log decides whether the eviction ever fires
+  (`ccc stats` → `evictions`). The file comes off air by air's own hand.
+- **The remote pane's reattach across a real sleep.** `sshExit` within
+  20 s of wake replays the same argv
+  (`PaneController.reattachIfSleepKilledIt`), never yet through a lid.
 
-Remote branches `hotfix-gridbuilder`, `worktree-icon`, `worktree-v0`,
-`worktree-v1` are merged history; delete when convenient. Verify against
-`git branch -a` first — this item has not been re-checked since it was
-written.
+### 7. Housekeeping: three branches to delete
 
-### 8. The colours: two gaps left, both named
-
-Raised by the user 2026-09-03 ("feel off / opaque'd"). **Answered.** The
-pane set none of the core's four colour options, so it wore Ghostty's own
-defaults against an iTerm that is `#15191F` on `#DCDCDC`; `Theme` now
-installs 16 + 6 at `GhosttyHost.init` (docs/EVIDENCE.md "the pane wore
-Ghostty's theme"). And 8b — the colour-management residual this item
-assumed was left over — was measured with item 10's new verbs and **is
-not there**: ccc and iTerm land on bit-identical pixels in one composite
-(docs/EVIDENCE.md "8b: there is no colour-management residual").
-
-Two gaps remain, both stated in `Theme`'s doc comment and neither
-affecting whether the pane matches:
-
-- **bold-is-bright.** iTerm has it on; it promotes bold text from colour
-  *n* to *n+8*. It cannot be done from a `Frame` — the core resolves
-  palette indices to RGB before a cell reaches us (`render.h`: "Bold
-  color handling is not applied"), so the *index* has to cross the seam
-  before anything here can add 8 to it.
-- **selection.** The theme carries both colours and nothing draws them:
-  `FrameReader` always builds rows with `selection: nil`.
-
-Also untested: one display, one profile, at 1x. A Retina panel or a
-different display profile could still move the answer, and `pixel
---cell`'s scale arithmetic has never run at 2x outside a test.
+Re-checked 2026-09-03 against `git branch -a`, which this item asked for:
+`hotfix-gridbuilder`, `worktree-v0` and `worktree-v1` are merged into
+master and safe to delete on origin. **`worktree-icon` is not merged** —
+it was on the old list and does not belong in a bulk delete.
 
 ### 9. The attach transition: two ends left
 
-Shipped — the incoming session runs behind the outgoing one and the swap
-is one `install` once it has drawn, which also closed the ← hole the
-blank pane was holding open (docs/EVIDENCE.md "the attach transition, and
-the hole in the ← guard"). What is left:
+Shipped (docs/EVIDENCE.md "the attach transition, and the hole in the ←
+guard"). What is left:
 
-- **It is proved locally only.** Over ssh it is the same code with a much
-  longer wait — the case the 8 s `waitUntilDrawn` timeout was written
-  for, and the case nothing has ever run. Waits on item 3 the same way
-  everything remote does.
+- **Proved locally only.** Over ssh it is the same code with a much
+  longer wait — the case the 8 s `waitUntilDrawn` timeout was written for
+  and the case nothing has ever run. Waits on item 3.
 - **"Drawn" is a shape, not a certainty.** `waitUntilDrawn` returns on
-  the first stable screen with more than one row on it. That is enough to
-  reject the attach client's one-line wake message, which is what it was
-  wrong about before; it is not proof the TUI finished. A session whose
-  render pauses over 250 ms mid-paint can still swap in early. No
-  forcing function — it has not been seen.
+  the first stable screen with more than one painted row. That is enough
+  to reject the attach client's one-line wake message, which is what it
+  was wrong about before; it is not proof the TUI finished, and a render
+  that pauses over 250 ms mid-paint can still swap in early. Not seen in
+  the wild.
 
-### 10. The oracle's twin: one question left
+### 12. Colour has to cross the seam
 
-Shipped. `ccc geometry` hands out the `CGWindowID` that was always in the
-app and never left it, `ccc capture` points `screencapture -l` at it, and
-`ccc pixel --cell … --expect` makes the exit code the answer, so a script
-can judge a colour. Their first real use closed 8b (docs/EVIDENCE.md "the
-oracle gets its twin").
+The one thing left of v8, and it is a single change wearing three hats.
+The core resolves palette indices to RGB before a cell reaches us
+(`render.h`: "Bold color handling is not applied"), and `GridBuilder`
+carries no colour at all, so:
 
-**Still unanswered: whether a replay golden could ever assert RGB.**
-`GridBuilder` carries no colour, so `snapshot --json` and every headless
-golden remain colour-blind — the new verbs need a *window*, which means
-the one oracle an agent can run with no screen is still text-only. Fixing
-it means carrying colour across the seam into `Grid`, which is the same
-change bold-is-bright needs (item 8), so the two want doing together or
-not at all.
+- **bold-is-bright** cannot be done. iTerm has it on; it promotes bold
+  text from colour *n* to *n+8*, and there is no *n* left on our side of
+  the seam to add 8 to.
+- **selection** is carried by `Theme` and drawn by nobody: `FrameReader`
+  always builds rows with `selection: nil`.
+- **a replay golden cannot assert RGB.** `ccc capture`/`ccc pixel` judge
+  a colour but need a *window*, so the one oracle an agent can run with
+  no screen is still text-only.
 
-### 11. A cold session cannot build this
+All three want the palette index carried through `Frame` into `Grid`.
+Doing any one alone pays the seam cost without collecting the other two.
 
-Found the same way. Neither CLAUDE.md nor this file said how to build the
-app, run its tests, or initialise the vendored submodule, nor whether `ccc`
-on PATH is the installed release or a build of the current branch — so a
-cold session could reason correctly about priorities and then measure the
-wrong binary. README.md now carries this; keep it true.
+Also uncovered, and cheap to state: the colour oracle has only ever run
+on one display, one profile, at 1x. `pixel --cell`'s scale arithmetic is
+tested at 2x but has never met a Retina panel.
 
 ## Later
 
