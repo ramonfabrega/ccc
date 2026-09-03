@@ -59,6 +59,12 @@ public enum ControlRequest: Codable, Sendable {
     case shell(id: SessionRef, repo: Bool? = nil)
     /// Close the shell pane (SIGHUP to its shell), if one is open.
     case shellClose
+    /// A prompt to a session through the pane (v6 slice 6): attach to
+    /// `id` (switching if another is on screen), wait for its TUI to
+    /// draw, type `prompt`, press Enter. What "Ask the session to merge
+    /// master" does when an update backs out of a conflict; `ccc update
+    /// --ask` is its twin. `ccc send`'s road, with the attach in front.
+    case ask(id: SessionRef, prompt: String)
 }
 
 public enum ControlResponse: Codable, Sendable {

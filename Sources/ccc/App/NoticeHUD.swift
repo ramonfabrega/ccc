@@ -25,6 +25,10 @@ final class NoticeHUD: NSVisualEffectView {
 
     private let symbol = NSImageView()
     private let label = NSTextField(wrappingLabelWithString: "")
+    /// The one thing a problem can offer besides its sentence (slice 6:
+    /// "Ask the session to merge master"). Hidden when there is none.
+    private let button = NSButton(title: "", target: nil, action: nil)
+    private var action: (() -> Void)?
     private var hideTask: Task<Void, Never>?
     /// Bumped by every show, so a fade-out that finishes after a newer show
     /// does not hide the newer notice.
@@ -53,15 +57,28 @@ final class NoticeHUD: NSVisualEffectView {
         label.maximumNumberOfLines = 4
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        addSubview(symbol)
-        addSubview(label)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        button.target = self
+        button.action = #selector(act(_:))
+        button.isHidden = true
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // A row: symbol, sentence, then the offer when there is one. The
+        // stack drops a hidden button from the layout, so a plain notice
+        // is the capsule it always was.
+        let row = NSStackView(views: [symbol, label, button])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
         NSLayoutConstraint.activate([
-            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 8),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
         ])
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked(_:))))
         toolTip = "Click to dismiss"
@@ -87,12 +104,18 @@ final class NoticeHUD: NSVisualEffectView {
         container.addSubview(self, positioned: .above, relativeTo: nil)
     }
 
-    func show(_ text: String, kind: Kind, for duration: Duration?) {
+    /// `action`: a button after the sentence; pressing it runs the closure
+    /// and dismisses the notice. Only a problem has one — it is the guard
+    /// offering the way past itself.
+    func show(_ text: String, kind: Kind, for duration: Duration?, action: (title: String, run: () -> Void)? = nil) {
         generation += 1
         let mine = generation
         hideTask?.cancel()
         hideTask = nil
         label.stringValue = text
+        self.action = action?.run
+        button.title = action?.title ?? ""
+        button.isHidden = action == nil
         symbol.image = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: kind == .answer ? "done" : "problem")
         symbol.contentTintColor = kind.tint
         isHidden = false
@@ -126,6 +149,12 @@ final class NoticeHUD: NSVisualEffectView {
 
     @objc private func clicked(_ sender: Any?) {
         dismiss()
+    }
+
+    @objc private func act(_ sender: Any?) {
+        let run = action
+        dismiss()
+        run?()
     }
 
     /// Zero when the system asks for less motion.

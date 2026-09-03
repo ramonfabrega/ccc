@@ -217,6 +217,90 @@ import Testing
         }
     }
 
+    // MARK: update from master (slice 6)
+
+    @Test func anUpdateMergesMasterIntoTheWorktree() throws {
+        try withRepo { repo in
+            try repo.commit("b.txt", "two\n", message: "wt one", worktree: true)
+            try repo.commit("c.txt", "three\n", message: "master one")
+            try repo.commit("d.txt", "four\n", message: "master two")
+            let master = try repo.git("rev-parse", "master")
+            let tip = try repo.git("rev-parse", "worktree-t")
+            let probe = WorktreeProbe()
+            let info = try #require(probe.fresh(forCwd: repo.wt))
+            #expect(info.behind == 2 && info.canUpdate)
+            let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
+            #expect(outcome.merged, "\(outcome.said)")
+            #expect(outcome.said.hasPrefix("merged master → worktree-t (2 commits, merge commit ") && outcome.ask == nil)
+            // A merge commit on the branch, master untouched, and the
+            // session's own commit still its parent — a merge, not a rewrite.
+            #expect(try repo.git("rev-parse", "master") == master)
+            #expect(try repo.git("log", "--format=%s", "-1", in: repo.worktree) == "Merge master into worktree-t (2 commits)")
+            #expect(try repo.git("rev-parse", "HEAD^1", in: repo.worktree) == tip)
+            #expect(try repo.git("rev-parse", "HEAD^2", in: repo.worktree) == master)
+            let after = try #require(probe.fresh(forCwd: repo.wt))
+            #expect(after.behind == 0 && after.ahead == 2 && !after.canUpdate && after.canFastForward)
+            #expect(try String(contentsOf: repo.worktree.appending(path: "d.txt"), encoding: .utf8) == "four\n")
+            // A second update has nothing to bring.
+            #expect(GitUpdate.perform(on: after, worktree: repo.wt).said.hasPrefix("nothing to update"))
+        }
+    }
+
+    @Test func aBranchWithNoWorkFastForwardsToMaster() throws {
+        try withRepo { repo in
+            try repo.commit("c.txt", "three\n", message: "master one")
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+            #expect(info.ahead == 0 && info.behind == 1)
+            let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
+            #expect(outcome.merged && outcome.said.hasPrefix("fast-forwarded worktree-t to master (1 commit, now "), "\(outcome.said)")
+            #expect(try repo.git("rev-parse", "worktree-t") == repo.git("rev-parse", "master"))
+        }
+    }
+
+    @Test func anUpdateRefusesADirtyWorktree() throws {
+        try withRepo { repo in
+            try repo.commit("c.txt", "three\n", message: "master one")
+            try "edited\n".write(to: repo.worktree.appending(path: "a.txt"), atomically: true, encoding: .utf8)
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+            let before = try repo.git("rev-parse", "worktree-t")
+            let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
+            #expect(!outcome.merged && outcome.said.contains("1 uncommitted change"), "\(outcome.said)")
+            #expect(try repo.git("rev-parse", "worktree-t") == before)
+            // An untracked file is not a change in flight: the merge goes.
+            try "edited\n".write(to: repo.worktree.appending(path: "a.txt"), atomically: true, encoding: .utf8)
+            _ = try repo.git("checkout", "-q", "--", "a.txt", in: repo.worktree)
+            try "scratch\n".write(to: repo.worktree.appending(path: "notes.txt"), atomically: true, encoding: .utf8)
+            #expect(GitUpdate.perform(on: info, worktree: repo.wt).merged)
+        }
+    }
+
+    @Test func anUpdateConflictBacksOutAndOffersTheSession() throws {
+        try withRepo { repo in
+            try repo.commit("a.txt", "theirs\n", message: "wt edit", worktree: true)
+            try repo.commit("a.txt", "ours\n", message: "master edit")
+            let before = try repo.git("rev-parse", "worktree-t")
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+            let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
+            #expect(!outcome.merged, "\(outcome.said)")
+            #expect(outcome.said.contains("conflicts in a.txt") && outcome.said.contains("backed out"))
+            #expect(outcome.ask == "Merge master into this branch and resolve the conflicts.")
+            #expect(try repo.git("rev-parse", "worktree-t") == before)
+            #expect(try repo.git("status", "--porcelain", "--untracked-files=no", in: repo.worktree) == "")
+            #expect(try String(contentsOf: repo.worktree.appending(path: "a.txt"), encoding: .utf8) == "theirs\n")
+            // Not mid-merge: no MERGE_HEAD left behind in the worktree's gitdir.
+            let layout = try #require(WorktreeProbe.layout(of: repo.wt))
+            #expect(!FileManager.default.fileExists(atPath: layout.gitdir + "/MERGE_HEAD"))
+        }
+    }
+
+    @Test func theWireCarriesAsk() throws {
+        let data = try JSONEncoder().encode(ControlRequest.ask(id: SessionRef(id: "a1b2"), prompt: "Merge master into this branch and resolve the conflicts."))
+        let back = try JSONDecoder().decode(ControlRequest.self, from: data)
+        if case .ask(let ref, let prompt) = back {
+            #expect(ref == SessionRef(id: "a1b2") && prompt.hasPrefix("Merge master"))
+        } else { Issue.record("not ask") }
+    }
+
     @Test func theStrategyFlagsAreGitsWords() {
         #expect(MergeStrategy.parse(flag: "--ff-only") == .ffOnly)
         #expect(MergeStrategy.parse(flag: "--no-ff") == .noFF)

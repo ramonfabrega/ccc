@@ -214,6 +214,52 @@ final class PaneController {
         return outcome
     }
 
+    /// Update from master (v6 slice 6): exactly `ccc update <ref>` — git
+    /// in the worktree here, the far side's own verb for a remote ref —
+    /// then a poll, so the row's ↓ count moves now. A conflict comes back
+    /// with `ask` set, the prompt the session could be handed.
+    func update(_ ref: SessionRef) async throws -> MergeOutcome {
+        let outcome = try await cli(for: ref).update(id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return outcome
+    }
+
+    /// "Ask the session" (v6 slice 6): a prompt through the pane. Attach
+    /// (the pane follows the click, so a session on screen is left), wait
+    /// for the TUI to draw when the attach was fresh, type the prompt,
+    /// press Enter. The TUI queues a prompt typed while it is working, so
+    /// a busy session is asked too — it reads it when it is done.
+    func ask(_ ref: SessionRef, prompt: String) async throws -> String {
+        let wasOnScreen = session?.isRunning == true && session?.ref == ref
+        _ = try await switchTo(ref: ref)
+        guard let session, session.isRunning else { throw AttachError.nothingAttached }
+        if !wasOnScreen { await Self.waitUntilDrawn(session) }
+        session.send(text: prompt)
+        // The Enter after the text, not with it: a "\r" inside the same
+        // read is a paste's newline to the TUI, not a submit.
+        try? await Task.sleep(for: .milliseconds(200))
+        session.press(NamedKey("enter")!)
+        return "asked \(ref): \(prompt)"
+    }
+
+    /// The grid has something on it and has stopped changing — two reads
+    /// half a second apart agree — or eight seconds passed. A fresh
+    /// `claude attach` draws its TUI in well under that; over ssh, a
+    /// little later. Bytes typed before it is up would land in the
+    /// harness's attach client, not the prompt box.
+    private static func waitUntilDrawn(_ session: AttachSession, timeout: Duration = .seconds(8)) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        var previous: Grid?
+        while clock.now < deadline, session.isRunning {
+            try? await Task.sleep(for: .milliseconds(250))
+            let grid = session.host.snapshot()
+            let drawn = grid.lines.contains { !$0.allSatisfy(\.isWhitespace) }
+            if drawn, let previous, previous == grid { return }
+            previous = grid
+        }
+    }
+
     /// Open in Terminal (v6 slice 4): exactly `ccc shell <ref>` — a login
     /// shell in the row's folder, the ssh hop included, in the pane under
     /// the session. One shell at a time, and it follows the click when it
@@ -419,6 +465,12 @@ final class PaneController {
             }
         case .shellClose:
             return closeShell() ? .ok("shell closed") : .error("no shell pane is open")
+        case .ask(let ref, let prompt):
+            do {
+                return .ok(try await ask(ref, prompt: prompt))
+            } catch {
+                return .error("\(error)")
+            }
         }
     }
 }

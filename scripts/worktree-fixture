@@ -1,0 +1,44 @@
+#!/bin/zsh
+# A throwaway repository in the harness's worktree layout, for proving the
+# v6 verbs by hand (merge, push, update) without touching a real one:
+#
+#   scripts/worktree-fixture <dir>              # master 2 ahead of the worktree, worktree 1 ahead of master
+#   scripts/worktree-fixture <dir> --conflict   # the same, plus a.txt edited on both sides
+#   scripts/worktree-fixture <dir> --origin     # plus a bare origin the repo is cloned from
+#
+# Prints the worktree's path. Pair with `ccc spawn --cwd <that path>` for a
+# roster row to point the verbs at; `ccc rm` the row and `rm -rf <dir>` after.
+set -e
+DIR="${1:?usage: worktree-fixture <dir> [--conflict] [--origin]}"
+shift
+CONFLICT=0; ORIGIN=0
+for flag in "$@"; do
+  case "$flag" in
+    --conflict) CONFLICT=1 ;;
+    --origin) ORIGIN=1 ;;
+    *) echo "unknown flag $flag" >&2; exit 2 ;;
+  esac
+done
+if [ -e "$DIR" ]; then echo "$DIR exists; pick a fresh path" >&2; exit 1; fi
+
+g() { git -c user.email=t@example.com -c user.name=t "$@"; }
+mkdir -p "$DIR/repo"
+if [ $ORIGIN = 1 ]; then
+  g init -q --bare -b master "$DIR/origin.git"
+fi
+cd "$DIR/repo"
+g init -q -b master
+if [ $ORIGIN = 1 ]; then g remote add origin "$DIR/origin.git"; fi
+echo one > a.txt
+g add a.txt && g commit -q -m first
+if [ $ORIGIN = 1 ]; then g push -q -u origin master; fi
+mkdir -p .claude
+g worktree add -q -b worktree-t .claude/worktrees/t master
+cd .claude/worktrees/t
+echo two > b.txt && g add b.txt && g commit -q -m "wt one"
+if [ $CONFLICT = 1 ]; then echo theirs > a.txt && g add a.txt && g commit -q -m "wt edit"; fi
+cd ../../..
+echo three > c.txt && g add c.txt && g commit -q -m "master one"
+echo four > d.txt && g add d.txt && g commit -q -m "master two"
+if [ $CONFLICT = 1 ]; then echo ours > a.txt && g add a.txt && g commit -q -m "master edit"; fi
+echo "$PWD/.claude/worktrees/t"

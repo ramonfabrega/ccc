@@ -102,6 +102,8 @@ final class MainWindowController: NSWindowController {
             self?.merge(ref, strategy)
         }, push: { [weak self] ref, target in
             self?.push(ref, target)
+        }, update: { [weak self] ref in
+            self?.update(ref)
         }, openShell: { [weak self] ref, atRepo in
             self?.openShell(ref, atRepo: atRepo)
         }, selectionChanged: { [weak self] ref in
@@ -152,8 +154,9 @@ final class MainWindowController: NSWindowController {
     /// A sentence over the pane. An answer ("installed …", "archived a1b2")
     /// fades on its own; a problem stays until a click, because it is the
     /// guard talking. `for:` overrides the kind's own timing.
-    func showNotice(_ text: String, kind: NoticeHUD.Kind = .answer, for duration: Duration?? = nil) {
-        hud.show(text, kind: kind, for: duration ?? kind.duration)
+    func showNotice(_ text: String, kind: NoticeHUD.Kind = .answer, for duration: Duration?? = nil,
+                    action: (title: String, run: () -> Void)? = nil) {
+        hud.show(text, kind: kind, for: duration ?? kind.duration, action: action)
     }
 
     /// Another ccc (or a headless attach) holds the control socket: the
@@ -422,6 +425,42 @@ final class MainWindowController: NSWindowController {
 
     /// The roster's selection, for ⌘T when nothing is attached.
     private var currentSelection: SessionRef?
+
+    /// Update from master (v6 slice 6): the controller does what `ccc
+    /// update <ref>` does. Updated is an answer; a refusal is a problem;
+    /// and a conflict is a problem that offers the one thing the menu
+    /// cannot do — **Ask the session to merge master** — a button on the
+    /// notice that attaches the pane to the session and types the prompt
+    /// the outcome carries (`ccc update --ask` is its twin).
+    func update(_ ref: SessionRef) {
+        Task { @MainActor in
+            do {
+                let outcome = try await controller.update(ref)
+                if let prompt = outcome.ask {
+                    let base = controller.poller.state.rows.first { $0.ref == ref }?.worktree?.base ?? "master"
+                    showNotice(outcome.said, kind: .problem, action: ("Ask the session to merge \(base)", { [weak self] in
+                        self?.ask(ref, prompt: prompt)
+                    }))
+                } else {
+                    showNotice(outcome.said, kind: outcome.merged ? .answer : .problem)
+                }
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    /// The button's press: attach and type. The answer names what was
+    /// asked, so the sentence on screen and the pane agree.
+    func ask(_ ref: SessionRef, prompt: String) {
+        Task { @MainActor in
+            do {
+                showNotice(try await controller.ask(ref, prompt: prompt))
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
 
     /// The submenu's Push items (v6 slice 3): the same sentence shape as
     /// merge — pushed, or why not — as the notice.

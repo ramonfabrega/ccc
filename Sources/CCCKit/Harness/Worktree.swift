@@ -60,6 +60,9 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     public var canFastForward: Bool { ahead > 0 && behind == 0 }
     /// There is something to bring over at all.
     public var hasWork: Bool { ahead > 0 }
+    /// `base` holds commits the branch lacks — what "Update from master"
+    /// brings in (slice 6), and what blocks a fast-forward the other way.
+    public var canUpdate: Bool { behind > 0 }
 
     /// "worktree-v2 ↑3", "worktree-v2 ↑3 ↓2 ⇡1", "worktree-v2 level". ↑↓
     /// are against master; ⇡ is what is not on origin (starship's glyph
@@ -327,6 +330,11 @@ public struct MergeOutcome: Sendable, Equatable {
     public var merged: Bool
     /// One sentence: what happened, or why it did not.
     public var said: String
+    /// The prompt a session could be asked when the menu could not act
+    /// (slice 6): an update that met a conflict backs out and carries
+    /// "merge master into this branch and resolve the conflicts" here,
+    /// for the HUD's button and `ccc update --ask`. Nil otherwise.
+    public var ask: String? = nil
 }
 
 /// The merge itself, in the main checkout, with the guards that make it
@@ -408,6 +416,66 @@ public enum GitMerge {
 
     private static func trim(_ error: Error) -> String {
         "\(error)".trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// "Update from master" (v6 slice 6), GitHub's "Update branch" as a
+/// verb: `git merge <base>` *inside the worktree* — a merge, never a
+/// rewrite, so a session still committing to the branch sees one more
+/// commit and nothing moved under it. It acts only at a commit boundary:
+/// a worktree with uncommitted changes is refused, since a merge over
+/// them could leave the session's half-written edit tangled with
+/// master's. A conflict backs out (`merge --abort`) with the files named
+/// and carries the one offer a menu cannot make and a session can — ask
+/// it to do the merge, as a prompt through the pane.
+public enum GitUpdate {
+    /// The sentence the session is asked, when it comes to that.
+    public static func prompt(base: String) -> String {
+        "Merge \(base) into this branch and resolve the conflicts."
+    }
+
+    public static func perform(on info: WorktreeInfo, worktree cwd: String,
+                               git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
+        func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", cwd] + args) }
+        let name = "\(info.base) → \(info.branch)"
+        guard info.canUpdate else {
+            return MergeOutcome(merged: false, said: "nothing to update: \(info.branch) already has every commit of \(info.base)")
+        }
+        guard let head = try? g(["symbolic-ref", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return MergeOutcome(merged: false, said: "the worktree is not on a branch; refusing to update")
+        }
+        guard head == info.branch else {
+            return MergeOutcome(merged: false, said: "the worktree is on \(head), not \(info.branch); refusing to update")
+        }
+        if let status = try? g(["status", "--porcelain", "--untracked-files=no"]).stdout, !status.isEmpty {
+            let n = status.split(separator: "\n").count
+            return MergeOutcome(merged: false, said: "\(info.branch) has \(n) uncommitted change\(n == 1 ? "" : "s"); commit or stash first, then update")
+        }
+        let plural = "\(info.behind) commit\(info.behind == 1 ? "" : "s")"
+        do {
+            // Plain `merge`: a branch with no commits of its own simply
+            // moves up to master (a fast-forward is not a rewrite); one
+            // with work gets a merge commit. `-m` names it either way.
+            _ = try g(["merge", "--no-edit", "-m", "Merge \(info.base) into \(info.branch) (\(plural))", "refs/heads/\(info.base)"])
+            let sha = (try? g(["rev-parse", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
+            if info.ahead == 0 {
+                return MergeOutcome(merged: true, said: "fast-forwarded \(info.branch) to \(info.base) (\(plural), now \(sha))")
+            }
+            return MergeOutcome(merged: true, said: "merged \(name) (\(plural), merge commit \(sha))")
+        } catch {
+            let conflicts = conflictedFiles(g)
+            _ = try? g(["merge", "--abort"])
+            return MergeOutcome(merged: false,
+                                said: "merge \(name) conflicts in \(conflicts); backed out, \(info.branch) untouched — ask the session to merge \(info.base)",
+                                ask: prompt(base: info.base))
+        }
+    }
+
+    private static func conflictedFiles(_ g: ([String]) throws -> Git.Result) -> String {
+        let files = (try? g(["diff", "--name-only", "--diff-filter=U"]).stdout)?
+            .split(separator: "\n").map(String.init) ?? []
+        if files.isEmpty { return "the working tree" }
+        return files.prefix(4).joined(separator: ", ") + (files.count > 4 ? " (+\(files.count - 4))" : "")
     }
 }
 
@@ -554,6 +622,44 @@ extension ClaudeCLI {
         try prepareControlDirectory()
         let result = try await run(argv, accepting: [0, 1], program: "ccc")
         let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+        return MergeOutcome(merged: result.status == 0, said: said)
+    }
+
+    /// `ccc update <id> --json` on a remote host: the far side's own ccc,
+    /// where the worktree is. `--json`, because the answer has a shape —
+    /// the offered prompt on a conflict — that a sentence cannot carry.
+    public func updateArgv(id: String) -> [String]? {
+        guard let ccc = host.ccc, let destination = host.ssh else { return nil }
+        return sshPrefix(tty: false, destination: destination) + [ccc, "update", id, "--json"]
+    }
+
+    /// Update a session's worktree branch from the repository's default
+    /// branch (slice 6). Same road as `merge`: the row's cwd from one
+    /// roster read, a fresh count, `GitUpdate` off the main actor in the
+    /// worktree; the far side's verb for a remote ref, its JSON read
+    /// leniently (a sentence alone, off a ccc that printed one, is the
+    /// sentence).
+    public func update(id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
+        if host.isLocal {
+            let roster = RosterDecoder.decode(try await agentsJSON())
+            guard let row = roster.sessions.first(where: { $0.id == id }) else {
+                throw MergeError.noSuchSession(id)
+            }
+            guard let info = probe.fresh(forCwd: row.cwd) else {
+                throw MergeError.notAWorktree(id, row.cwd)
+            }
+            let cwd = row.cwd
+            return await Task.detached(priority: .userInitiated) { GitUpdate.perform(on: info, worktree: cwd, git: probe.git) }.value
+        }
+        guard let argv = updateArgv(id: id) else { throw MergeError.noRemoteCCC(host.name) }
+        try prepareControlDirectory()
+        let result = try await run(argv, accepting: [0, 1], program: "ccc")
+        let text = String(decoding: result.stdout, as: UTF8.self)
+        if let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+           let said = object["said"] as? String {
+            return MergeOutcome(merged: result.status == 0, said: said, ask: object["ask"] as? String)
+        }
+        let said = (text + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
         return MergeOutcome(merged: result.status == 0, said: said)
     }
 

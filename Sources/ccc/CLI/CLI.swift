@@ -113,6 +113,17 @@ enum CLI {
                     return 2
                 }
                 return try await push(rest.contains("--base") ? .base : .branch, ref: ref, json: json)
+            case "update":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                for flag in rest.filter({ $0.hasPrefix("--") }) where flag != "--ask" && flag != "--json" {
+                    stderr("ccc: unknown flag '\(flag)' (--ask)")
+                    return 2
+                }
+                return try await update(ref: ref, ask: rest.contains("--ask"), json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -284,6 +295,45 @@ enum CLI {
             printJSON(["ref": ref.description, "target": target.rawValue, "pushed": outcome.merged ? "true" : "false", "said": outcome.said])
         } else {
             print(outcome.said)
+        }
+        return outcome.merged ? 0 : 1
+    }
+
+    /// `ccc update <ref> [--ask]` (v6 slice 6): merge the repository's
+    /// default branch into the session's worktree branch, in the
+    /// worktree, where it is. Exit 0 when it merged, 1 when it refused
+    /// or backed out of a conflict; `--json` carries `ask` on a conflict,
+    /// the prompt a session could be given, and `--ask` gives it — the
+    /// pane attaches to the session and types it (needs the app). The
+    /// exit stays 1 then: the update itself did not happen.
+    static func update(ref: SessionRef, ask: Bool, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let outcome = try await cli.update(id: ref.id)
+        var asked: String?
+        if ask, let prompt = outcome.ask {
+            switch try ControlClient().send(.ask(id: ref, prompt: prompt)) {
+            case .ok(let message): asked = message
+            case .error(let message): stderr("ccc: \(message)")
+            default: stderr("ccc: unexpected response to ask")
+            }
+        }
+        if json {
+            var object = ["ref": ref.description, "updated": outcome.merged ? "true" : "false", "said": outcome.said]
+            if let prompt = outcome.ask { object["ask"] = prompt }
+            if let asked { object["asked"] = asked }
+            printJSON(object)
+        } else {
+            print(outcome.said)
+            if let asked { print(asked) }
         }
         return outcome.merged ? 0 : 1
     }
@@ -1150,6 +1200,10 @@ enum CLI {
                ccc shell <ref> [--repo] | --close a shell pane under the session pane, in <ref>'s folder (over ssh -t
                                                   when remote) — ⌘T's twin; --repo is the repository's main checkout
                                                   instead of the worktree (⌥⌘T); --close is ⇧⌘T
+               ccc update <ref> [--ask] [--json]  merge the repo's default branch into the session's worktree branch,
+                                                  in the worktree (GitHub's "Update branch"); refuses uncommitted
+                                                  changes and backs out of a conflict (exit 1); --ask then hands the
+                                                  session the merge as a prompt through the pane (needs the app)
                ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
                                                   default branch — to origin, never forced; git's own refusal is the
                                                   answer (exit 1; nothing changes anywhere)

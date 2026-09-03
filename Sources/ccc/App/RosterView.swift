@@ -33,6 +33,8 @@ struct RosterView: View {
     let merge: (SessionRef, MergeStrategy) -> Void
     /// The submenu's Push items (v6 slice 3): `ccc push <ref> [--base]`.
     let push: (SessionRef, PushTarget) -> Void
+    /// The submenu's Update item (v6 slice 6): `ccc update <ref>`.
+    let update: (SessionRef) -> Void
     /// Open in Terminal (v6 slice 4): `ccc shell <ref>`.
     let openShell: (SessionRef, _ atRepo: Bool) -> Void
     /// The window keeps the selection for ⌘T when nothing is attached.
@@ -168,6 +170,12 @@ struct RosterView: View {
                 Button("Fast-forward") { merge(row.ref, .ffOnly) }.disabled(!wt.canFastForward)
                 Button("Merge (merge commit)") { merge(row.ref, .noFF) }.disabled(!wt.hasWork)
                 Button("Squash into one commit") { merge(row.ref, .squash) }.disabled(!wt.hasWork)
+                // Update from master (slice 6), GitHub's "Update branch":
+                // the other direction, live while master holds commits
+                // the branch lacks — the ↓ that disables Fast-forward.
+                Divider()
+                Button("Update from \(wt.base)" + (wt.behind > 0 ? " ↓\(wt.behind)" : "")) { update(row.ref) }
+                    .disabled(!wt.canUpdate)
                 // Push (slice 3), the step between landing and `claude rm`:
                 // each item carries its own ⇡ count and is live only while
                 // there is something to send. Never forced.

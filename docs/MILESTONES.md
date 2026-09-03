@@ -617,10 +617,62 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   reads its grouping from its own menu, not from a `defaults write`). Found by doing it: a section header that renders an empty
   `VStack` still takes a header's height, so the roster had a gap at the
   top until the header became conditional. 226 tests.
+  **Slice 6 — done 2026-09-03: Update from master.** GitHub's "Update
+  branch" as a verb: `git merge <base>` *inside the worktree* — a merge,
+  never a rewrite, so a session still committing to its branch sees one
+  more commit and nothing moved under it. It acts only at a commit
+  boundary: a worktree with uncommitted changes is refused (untracked
+  files are not changes), a wrong branch is refused, and a conflict
+  backs out (`merge --abort`) with the files named — and carries, in
+  `MergeOutcome.ask`, the one offer a menu cannot make and a session
+  can: "Merge master into this branch and resolve the conflicts." A
+  branch with no commits of its own simply moves up to master (a
+  fast-forward is not a rewrite); one with work gets a merge commit
+  named `Merge master into <branch> (N commits)`. The submenu gains
+  **Update from <base> ↓N** below the three strategies, live while ↓ is
+  above zero (the same number that disables Fast-forward), and the
+  twin is `ccc update <ref> [--ask]` — exit 0 updated, 1 refused or
+  backed out, `--json` carrying `ask` on a conflict. The refusal's
+  notice carries a button, **Ask the session to merge master** (the
+  HUD grew an optional action, a small rounded button after the
+  sentence; a plain notice is the capsule it was), which attaches the
+  pane to the session — the pane follows the click, so a session on
+  screen is left — waits for the TUI to draw when the attach was fresh
+  (two snapshots half a second apart agree), types the prompt, and
+  presses Enter a beat later (a `\r` inside the same read is a paste's
+  newline to the TUI, not a submit). That is the socket's new `ask`
+  request, `ccc send`'s road with the attach in front; `--ask` is its
+  command twin and needs the app. Remote refs run the far side's own
+  `ccc update --json`, read leniently. **Proved live** on studio (dev
+  bundle, build 103) against `scripts/worktree-fixture`, the new
+  experiment tool that makes a throwaway repository in the harness's
+  worktree layout (master two ahead, the worktree one ahead;
+  `--conflict` edits `a.txt` on both sides; `--origin` adds a bare
+  remote for slice 7): `ccc update b3919c35` on this branch answered
+  "nothing to update", exit 1; a draft spawned in the clean fixture read
+  `⎇ worktree-t ↑1 ↓2`, `ccc update` → `merged master → worktree-t (2
+  commits, merge commit 367d199)`, exit 0, the row a tick later `↑2`
+  and a second update "nothing to update"; `--bogus` exit 2; the
+  conflict fixture (`↑2 ↓3`) → "conflicts in a.txt; backed out,
+  worktree-t untouched — ask the session to merge master", exit 1, the
+  worktree clean, `--json` carrying the prompt; then `ccc update
+  96be3f4a --ask` → `asked 96be3f4a: Merge master…`, the pane on the
+  draft with the prompt on its TUI (a real `screencapture` and `ccc
+  snapshot` agree), the session ran the merge, hit the fixture's
+  meaningless conflict and *asked which line to keep* — the roster read
+  `blocked · ⏸ input needed` — `ccc send --key enter` chose, and the row
+  went `done … ↑3` with a two-parent merge commit in the fixture's log.
+  Both drafts `ccc rm`'d clean. Not clicked by a hand: the submenu item
+  and the HUD button (the command road under both is what was
+  exercised). Found by doing it: `scripts/install` under the job's
+  sandbox quits the app and then cannot write the bundle — run it
+  unsandboxed; and fixture sessions should be spawned `--model haiku`
+  (the user's ask; these two were served by Opus 5). 242 tests.
 - **next** (what plan.md carried when it was retired 2026-09-02, late;
   the queue is this file from here on). The sequence agreed the same
   night, one confirmed before the next, comes first:
-  1. **Update from master** (v6 slice 6): GitHub's "Update branch" as a
+  1. **Update from master** (v6 slice 6) — **done 2026-09-03, above.**
+     As agreed: GitHub's "Update branch" as a
      submenu item enabled while `↓` is above zero — `git merge <base>`
      *inside the worktree*, a merge, never a rewrite; refuses a dirty
      worktree (so it only acts at a commit boundary, which is what makes
