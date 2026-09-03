@@ -34,9 +34,9 @@ daemon's `state.json`, `SessionRow.draft`, `isWaiting` everywhere "your
 turn" is counted, `── drafts` under the state grouping, the detector's
 key) — a fresh draft no longer banners, and the window's row is indigo
 `draft · send a prompt to start`. 208 tests, proved on the CLI, `ccc
-watch` and the window (build 83). Owed by a hand: the Choose… panel and
-the recent-folders menu have not been clicked; the host picker was seen
-with two hosts but not switched. Next slices: drafts *from* a session
+watch` and the window (build 83). **Confirmed by a hand 2026-09-02:**
+the New Session sheet ("works flawless") and the View menu's mute
+submenu ("working perfectly"), both on the v0.1.10 cut. Next slices: drafts *from* a session
 (`/fork`), worktree awareness in the sheet (the harness isolates before
 the first edit on its own, so this is display more than dispatch).
 **v0.1.10 (build 85) is cut and on the feed** (2026-09-02 night, through
@@ -82,7 +82,7 @@ settings.json (symlinked) and **the real hook has fired** on studio
 from v0.1.9: `hook events 1 last "ccc-v3-hook needs permission"`. On
 air the same entry is live the moment Sparkle lands 0.1.9 there (until
 then air's 0.1.8 answers the hook with usage, exit 2 — a stderr line,
-not a block). **Owed by a hand:** click the View menu's submenu once. Left
+not a block). The View menu's submenu was clicked by a hand on the v0.1.10 cut and works. Left
 as decided: a session stopped by your own hand still banners, until it
 annoys. **v0.1.9 (build 80) is cut and on the feed** (2026-09-02, the
 second cut through ota, verified live: version 80, length 4541512;

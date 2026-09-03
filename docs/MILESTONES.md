@@ -226,7 +226,7 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   `ccc stats` read `hook events 1 last "ccc-v3-hook needs permission"` —
   the harness's `permission_prompt` had arrived and updated that banner,
   quietly, as designed. `ccc rm` removed the session after. The View
-  menu's submenu has not been clicked. Left as
+  menu's submenu was clicked by a hand on v0.1.10 and works. Left as
   decided: a session stopped by your own hand still banners, until it
   annoys.
 - **v4 — the roster, ours.** Archive, pin, group, sort in an overlay keyed by
