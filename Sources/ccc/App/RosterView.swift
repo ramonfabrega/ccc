@@ -143,7 +143,7 @@ struct RosterView: View {
             .foregroundStyle(.secondary)
             .help("New session (⌘N)")
             Spacer()
-            let blocked = poller.state.rows.filter { $0.session.state == .blocked }.count
+            let blocked = poller.state.rows.filter(\.isWaiting).count
             if blocked > 0 {
                 Label("\(blocked) waiting", systemImage: "hand.raised.fill").foregroundStyle(.orange).font(.caption)
             }
@@ -248,6 +248,9 @@ struct RosterRow: View {
     }
 
     private var stateText: String {
+        // A draft (v5): never prompted, waiting for you to start it — not
+        // the orange "blocked · idle" of a session with a question.
+        if row.draft { return "draft · send a prompt to start" }
         let s = row.session
         var text = s.state?.rawValue ?? s.kind.rawValue
         if let status = s.status { text += " · \(status.rawValue)" }
@@ -255,6 +258,7 @@ struct RosterRow: View {
     }
 
     private var color: Color {
+        if row.draft { return .indigo }
         switch row.session.state {
         case .blocked: return .orange
         case .working: return row.session.status == .busy ? .green : .mint

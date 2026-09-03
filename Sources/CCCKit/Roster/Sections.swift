@@ -5,7 +5,7 @@ import Foundation
 /// under every order — the pin is "keep this at the top", whatever the
 /// rest is sorted by.
 public enum RosterSort: String, Codable, Sendable, CaseIterable {
-    /// Blocked, then working, then failed, then done/stopped; newest
+    /// Blocked, then working, then drafts, then failed, then done/stopped; newest
     /// first within a rank. The v0 order, and still the default.
     case activity
     /// By the session's name (its id when unnamed), case-insensitive.
@@ -36,7 +36,7 @@ public enum RosterGroup: String, Codable, Sendable, CaseIterable {
     /// folds into the repo it belongs to (`RepoPath.root`), so the eight
     /// sessions on one project's worktrees sit under one heading.
     case repo
-    /// Waiting / working / finished / archived.
+    /// Waiting / working / drafts / finished / archived.
     case state
 
     public var label: String {
@@ -88,7 +88,7 @@ extension RosterPoller.State {
             if a.pinned != b.pinned { return a.pinned }
             switch sort {
             case .activity:
-                let ra = a.session.rank, rb = b.session.rank
+                let ra = a.rank, rb = b.rank
                 if ra != rb { return ra < rb }
             case .name:
                 let na = (a.session.name ?? a.session.id).lowercased(), nb = (b.session.name ?? b.session.id).lowercased()
@@ -125,9 +125,10 @@ extension RosterPoller.State {
         case .repo:
             return bucket(ordered) { shortCwd(RepoPath.root(of: $0.session.cwd), $0.host) }
         case .state:
-            let order = ["waiting", "working", "finished", "archived"]
+            let order = ["waiting", "working", "drafts", "finished", "archived"]
             let sections = bucket(ordered) { row in
                 if row.isHidden { return "archived" }
+                if row.draft { return "drafts" }
                 switch row.session.state {
                 case .blocked: return "waiting"
                 case .working: return "working"

@@ -152,7 +152,7 @@ enum App {
         // Reflect "your turn" in the title: a count of blocked sessions.
         Task { @MainActor [weak self] in
             while let self, let controller = self.controller {
-                let blocked = controller.poller.state.rows.filter { $0.session.state == .blocked }.count
+                let blocked = controller.poller.state.rows.filter(\.isWaiting).count
                 let working = controller.poller.state.rows.filter { $0.session.state == .working }.count
                 self.statusItem?.button?.title = blocked > 0 ? "\(title) ⏸\(blocked)" : (working > 0 ? "\(title) ·\(working)" : title)
                 try? await Task.sleep(for: .seconds(2))

@@ -65,6 +65,9 @@ public struct TransitionDetector: Sendable, Equatable {
     private struct Key: Sendable, Equatable {
         var state: Session.State?
         var waitingFor: String?
+        /// Part of the key so a draft that is prompted and then asks a
+        /// `waitingFor`-less question still reads as a change.
+        var draft = false
     }
 
     private var seen: [SessionRef: Key] = [:]
@@ -84,12 +87,16 @@ public struct TransitionDetector: Sendable, Equatable {
                 let s = row.session
                 let ref = row.ref
                 present.insert(ref)
-                let key = Key(state: s.state, waitingFor: s.waitingFor.flatMap { $0.isEmpty ? nil : $0 })
+                let key = Key(state: s.state, waitingFor: s.waitingFor.flatMap { $0.isEmpty ? nil : $0 }, draft: row.draft)
                 let before = seen[ref]
                 seen[ref] = key
                 guard !first, before != key else { continue }
                 switch key.state {
                 case .blocked:
+                    // A draft is blocked on you starting it — the one
+                    // "blocked" that is not your turn (v5). It becomes news
+                    // when it is prompted and then asks something.
+                    guard !key.draft else { continue }
                     events.append(SessionEvent(kind: .blocked, ref: ref, name: s.name, waitingFor: key.waitingFor, at: now))
                 case .done, .failed, .stopped:
                     // Only a session that was live is news when it ends; a

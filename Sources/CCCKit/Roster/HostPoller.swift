@@ -243,7 +243,11 @@ public final class HostPoller {
                     }
                 }
                 let ref = SessionRef(host: hostName, id: session.id)
-                return SessionRow(session: session, host: hostName, model: model, attached: ref == attached)
+                // The draft reading (v5) is the same kind of join: the
+                // daemon's job file, which only this Mac can open for its
+                // own sessions; the far side's ccc answers for its rows.
+                let draft = isLocal && DraftProbe.isDraft(session, transcriptFound: found[session.sessionId ?? ""] != nil)
+                return SessionRow(session: session, host: hostName, model: model, attached: ref == attached, draft: draft)
             }
             return (rows, found, lookups, unresolved)
         }.value

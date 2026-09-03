@@ -110,6 +110,17 @@ session creates a new background session. **Measured 2026-09-02 (2.1.259,
   and the notifier banners it (v3 slice 1's "blocked without `waitingFor`"
   case, seen again). A prompted spawn is `working · busy` inside a second
   and `done · idle` when finished.
+- **The daemon knows a draft even though the roster does not say so:**
+  `~/.claude/jobs/<id>/state.json` for one reads `state: "working"`,
+  `tempo: "blocked"`, `detail: "(idle — send a prompt to start)"`,
+  `needs: "send a prompt to start"`, `intent: ""`, no `tokens`,
+  `firstTerminalAt: null`; for a session blocked on an AskUserQuestion
+  the same file reads `state: "blocked"`, `needs: <the question>`,
+  `tokens: 51937`, `intent: <the first prompt>`. ccc reads `needs` (and
+  `detail`) for the phrase, never writes the file, and falls back to
+  "no transcript" when the file is unreadable (`DraftProbe`, v5 slice 2).
+  Undocumented; unknown fields preserved is the only promise, so a
+  missing `needs` is "no reading", never "not a draft".
 - The row is in `claude agents --json --all` by the time `--bg` has exited
   (the probe never had to wait), so `claude attach <id>` straight after is
   safe — that is what "Attach when started" does.

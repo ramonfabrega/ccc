@@ -29,15 +29,16 @@ definition (`SpawnRequest`, `ClaudeCLI.spawn`) behind both; drafts are
 needed). 199 tests. Proved on studio's CLI face, through `loop`
 (localhost as a host, added for the proof and removed after), and in
 the window by a real ⌘N, typed fields and ⌘↩ on the dev bundle (build
-82). **Studio is on the dev bundle now** — `scripts/install --dist` puts
-v0.1.9 back, or the next cut carries spawn to every Mac. Owed by a hand:
-the Choose… panel and the recent-folders menu have not been clicked; the
-host picker was seen with two hosts but not switched. Known and left: a
-fresh draft banners as "is waiting" (it is `blocked · idle` from its
-first row). Next slices: drafts *from* a session (`/fork`), worktree
-awareness in the sheet (the harness isolates before the first edit on
-its own, so this is display more than dispatch), a `draft` reading in
-the roster for a never-prompted `blocked · idle` row.
+82). Slice 2, the same night: the draft reading (`DraftProbe` off the
+daemon's `state.json`, `SessionRow.draft`, `isWaiting` everywhere "your
+turn" is counted, `── drafts` under the state grouping, the detector's
+key) — a fresh draft no longer banners, and the window's row is indigo
+`draft · send a prompt to start`. 208 tests, proved on the CLI, `ccc
+watch` and the window (build 83). Owed by a hand: the Choose… panel and
+the recent-folders menu have not been clicked; the host picker was seen
+with two hosts but not switched. Next slices: drafts *from* a session
+(`/fork`), worktree awareness in the sheet (the harness isolates before
+the first edit on its own, so this is display more than dispatch).
 
 ## v4, the roster ours (landed)
 

@@ -347,7 +347,7 @@ enum CLI {
         for failed in state.failures { stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")") }
         guard state.anyHostAnswered else { return 1 }
         _ = detector.observe(state)
-        let blocked = state.rows.filter { $0.session.state == .blocked }
+        let blocked = state.rows.filter(\.isWaiting)
         let muted = filter.mutedHosts
         stderr("ccc: watching \(config.hosts.count) host\(config.hosts.count == 1 ? "" : "s"), \(state.rows.count) sessions, \(blocked.count) blocked"
                + (blocked.isEmpty ? "" : ": " + blocked.map { "\($0.session.name ?? $0.ref.description)" }.joined(separator: ", "))
@@ -892,8 +892,10 @@ enum CLI {
             // sorts a row to the top and this is why it is there.
             let marker = row.attached ? "●" : (row.pinned ? "📌" : " ")
             let host = showsHost ? row.host.padding(toLength: hostWidth, withPad: " ", startingAt: 0) + "  " : ""
-            let state = s.state?.rawValue ?? (s.kind == .interactive ? "interactive" : "-")
-            let live = s.pid != nil ? (s.status?.rawValue ?? "live") : ""
+            // A draft (v5) is `blocked · idle` to the harness and "yours to
+            // start" to us; the word replaces both columns.
+            let state = row.draft ? "draft" : (s.state?.rawValue ?? (s.kind == .interactive ? "interactive" : "-"))
+            let live = row.draft ? "" : (s.pid != nil ? (s.status?.rawValue ?? "live") : "")
             let name = (s.name ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
             let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
             let archived = row.archived ? " (archived)" : ""

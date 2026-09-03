@@ -338,8 +338,35 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   and **a fresh draft banners as "is waiting"** through the poll, since it
   is `blocked · idle` from its first row (docs/HARNESS.md). Left as is
   until it annoys: it *is* waiting, and the sheet's attach puts it on
-  screen anyway. 199 tests. Next: `/fork`-style drafts *from* a session,
-  worktree awareness in the sheet, and whether the harness's "not started"
-  should read as `draft` in the roster rather than `blocked · idle`.
+  screen anyway. 199 tests.
+  **Slice 2 — done 2026-09-02: the draft reading.** A never-prompted
+  session is `blocked · idle` to the harness, indistinguishable from a
+  session blocked on an AskUserQuestion (neither carries `waitingFor`),
+  so the reading is a join where the daemon's files are, like the model
+  column: `~/.claude/jobs/<id>/state.json` says `needs: "send a prompt to
+  start"` — the daemon's own phrase, the one `--bg` printed — for a draft
+  and carries the question for a blocked one (`DraftProbe`, read-only,
+  lenient; docs/HARNESS.md). Fallback when the file is missing or says
+  nothing: a session that was never prompted has no transcript, which
+  the model join already knows. The flag is `SessionRow.draft`, rides the
+  far side's `ccc list --json` like the model, and is false off an older
+  ccc. What changes: the row reads `draft · send a prompt to start` in
+  indigo, not orange; `ccc list` prints `draft` in the state column and
+  puts it under `── drafts` with `--group state` (waiting / working /
+  drafts / finished / archived); activity sorts drafts below live work
+  and above the finished; the header's "N waiting", the status item's
+  ⏸ count and `ccc watch`'s preamble all use `isWaiting`, which a draft
+  is not; an archived draft folds away (an archived question still does
+  not); and the detector carries `draft` in its key, so a fresh draft is
+  no event while a draft that is prompted and then asks a
+  `waitingFor`-less question still rings — the edge the key exists for,
+  since both rows are identical to the harness. **Proved live** on
+  studio: the real draft `59a93d74` read `draft` and sat under `── drafts`
+  while the real `linear cuanto bill project` question stayed `blocked
+  idle`; `ccc watch` stayed silent through a `ccc spawn` draft and rang
+  for a prompted spawn's `done`; the window (build 83) showed the indigo
+  row and the status item stopped counting it. 208 tests.
+  Next: `/fork`-style drafts *from* a session; worktree awareness in the
+  sheet.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.

@@ -77,24 +77,39 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     /// false: an older ccc on the far side has no marks to send.
     public var archived: Bool
     public var pinned: Bool
+    /// A never-prompted session (v5, `DraftProbe`): `blocked · idle` to the
+    /// harness, but waiting for *you to start it*, not for an answer. Joined
+    /// where the daemon's files are and carried across the hop like the
+    /// model; false off the wire from an older ccc.
+    public var draft: Bool
 
     /// The address: what `ccc attach` takes and the roster's row identity.
     public var ref: SessionRef { SessionRef(host: host, id: session.id) }
     public var id: SessionRef { ref }
 
+    /// "It's your turn": blocked on something — a draft is blocked only
+    /// on you choosing to begin, which is not a turn.
+    public var isWaiting: Bool { session.state == .blocked && !draft }
+
     /// Archived rows are out of the default list — unless the session is
     /// asking for input, which is never hidden (v4's rule: "it's your
-    /// turn" beats tidiness).
-    public var isHidden: Bool { archived && session.state != .blocked }
+    /// turn" beats tidiness). An archived draft folds away.
+    public var isHidden: Bool { archived && !isWaiting }
+
+    /// The activity order's rank: waiting, working, drafts, failed, then
+    /// done/stopped. A draft sits below live work — it is yours to start
+    /// whenever, and nothing about it is urgent.
+    public var rank: Int { draft ? 2 : session.rank }
 
     public init(session: Session, host: String = Host.localName, model: String?, attached: Bool,
-                archived: Bool = false, pinned: Bool = false) {
+                archived: Bool = false, pinned: Bool = false, draft: Bool = false) {
         self.session = session
         self.host = host
         self.model = model
         self.attached = attached
         self.archived = archived
         self.pinned = pinned
+        self.draft = draft
     }
 
     /// Lenient on everything ccc adds, because these rows now arrive over
@@ -112,6 +127,7 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         attached = try container.decodeIfPresent(Bool.self, forKey: .attached) ?? false
         archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
         pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        draft = try container.decodeIfPresent(Bool.self, forKey: .draft) ?? false
     }
 }
 
