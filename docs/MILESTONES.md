@@ -214,9 +214,15 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   (`hook:nope`) before that showed in no capture at 0.1 s or 1.5 s while
   the fresh id showed at once — either the first landed during the
   relaunch's activation or macOS does not re-present a replaced request;
-  the numbers said posted either way, which is §7's point. The real hook
-  has not fired into `ccc hook` yet (the settings entry is pasted by
-  hand), and the View menu's submenu has not been clicked. Left as
+  the numbers said posted either way, which is §7's point. **The real
+  hook fired the same night**, from v0.1.9 (build 80) with the entry in
+  the dotfiles' settings.json: a `claude --bg` spawn (`ccc-v3-hook`,
+  CLAUDE* stripped so it registered) blocked on a Bash permission; the
+  poll posted "ccc-v3-hook is waiting: permission prompt" first, then
+  `ccc stats` read `hook events 1 last "ccc-v3-hook needs permission"` —
+  the harness's `permission_prompt` had arrived and updated that banner,
+  quietly, as designed. `ccc rm` removed the session after. The View
+  menu's submenu has not been clicked. Left as
   decided: a session stopped by your own hand still banners, until it
   annoys.
 - **v4 — the roster, ours.** Archive, pin, group, sort in an overlay keyed by

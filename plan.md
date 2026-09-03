@@ -50,9 +50,12 @@ Notifications From, the row's context menu) and `ccc hook`, the
 Notification hook's receiver (`ccc hook --settings` prints the
 settings.json entry; ccc never writes that file). 187 tests. Proved on
 studio's CLI face and one real screencapture; the cut (0.1.8/76) went
-back on studio afterwards. **Owed by a hand:** paste the `--settings`
-entry into `~/.claude/settings.json` (or the dotfiles' copy of it) and
-see the first real hook fire; click the View menu's submenu once. Left
+back on studio afterwards. The settings entry is in the dotfiles'
+settings.json (symlinked) and **the real hook has fired** on studio
+from v0.1.9: `hook events 1 last "ccc-v3-hook needs permission"`. On
+air the same entry is live the moment Sparkle lands 0.1.9 there (until
+then air's 0.1.8 answers the hook with usage, exit 2 — a stderr line,
+not a block). **Owed by a hand:** click the View menu's submenu once. Left
 as decided: a session stopped by your own hand still banners, until it
 annoys. **v0.1.9 (build 80) is cut and on the feed** (2026-09-02, the
 second cut through ota, verified live: version 80, length 4541512;

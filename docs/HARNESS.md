@@ -114,9 +114,12 @@ optional `permission_suggestions[]`; **decision via a `decision` object**
 surface; not v0. **`ccc hook` is the Notification receiver (v3 slice 2):**
 the payload on stdin, decoded leniently (`HookEvent.decode` — every field
 optional, wrong types dropped), relayed to the app over the control socket;
-`ccc hook --settings` prints the settings.json entry. Proved with fabricated
-payloads only so far — the real hook has not fired into it yet, so the
-`message` texts above are the docs' words, not captured ones.
+`ccc hook --settings` prints the settings.json entry. **Fired for real
+2026-09-02** (2.1.x, v0.1.9): a background session blocked on a Bash
+permission produced one `permission_prompt` event about 6 s after the
+roster's `blocked` row, with a `session_id` that matched the row's
+`sessionId` — so the hook and the poll name the same session, and the
+hook's reason lands under the poll's banner.
 
 **Remote Control.** Outbound-only HTTPS from the session to Anthropic; the
 phone push is native and undocumented; no third-party channel. `Channels`
