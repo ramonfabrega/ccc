@@ -1,8 +1,12 @@
 # plan.md — ephemeral handoff
 
 **Status 2026-09-02, late.** Everything landed is in `docs/MILESTONES.md`
-(v0 through v5 slice 3). This file carries only what is *not* settled:
-the queue, trimmed to what has a measured reason, and what is owed.
+(v0 through v5 slice 3). **v0.1.11 (build 90) is cut and on the feed**
+(through ota, live length 4627875; GitHub release v0.1.11); studio runs
+it (`--dist`), air takes it through Sparkle when it wakes. Master wants
+`git merge --ff-only worktree-v2`. This file carries only what is *not*
+settled: the queue, trimmed to what has a measured reason, and what is
+owed.
 
 Worktree `.claude/worktrees/v2`, branch `worktree-v2`. `master`
 fast-forwards to it; merge master back after any master-side commit or
