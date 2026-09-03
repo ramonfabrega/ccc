@@ -411,6 +411,47 @@ public enum GitMerge {
     }
 }
 
+/// Which branch `ccc push <ref>` sends: the worktree's own, or the
+/// repository's default branch after a fast-forward landed on it.
+public enum PushTarget: String, CaseIterable, Codable, Sendable {
+    case branch, base
+
+    public var flag: String? { self == .base ? "--base" : nil }
+}
+
+/// The push itself: `git push origin <name>`, never forced, from the
+/// main checkout. What it refuses it refuses by git's own rule — a
+/// remote that moved is a non-fast-forward and git says so — and a
+/// refusal is the sentence, exit 1, nothing changed anywhere. The other
+/// direction (fetch, pull) is not here: the roster reads what the last
+/// fetch left and never asks the network on its own.
+public enum GitPush {
+    public static func perform(_ target: PushTarget, on info: WorktreeInfo,
+                               git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
+        let name = target == .base ? info.base : info.branch
+        let count = target == .base ? info.baseUnpushed : info.unpushed
+        guard let count else {
+            return MergeOutcome(merged: false, said: "\(info.repo) has no origin; nothing to push to")
+        }
+        guard count > 0 else {
+            return MergeOutcome(merged: false, said: "nothing to push: origin/\(name) already has every commit of \(name)")
+        }
+        let plural = "\(count) commit\(count == 1 ? "" : "s")"
+        do {
+            // `-u` once for a branch origin never had, so a later plain
+            // `git push` in a shell knows where to go. Never `--force`.
+            _ = try Git.run(git, ["-C", info.repo, "push", "--porcelain", "-u", "origin", "refs/heads/\(name):refs/heads/\(name)"])
+            return MergeOutcome(merged: true, said: "pushed \(name) → origin (\(plural))")
+        } catch {
+            let detail = "\(error)".trimmingCharacters(in: .whitespacesAndNewlines)
+            let why = detail.contains("non-fast-forward") || detail.contains("fetch first") || detail.contains("rejected")
+                ? "origin/\(name) has moved; fetch and merge in a terminal, then push again"
+                : detail
+            return MergeOutcome(merged: false, said: "push \(name) refused: \(why)")
+        }
+    }
+}
+
 /// `git` as a subprocess: stdout and stderr to EOF, a non-zero exit as an
 /// error carrying stderr. Synchronous; every caller is already off the
 /// main actor or is the CLI.
@@ -481,6 +522,35 @@ extension ClaudeCLI {
             return await Task.detached(priority: .userInitiated) { GitMerge.perform(strategy, on: info, git: probe.git) }.value
         }
         guard let argv = mergeArgv(strategy, id: id) else { throw MergeError.noRemoteCCC(host.name) }
+        try prepareControlDirectory()
+        let result = try await run(argv, accepting: [0, 1], program: "ccc")
+        let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+        return MergeOutcome(merged: result.status == 0, said: said)
+    }
+
+    /// `ccc push <id> [--base]` on a remote host: the far side's own ccc,
+    /// where the repository and its credentials are.
+    public func pushArgv(_ target: PushTarget, id: String) -> [String]? {
+        guard let ccc = host.ccc, let destination = host.ssh else { return nil }
+        return sshPrefix(tty: false, destination: destination) + [ccc, "push", id] + (target.flag.map { [$0] } ?? [])
+    }
+
+    /// Push a session's worktree branch, or its repository's default
+    /// branch, to origin. Same road as `merge`: the row's cwd from one
+    /// roster read, a fresh count, `GitPush` off the main actor; the far
+    /// side's verb for a remote ref.
+    public func push(_ target: PushTarget, id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
+        if host.isLocal {
+            let roster = RosterDecoder.decode(try await agentsJSON())
+            guard let row = roster.sessions.first(where: { $0.id == id }) else {
+                throw MergeError.noSuchSession(id)
+            }
+            guard let info = probe.fresh(forCwd: row.cwd) else {
+                throw MergeError.notAWorktree(id, row.cwd)
+            }
+            return await Task.detached(priority: .userInitiated) { GitPush.perform(target, on: info, git: probe.git) }.value
+        }
+        guard let argv = pushArgv(target, id: id) else { throw MergeError.noRemoteCCC(host.name) }
         try prepareControlDirectory()
         let result = try await run(argv, accepting: [0, 1], program: "ccc")
         let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)

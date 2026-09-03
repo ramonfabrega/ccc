@@ -187,6 +187,14 @@ final class PaneController {
         return outcome
     }
 
+    /// Push (v6 slice 3): exactly `ccc push <ref> [--base]`, then a poll
+    /// so the ⇡ mark clears now.
+    func push(_ ref: SessionRef, _ target: PushTarget) async throws -> MergeOutcome {
+        let outcome = try await cli(for: ref).push(target, id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return outcome
+    }
+
     /// The harness's `rm` behind the host prefix (`ccc rm <ref>`), its
     /// sentence returned whether it removed or kept. A poll after, so a
     /// removed row leaves the roster at once.

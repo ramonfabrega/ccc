@@ -94,6 +94,8 @@ final class MainWindowController: NSWindowController {
             self?.presentNewSession(here: ref)
         }, merge: { [weak self] ref, strategy in
             self?.merge(ref, strategy)
+        }, push: { [weak self] ref, target in
+            self?.push(ref, target)
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -314,6 +316,19 @@ final class MainWindowController: NSWindowController {
         Task { @MainActor in
             do {
                 let outcome = try await controller.merge(ref, strategy)
+                showNotice(outcome.said, kind: outcome.merged ? .answer : .problem)
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    /// The submenu's Push items (v6 slice 3): the same sentence shape as
+    /// merge — pushed, or why not — as the notice.
+    func push(_ ref: SessionRef, _ target: PushTarget) {
+        Task { @MainActor in
+            do {
+                let outcome = try await controller.push(ref, target)
                 showNotice(outcome.said, kind: outcome.merged ? .answer : .problem)
             } catch {
                 showNotice("\(error)", kind: .problem)

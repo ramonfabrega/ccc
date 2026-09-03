@@ -31,6 +31,8 @@ struct RosterView: View {
     let newSessionHere: (SessionRef) -> Void
     /// The row's Merge submenu (v6): `ccc merge <ref> --<strategy>`.
     let merge: (SessionRef, MergeStrategy) -> Void
+    /// The submenu's Push items (v6 slice 3): `ccc push <ref> [--base]`.
+    let push: (SessionRef, PushTarget) -> Void
     @State private var selection: SessionRef?
     /// Keyboard focus on the list, set by the same click that selects a
     /// row. Measured 2026-09-02 on the shipped build: a click highlighted
@@ -156,6 +158,16 @@ struct RosterView: View {
                 Button("Fast-forward") { merge(row.ref, .ffOnly) }.disabled(!wt.canFastForward)
                 Button("Merge (merge commit)") { merge(row.ref, .noFF) }.disabled(!wt.hasWork)
                 Button("Squash into one commit") { merge(row.ref, .squash) }.disabled(!wt.hasWork)
+                // Push (slice 3), the step between landing and `claude rm`:
+                // each item carries its own ⇡ count and is live only while
+                // there is something to send. Never forced.
+                if wt.unpushed != nil {
+                    Divider()
+                    Button("Push \(wt.branch)" + ((wt.unpushed ?? 0) > 0 ? " ⇡\(wt.unpushed!)" : "")) { push(row.ref, .branch) }
+                        .disabled((wt.unpushed ?? 0) == 0)
+                    Button("Push \(wt.base)" + ((wt.baseUnpushed ?? 0) > 0 ? " ⇡\(wt.baseUnpushed!)" : "")) { push(row.ref, .base) }
+                        .disabled((wt.baseUnpushed ?? 0) == 0)
+                }
                 Divider()
                 Text(standing(wt))
             }

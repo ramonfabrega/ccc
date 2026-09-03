@@ -328,3 +328,95 @@ import Testing
         #expect(info.ahead == 3 && info.unpushed == nil && info.baseUnpushed == nil)
     }
 }
+
+/// Slice 3: the push, against the same bare origin. Never forced: a
+/// moved remote is git's refusal, passed through, and nothing changes.
+@Suite(.serialized) struct PushTests {
+    private func withOrigin(_ body: (URL, URL, (String, URL) throws -> String) throws -> Void) throws {
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-push-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let origin = dir.appending(path: "origin.git"), root = dir.appending(path: "repo")
+        func git(_ line: String, _ at: URL) throws -> String {
+            try Git.run(WorktreeProbe.defaultGit, ["-C", at.path] + line.split(separator: " ").map(String.init)).stdout
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "--bare", origin.path])
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "-b", "master", root.path])
+        _ = try git("config user.email t@example.com", root)
+        _ = try git("config user.name t", root)
+        try "one\n".write(to: root.appending(path: "a.txt"), atomically: true, encoding: .utf8)
+        _ = try git("add a.txt", root)
+        _ = try git("commit -q --no-verify -m first", root)
+        _ = try git("remote add origin \(origin.path)", root)
+        _ = try git("push -q -u origin master", root)
+        try FileManager.default.createDirectory(at: root.appending(path: ".claude"), withIntermediateDirectories: true)
+        let wt = root.appending(path: ".claude/worktrees/t")
+        _ = try git("worktree add -q -b worktree-t \(wt.path) master", root)
+        try body(root, wt, git)
+    }
+
+    private func commit(_ name: String, in dir: URL, _ git: (String, URL) throws -> String) throws {
+        try "x\n".write(to: dir.appending(path: name), atomically: true, encoding: .utf8)
+        _ = try git("add \(name)", dir)
+        _ = try git("commit -q --no-verify -m \(name)", dir)
+    }
+
+    @Test func pushesTheBranchThenMasterAndClearsTheMarks() throws {
+        try withOrigin { root, wt, git in
+            let probe = WorktreeProbe()
+            try commit("b.txt", in: wt, git)
+            let before = try #require(probe.fresh(forCwd: wt.path))
+            #expect(before.unpushed == 1)
+            // Nothing on master yet: that target says so and sends nothing.
+            let idle = GitPush.perform(.base, on: before)
+            #expect(!idle.merged && idle.said.hasPrefix("nothing to push"))
+            let pushed = GitPush.perform(.branch, on: before)
+            #expect(pushed.merged, "\(pushed.said)")
+            #expect(pushed.said == "pushed worktree-t → origin (1 commit)")
+            #expect(try git("rev-parse origin/worktree-t", root) == git("rev-parse worktree-t", root))
+            #expect(probe.fresh(forCwd: wt.path)?.unpushed == 0)
+            // Land it, then master is the one to send.
+            let landed = try #require(probe.fresh(forCwd: wt.path))
+            #expect(GitMerge.perform(.ffOnly, on: landed).merged)
+            let after = try #require(probe.fresh(forCwd: wt.path))
+            #expect(after.baseUnpushed == 1)
+            let master = GitPush.perform(.base, on: after)
+            #expect(master.merged && master.said == "pushed master → origin (1 commit)")
+            #expect(probe.fresh(forCwd: wt.path)?.baseUnpushed == 0)
+        }
+    }
+
+    @Test func aMovedRemoteIsRefusedAndNothingChanges() throws {
+        try withOrigin { root, wt, git in
+            // Someone else pushed to origin/master; ours diverged.
+            let other = root.deletingLastPathComponent().appending(path: "other")
+            _ = try Git.run(WorktreeProbe.defaultGit, ["clone", "-q", root.deletingLastPathComponent().appending(path: "origin.git").path, other.path])
+            _ = try git("config user.email o@example.com", other)
+            _ = try git("config user.name o", other)
+            try commit("theirs.txt", in: other, git)
+            _ = try git("push -q origin master", other)
+            try commit("ours.txt", in: root, git)
+            let probe = WorktreeProbe()
+            let info = try #require(probe.fresh(forCwd: wt.path))
+            #expect(info.baseUnpushed == 1, "as of the last fetch, master is one ahead — the reading never fetches")
+            let outcome = GitPush.perform(.base, on: info)
+            #expect(!outcome.merged)
+            #expect(outcome.said.contains("origin/master has moved"), "\(outcome.said)")
+            #expect(try git("rev-parse origin/master", other) != git("rev-parse master", root))
+        }
+    }
+
+    @Test func noOriginIsSaidNotTried() {
+        let info = WorktreeInfo(branch: "worktree-x", base: "master", ahead: 1, behind: 0, repo: "/nowhere")
+        let outcome = GitPush.perform(.branch, on: info)
+        #expect(!outcome.merged && outcome.said.contains("no origin"))
+    }
+
+    @Test func remotePushIsTheFarSidesVerb() {
+        let host = Host(name: "studio", ssh: "studio", claude: "~/.local/bin/claude", ccc: "/opt/homebrew/bin/ccc")
+        let cli = ClaudeCLI(executable: "~/.local/bin/claude", host: host)
+        #expect(cli.pushArgv(.branch, id: "a1b2")?.suffix(3) == ["/opt/homebrew/bin/ccc", "push", "a1b2"])
+        #expect(cli.pushArgv(.base, id: "a1b2")?.suffix(4) == ["/opt/homebrew/bin/ccc", "push", "a1b2", "--base"])
+    }
+}

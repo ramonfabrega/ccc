@@ -510,6 +510,26 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   (lenient decode, pinned). Not in scope, and not coming: the other
   direction (meaningless without a fetch), a fetch loop, a push verb —
   git's job in a terminal. Three tests against a bare origin. 229 tests.
+  **Slice 3 — done 2026-09-02, late: push.** Slice 2's first real
+  reading was `~/code/fun/ccc ⇡3` — master fast-forwarded here three
+  times and never pushed — and the user's answer to "only informative?"
+  turned the earlier "a push verb is a terminal's job" around: the
+  lifecycle of a session ends with `claude rm`, which the harness
+  refuses on unpushed work, so the sequence actually run is land, push,
+  delete, and the row showed the middle step without offering it. The
+  verb is `ccc push <ref>` for the worktree branch and `ccc push <ref>
+  --base` for the repository's default branch; the submenu gains, below
+  a divider, **Push <branch> ⇡N** and **Push <base> ⇡N**, each carrying
+  its own count and live only while it is above zero. Always `git push
+  origin <name>` from the main checkout, never forced (`-u` once, so a
+  later plain `git push` in a shell knows where to go); a moved remote
+  is git's non-fast-forward refusal passed through as "origin/<name>
+  has moved; fetch and merge in a terminal, then push again", exit 1,
+  nothing changed anywhere; no origin is said, not tried. Remote refs
+  run the far side's own `ccc push`, where the repository and its
+  credentials are. Not here, and not coming: fetch, pull, force,
+  rebase. Four tests against a bare origin, including a second clone
+  that moves origin/master under ours. 233 tests.
   **The banner goes — done 2026-09-02, late.** Noticed by the user on
   the first Fast-forward from the row: the banner sat in the window's
   vertical stack, so every sentence resized the pane, which resized the

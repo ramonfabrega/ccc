@@ -94,6 +94,17 @@ enum CLI {
                     strategy = s
                 }
                 return try await merge(strategy, ref: ref, json: json)
+            case "push":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                for flag in rest.filter({ $0.hasPrefix("--") }) where flag != "--base" {
+                    stderr("ccc: unknown flag '\(flag)' (--base)")
+                    return 2
+                }
+                return try await push(rest.contains("--base") ? .base : .branch, ref: ref, json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -239,6 +250,30 @@ enum CLI {
         let outcome = try await cli.merge(strategy, id: ref.id)
         if json {
             printJSON(["ref": ref.description, "strategy": strategy.rawValue, "merged": outcome.merged ? "true" : "false", "said": outcome.said])
+        } else {
+            print(outcome.said)
+        }
+        return outcome.merged ? 0 : 1
+    }
+
+    /// `ccc push <ref> [--base]` (v6 slice 3): the session's worktree
+    /// branch — or, with `--base`, the repository's default branch — to
+    /// origin, never forced. Exit 0 when it pushed, 1 when git refused
+    /// or there was nothing to send.
+    static func push(_ target: PushTarget, ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let outcome = try await cli.push(target, id: ref.id)
+        if json {
+            printJSON(["ref": ref.description, "target": target.rawValue, "pushed": outcome.merged ? "true" : "false", "said": outcome.said])
         } else {
             print(outcome.said)
         }
@@ -1103,6 +1138,9 @@ enum CLI {
                                                   where the repo is; --ff-only (default) refuses when master moved;
                                                   every strategy refuses a dirty or wrong-branch checkout and backs
                                                   out of a conflict (exit 1 with the reason; nothing is ever lost)
+               ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
+                                                  default branch — to origin, never forced; git's own refusal is the
+                                                  answer (exit 1; nothing changes anywhere)
                ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
                ccc resize <cols> <rows>
                ccc stats [--json]
