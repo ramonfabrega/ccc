@@ -32,6 +32,15 @@ import Testing
     /// bloat rather than on any section's honest size. The text before the
     /// first `## ` counts as a section too: that is where the 60,814 bytes
     /// were hiding.
+    ///
+    /// **A `### ` rolls up into its parent `## `, deliberately.** Addressing
+    /// and measuring therefore disagree about what a section is: §6a has an
+    /// address of its own (`citationsResolve` reads both levels) and no byte
+    /// budget of its own. That is the right way round — a reader who opens
+    /// §6 reads 6a with it, so 6a is not a separate sitting — but it means
+    /// **adding a `### ` does not get a section under the ceiling.** Only a
+    /// new `## ` does. Whoever splits to get under the bound gets told here
+    /// rather than discovering it.
     static let sectionCeiling = 16_000
 
     /// The sections over the ceiling, pinned at their size, each free to
@@ -42,13 +51,21 @@ import Testing
     /// that a session cannot read in one sitting; split it instead.
     static let over: [String: Int] = [:]
 
-    /// The queue's whole length, in lines. Eleven open items at a paragraph
-    /// each, the frontier, and the entry rule come to 156, so this bites at
-    /// about a quarter's growth — enough to catch the file becoming a
-    /// changelog again, not so tight that it bites on an item's honest
-    /// size. attrition raised its own 180 to 200 for exactly that reason:
-    /// the bound should bite on bloat, and a session golfing lines instead
-    /// of deleting stories is the bound set wrong.
+    /// The queue's whole length, in lines. **Bound the unit, not the file:**
+    /// this is the number of items the board expects to hold live, times the
+    /// honest size of one, plus the frontier — not a percentage over
+    /// whatever the file happens to measure today, which would encode
+    /// today's accident. Here that is ~12 items at ~11 lines each (an item
+    /// is a paragraph: what it is, what is known, what is blocked), plus
+    /// ~15 for the frontier and the entry rule.
+    ///
+    /// The bound must bite on bloat and never on an item's honest size — a
+    /// session golfing lines instead of deleting stories is the bound set
+    /// wrong, which is why attrition raised its own 180 to 200 when 180 bit
+    /// on a board of ~20 items at five or six lines each. Both estimates
+    /// made for this file before it was written (106, then 150) came in
+    /// under 156, because both anchored to the old file's size instead of
+    /// to what an item costs.
     static let queueLines = 200
 
     private static let docs = [
