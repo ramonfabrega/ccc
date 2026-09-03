@@ -1,24 +1,17 @@
-# plan.md — ephemeral handoff (v4 started)
+# plan.md — ephemeral handoff (v5 in progress)
 
-**Status 2026-09-02.** v2 slices 1–3, install polish, the dev/release
-lane split, v3 slice 1 and v4 slice 1 are in `docs/MILESTONES.md`; v0.1.5
-is on the feed and air runs it. Studio runs the dev lane
-(`scripts/install`; `--dist` puts the cut back). This file carries only
-what is *not* settled.
+**Status 2026-09-02, end of night.** v0 through v5 slice 2 are in
+`docs/MILESTONES.md`; **v0.1.10 (build 85) is the cut on every Mac** —
+studio by `scripts/install --dist`, air through Sparkle — and master was
+fast-forwarded to the branch by the user. 208 tests. This file carries
+only what is *not* settled.
 
-Worktree `.claude/worktrees/v2`, branch `worktree-v2`, 173 tests green.
-`master` fast-forwards to it (a merge of master into this branch keeps that
-true; do it again after every master sync or the branches re-diverge).
-**v0.1.8 is cut and on the feed** (2026-09-02 night; v0.1.6 carried v4
-and the icon, v0.1.7 the banner fix air found within the hour, v0.1.8 is
-the first cut through `ota`). Local master fast-forwarded to the ota
-merge and worktree-v2 merged it back, so master wants
-`git merge --ff-only worktree-v2` again for the v0.1.8 commits. Studio
-runs the cut (`scripts/install --dist`). **Air took v0.1.6 by hand**;
-v0.1.7 and v0.1.8 reach it through Sparkle — air on 0.1.8 is §6a's
-proof and closes the old lane for good. Left on air: answer the
-notification permission banner once, `ccc stats` on air says
-`authorized` when done.
+Worktree `.claude/worktrees/v2`, branch `worktree-v2`. `master`
+fast-forwards to it; merge master back after any master-side commit or
+the branches re-diverge. The dev loop on studio is `scripts/install`
+(dev bundle, `ccc·dev`); `--dist` puts the cut back. **Confirmed by a
+hand on v0.1.10, both Macs:** the New Session sheet, the mute submenu,
+and the draft reading. Left on air: nothing owed.
 
 ## Current: v5, spawn
 
@@ -43,9 +36,7 @@ the first edit on its own, so this is display more than dispatch).
 ota: notarized, one item, live length 4623978; GitHub release v0.1.10);
 studio runs it (`scripts/install --dist`), air takes it through Sparkle
 — that update is what puts ⌘N and the draft reading on air, and the
-hands-on list above is air's to do. Master wants
-`git merge --ff-only worktree-v2` again (the main checkout's, not this
-worktree's).
+draft reading was confirmed on air the same night. Master is level.
 
 ## v4, the roster ours (landed)
 
