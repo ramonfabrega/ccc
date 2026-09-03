@@ -12,16 +12,21 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**v8 — the pane, honestly.** Two complaints the user raised while using
-the app, both now shipped. The theme (item 8): the pane wears the user's
-own iTerm palette, which turns "does it match" into a diff rather than a
-matter of taste. The attach transition (item 9): the incoming session
-runs behind the outgoing one and the swap happens once it has drawn, so
-the pane never goes blank — and the ← guard, which was off for the whole
-of that blank, stays armed. What is left of 8 is the residual, colour
-management, which cannot be judged by eye: **item 10 is the frontier**,
-because nothing here can capture one window or read a colour out of a
-PNG, and 8b cannot be measured until it can.
+**v8 is done.** Both complaints the user raised while using the app are
+answered, and the second one is answered *with a number*. The theme (8):
+the pane wears the user's own iTerm palette. The attach transition (9):
+the incoming session runs behind the outgoing one, so the pane never goes
+blank and the ← guard — off for the whole of that blank — stays armed.
+The oracle (10): `ccc capture` and `ccc pixel` mean a colour can be
+judged from the command line, and the first thing they judged closed 8b —
+ccc's pane and iTerm land on **bit-identical** pixels in one composite,
+so the colour-management residual the item assumed does not exist
+(docs/EVIDENCE.md "8b: there is no colour-management residual").
+
+**The frontier is now item 3**, and it is a question only the user can
+answer: which Mac is ever the far side of an ssh hop. Everything remote —
+§4c, item 6, the ssh-clipboard question, item 9's over-ssh half — is
+behind it, and nothing else on this board is blocked at all.
 
 ## Open
 
@@ -83,34 +88,31 @@ Remote branches `hotfix-gridbuilder`, `worktree-icon`, `worktree-v0`,
 `git branch -a` first — this item has not been re-checked since it was
 written.
 
-### 8. The colours: the theme is set, the residual is not
+### 8. The colours: two gaps left, both named
 
-Raised by the user 2026-09-03 ("feel off / opaque'd"). **Half shipped.**
-The pane set none of the core's four colour options, so it wore Ghostty's
-own defaults — `#000000` on `#FFFFFF` with the Tomorrow Night palette —
-against an iTerm that is `#15191F` on `#DCDCDC` with a much more
-saturated sixteen. Not a missing palette, a different one; the queue's
-old "black on black" reading was the sized-struct bug `FrameReader`
-already fixed. `Theme` now installs 16 + 6 at `GhosttyHost.init`, with
-`ccc theme` and `CCC_THEME` as the surfaces — docs/EVIDENCE.md "the pane
-wore Ghostty's theme".
+Raised by the user 2026-09-03 ("feel off / opaque'd"). **Answered.** The
+pane set none of the core's four colour options, so it wore Ghostty's own
+defaults against an iTerm that is `#15191F` on `#DCDCDC`; `Theme` now
+installs 16 + 6 at `GhosttyHost.init` (docs/EVIDENCE.md "the pane wore
+Ghostty's theme"). And 8b — the colour-management residual this item
+assumed was left over — was measured with item 10's new verbs and **is
+not there**: ccc and iTerm land on bit-identical pixels in one composite
+(docs/EVIDENCE.md "8b: there is no colour-management residual").
 
-What is left is cause (b), still unmeasured: `MetalPaneView` sets no
-`colorspace` on its `.bgra8Unorm` layer, so the pane is unmanaged while
-iTerm is colour-managed. The old premise for it was wrong — studio's
-display answers `NSScreen.colorSpace` with its own EDID profile ("Mi
-monitor", scale 1.0, no EDR), neither sRGB nor P3 — and the conclusion
-survived being wrong, because an unmanaged layer against a non-sRGB
-panel moves every value just the same. **Now that the nominal values
-agree, the on-screen difference is the colour management**: same content
-in both, a real `screencapture` of each, compare the RGB of known cells.
-Needs item 10.
+Two gaps remain, both stated in `Theme`'s doc comment and neither
+affecting whether the pane matches:
 
-Two smaller gaps, both stated in `Theme`'s doc comment: bold-is-bright
-(iTerm has it on; the core resolves palette indices to RGB before a cell
-reaches us, so the index has to cross the seam before we can add 8 to
-it), and the selection colours, which the theme carries and nothing
-draws.
+- **bold-is-bright.** iTerm has it on; it promotes bold text from colour
+  *n* to *n+8*. It cannot be done from a `Frame` — the core resolves
+  palette indices to RGB before a cell reaches us (`render.h`: "Bold
+  color handling is not applied"), so the *index* has to cross the seam
+  before anything here can add 8 to it.
+- **selection.** The theme carries both colours and nothing draws them:
+  `FrameReader` always builds rows with `selection: nil`.
+
+Also untested: one display, one profile, at 1x. A Retina panel or a
+different display profile could still move the answer, and `pixel
+--cell`'s scale arithmetic has never run at 2x outside a test.
 
 ### 9. The attach transition: two ends left
 
@@ -130,21 +132,21 @@ the hole in the ← guard"). What is left:
   render pauses over 250 ms mid-paint can still swap in early. No
   forcing function — it has not been seen.
 
-### 10. The oracle has no command twin — the frontier
+### 10. The oracle's twin: one question left
 
-Found by a cold read of these docs, 2026-09-03; item 8b waits on it. CLAUDE.md makes a real
-`screencapture` the oracle for presentation, and `docs/CHECKS.md` row 5
-was re-judged with one — but nothing in the repo can capture one specific
-window: `screencapture -l <CGWindowID>` needs an id nothing here produces,
-and there is no script for it. Against this project's own rule that every
-gesture has a command twin, that is a finding, not a missing doc.
+Shipped. `ccc geometry` hands out the `CGWindowID` that was always in the
+app and never left it, `ccc capture` points `screencapture -l` at it, and
+`ccc pixel --cell … --expect` makes the exit code the answer, so a script
+can judge a colour. Their first real use closed 8b (docs/EVIDENCE.md "the
+oracle gets its twin").
 
-Nothing reads RGB out of a PNG either. There is now a headless colour
-oracle of a kind — `ThemeTests` asserts a `Frame`'s resolved cell colours,
-which is how item 8's first half was proved — but no *command* twin:
-`snapshot --json` serialises a `Grid` and `GridBuilder` carries no colour,
-so nothing on the CLI can judge a colour. Whether a replay golden could
-ever assert RGB is unanswered.
+**Still unanswered: whether a replay golden could ever assert RGB.**
+`GridBuilder` carries no colour, so `snapshot --json` and every headless
+golden remain colour-blind — the new verbs need a *window*, which means
+the one oracle an agent can run with no screen is still text-only. Fixing
+it means carrying colour across the seam into `Grid`, which is the same
+change bold-is-bright needs (item 8), so the two want doing together or
+not at all.
 
 ### 11. A cold session cannot build this
 

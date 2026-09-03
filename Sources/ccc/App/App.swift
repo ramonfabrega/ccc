@@ -39,6 +39,7 @@ enum App {
         let window = MainWindowController(controller: controller)
         self.window = window
         controller.peekProvider = { [weak window] in window?.peek() }
+        controller.geometryProvider = { [weak window] in window?.geometry() }
         controller.windowAction = { [weak window] action in window?.windowAction(action) ?? false }
         do {
             try controller.serve()

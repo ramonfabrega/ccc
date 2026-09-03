@@ -167,6 +167,12 @@ enum CLI {
                 return try request(.stats, json: json)
             case "peek":
                 return try peek(to: rest.first(where: { !$0.hasPrefix("--") }))
+            case "geometry":
+                return try request(.geometry, json: json)
+            case "capture":
+                return try capture(to: rest.first(where: { !$0.hasPrefix("--") }), json: json)
+            case "pixel":
+                return try pixel(rest, json: json)
             case "theme":
                 return theme(json: json)
             case "bench":
@@ -972,6 +978,167 @@ enum CLI {
     }
 
     /// The window as PNG, written to `path` (default: a temp file), path printed.
+    /// The presentation oracle's twin (v8 slice 3).
+    ///
+    /// `peek` composites the pane from an offscreen render, so it can show
+    /// a perfect TUI over a pane that is black on screen — it did, for a
+    /// day (docs/DESIGN.md §7). This is the other one: `screencapture -l`
+    /// against the window's real `CGWindowID`, so what lands in the file is
+    /// what a camera pointed at the display would see.
+    ///
+    /// The capture runs *here*, not in the app, deliberately. Screen
+    /// Recording permission belongs to whoever asks — this terminal, or an
+    /// agent's shell — and doing it in the app would put the app behind
+    /// that prompt forever, including for `peek`, which needs no permission
+    /// at all. The split is the point: `peek` always works, `capture`
+    /// tells the truth.
+    static func capture(to path: String?, json: Bool) throws -> Int32 {
+        let response = try ControlClient().send(.geometry)
+        guard case .geometry(let geometry) = response else {
+            if case .error(let message) = response { stderr("ccc: \(message)") } else {
+                stderr("ccc: unexpected geometry response")
+            }
+            return 1
+        }
+        let out = path ?? NSTemporaryDirectory() + "ccc-capture-\(Int(Date().timeIntervalSince1970)).png"
+        // -l one window, -o no shadow (the shadow is not the window and
+        // would offset every pixel in it), -x no shutter sound.
+        let task = Process()
+        task.executableURL = URL(filePath: "/usr/sbin/screencapture")
+        task.arguments = ["-l", "\(geometry.windowID)", "-o", "-x", out]
+        let errors = Pipe()
+        task.standardError = errors
+        try task.run()
+        task.waitUntilExit()
+        let said = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard task.terminationStatus == 0, FileManager.default.fileExists(atPath: out) else {
+            stderr("""
+                ccc: screencapture failed\(said.isEmpty ? "" : " (\(said))"); \
+                window \(geometry.windowID). Screen Recording permission belongs to \
+                whoever runs this — grant it in System Settings ▸ Privacy & Security \
+                ▸ Screen Recording for this terminal. `ccc peek` needs no permission.
+                """)
+            return 1
+        }
+        if json {
+            printJSON(CaptureInfo(path: out, geometry: geometry))
+        } else {
+            print(out)
+        }
+        return 0
+    }
+
+    struct CaptureInfo: Codable {
+        var path: String
+        var geometry: WindowGeometry
+    }
+
+    /// Read one colour out of an image, and optionally judge it.
+    ///
+    /// The queue's other half of item 10: nothing in the repo could turn a
+    /// PNG into a number, so every colour question ended with a human
+    /// looking at a picture. `--cell` is the useful form — it asks the
+    /// running app where the pane is and how big a cell is, so "what
+    /// colour is the top-left cell" is one command rather than arithmetic
+    /// done by hand.
+    static func pixel(_ rest: [String], json: Bool) throws -> Int32 {
+        guard let file = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+        guard let data = FileManager.default.contents(atPath: file) else {
+            stderr("ccc: cannot read '\(file)'")
+            return 2
+        }
+        let image: PixelReader.Image
+        do { image = try PixelReader.decode(data) } catch {
+            stderr("ccc: \(error)")
+            return 2
+        }
+
+        var x: Int, y: Int
+        if let cell = pairFlag("--cell", rest) {
+            let response = try ControlClient().send(.geometry)
+            guard case .geometry(let geometry) = response else {
+                if case .error(let message) = response { stderr("ccc: \(message)") } else {
+                    stderr("ccc: unexpected geometry response")
+                }
+                return 1
+            }
+            guard let pane = geometry.pane else {
+                stderr("ccc: nothing attached, so there is no grid to take a cell from")
+                return 1
+            }
+            guard cell.0 >= 0, cell.0 < pane.cols, cell.1 >= 0, cell.1 < pane.rows else {
+                stderr("ccc: no cell \(cell.0),\(cell.1); the grid is \(pane.cols)x\(pane.rows)")
+                return 2
+            }
+            (x, y) = pane.pixel(col: cell.0, row: cell.1, scale: geometry.scale)
+        } else if let at = pairFlag("--at", rest) {
+            (x, y) = at
+        } else {
+            stderr("ccc: pixel needs --cell <col> <row> or --at <x> <y>")
+            return 2
+        }
+
+        guard let colour = image.rgb(x: x, y: y) else {
+            stderr("ccc: no pixel \(x),\(y); the image is \(image.width)x\(image.height)")
+            return 2
+        }
+        let hex = PixelReader.hex(colour)
+
+        // `--expect` is what makes this a judgement rather than a reading:
+        // the exit code is the answer, so a script can assert a colour.
+        if let wanted = stringFlag("--expect", rest) {
+            guard let expected = PixelReader.parse(hex: wanted) else {
+                stderr("ccc: '\(wanted)' is not a colour (#RRGGBB)")
+                return 2
+            }
+            let tolerance = intFlag("--tolerance", rest) ?? 0
+            let off = PixelReader.distance(colour, expected)
+            let ok = off <= tolerance
+            if json {
+                printJSON(PixelInfo(x: x, y: y, hex: hex, r: Int(colour.r), g: Int(colour.g), b: Int(colour.b),
+                                    expected: PixelReader.hex(expected), off: off, ok: ok))
+            } else if ok {
+                print("\(hex) at \(x),\(y) — matches \(PixelReader.hex(expected))\(tolerance > 0 ? " (within \(tolerance))" : "")")
+            } else {
+                stderr("ccc: \(hex) at \(x),\(y) — expected \(PixelReader.hex(expected)), off by \(off)")
+            }
+            return ok ? 0 : 1
+        }
+
+        if json {
+            printJSON(PixelInfo(x: x, y: y, hex: hex, r: Int(colour.r), g: Int(colour.g), b: Int(colour.b)))
+        } else {
+            print("\(hex)  rgb(\(colour.r), \(colour.g), \(colour.b))  at \(x),\(y)")
+        }
+        return 0
+    }
+
+    struct PixelInfo: Codable {
+        var x: Int
+        var y: Int
+        var hex: String
+        var r: Int, g: Int, b: Int
+        var expected: String?
+        var off: Int?
+        var ok: Bool?
+
+        init(x: Int, y: Int, hex: String, r: Int, g: Int, b: Int,
+             expected: String? = nil, off: Int? = nil, ok: Bool? = nil) {
+            self.x = x; self.y = y; self.hex = hex
+            self.r = r; self.g = g; self.b = b
+            self.expected = expected; self.off = off; self.ok = ok
+        }
+    }
+
+    /// Two integers after a flag (`--cell 3 5`), spelled the way `resize`
+    /// takes its pair rather than as a comma-joined string.
+    static func pairFlag(_ name: String, _ args: [String]) -> (Int, Int)? {
+        guard let i = args.firstIndex(of: name), i + 2 < args.count,
+              let a = Int(args[i + 1]), let b = Int(args[i + 2]) else { return nil }
+        return (a, b)
+    }
+
     static func peek(to path: String?) throws -> Int32 {
         let response = try ControlClient().send(.peek)
         guard case .peek(let png) = response else {
@@ -1123,6 +1290,15 @@ enum CLI {
             }
         case .stats(let stats):
             if json { printJSON(stats) } else { printStats(stats) }
+        case .geometry(let geometry):
+            if json { printJSON(geometry) } else {
+                print("window \(geometry.windowID)  \(Int(geometry.width))x\(Int(geometry.height))pt  @\(geometry.scale)x")
+                if let pane = geometry.pane {
+                    print("pane   \(Int(pane.x)),\(Int(pane.y))  \(Int(pane.width))x\(Int(pane.height))pt  \(pane.cols)x\(pane.rows) cells  cell \(pane.cellWidth)x\(pane.cellHeight)pt")
+                } else {
+                    print("pane   (nothing attached)")
+                }
+            }
         case .peek:
             stderr("ccc: unexpected peek response")
             return 1
@@ -1322,6 +1498,14 @@ enum CLI {
                ccc resize <cols> <rows>
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)
+               ccc capture [out.png] [--json]      PNG of the window as it is ON SCREEN, through
+                                                  `screencapture -l` — the presentation oracle; needs
+                                                  Screen Recording permission for whoever runs it
+               ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect #RRGGBB [--tolerance N]] [--json]
+                                                  the colour at one pixel; --cell aims at a grid cell
+                                                  through the window's geometry, --expect makes the
+                                                  exit code the answer
+               ccc geometry [--json]              where the window and its pane are, and the cell size
                ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
                ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]

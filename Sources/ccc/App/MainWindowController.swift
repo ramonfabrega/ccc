@@ -627,6 +627,36 @@ final class MainWindowController: NSWindowController {
     /// The whole window as PNG via our own view hierarchy — TCC-free eyes on
     /// our UI (scry's `peek --window`). Material backgrounds render black;
     /// layout and the pane composite correctly, which is what matters.
+    /// The window's id and where its pane sits (v8 slice 3) — what `ccc
+    /// capture` aims `screencapture -l` at, and what turns a cell into a
+    /// pixel. `windowNumber` is the `CGWindowID`: it was always here, it
+    /// just had no way out of the app.
+    ///
+    /// Everything is relative to the *window*, not the content view,
+    /// because a window capture includes the title bar and a caller
+    /// indexes the image it actually gets.
+    func geometry() -> WindowGeometry? {
+        guard let window else { return nil }
+        let frame = window.frame
+        var pane: WindowGeometry.Pane?
+        if let session = controller.session, let view = session.host.view, view.window === window,
+           let ghostty = session.host as? GhosttyPane {
+            // Window base coordinates, then flipped: AppKit measures up
+            // from the bottom, an image is indexed down from the top.
+            let inWindow = view.convert(view.bounds, to: nil)
+            let metrics = ghostty.metrics
+            let size = ghostty.size
+            pane = WindowGeometry.Pane(
+                x: inWindow.minX, y: frame.height - inWindow.maxY,
+                width: inWindow.width, height: inWindow.height,
+                cols: size.cols, rows: size.rows,
+                cellWidth: metrics.width, cellHeight: metrics.height)
+        }
+        return WindowGeometry(
+            windowID: window.windowNumber, scale: window.backingScaleFactor,
+            width: frame.width, height: frame.height, pane: pane)
+    }
+
     func peek() -> Data? {
         guard let window, let content = window.contentView,
               let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return nil }

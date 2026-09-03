@@ -54,6 +54,10 @@ final class PaneController {
     var defaultSize: (cols: Int, rows: Int) = (120, 40)
     /// The window's PNG, when there is a window.
     var peekProvider: (@MainActor () -> Data?)?
+    /// Where the window and its pane are, when there is a window (v8 slice
+    /// 3). The app fills it; headless leaves it nil, which is how `ccc
+    /// capture` learns there is no window to point a camera at.
+    var geometryProvider: (@MainActor () -> WindowGeometry?)?
     /// show / hide / close, when there is a window. Returns false if unknown.
     var windowAction: (@MainActor (String) -> Bool)?
     /// The notifier's state, when there is one (the window face).
@@ -617,6 +621,11 @@ final class PaneController {
         case .peek:
             guard let peekProvider, let png = peekProvider() else { return .error("no window to peek (headless)") }
             return .peek(png: png)
+        case .geometry:
+            guard let geometryProvider, let geometry = geometryProvider() else {
+                return .error("no window (headless)")
+            }
+            return .geometry(geometry)
         case .window(let action):
             guard let windowAction else { return .error("no window (headless)") }
             return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (show|hide|close)")

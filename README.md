@@ -26,7 +26,7 @@ pane is libghostty-vt + our Metal renderer, which took all six checks
 
 ```
 git submodule update --init         # vendor/ghostty, pinned to one commit; scripts/fetch-zig gets the Zig it needs
-swift build && swift test           # 285 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer, theme, ← guard, docs guard
+swift build && swift test           # 295 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer, theme, ← guard, pixels, docs guard
 scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH (symlink into the bundle)
                                     # run it UNSANDBOXED: sandboxed it quits the app, half-copies the
                                     # bundle and leaves it dead
@@ -42,6 +42,13 @@ ccc send "text" | --key ctrl-z      # type; named keys go through the core's key
 ccc send --paste <text>|- | --wheel N  # paste framed as the child negotiated (- reads stdin); scroll
 ccc detach | resize <c> <r> | stats # detach; resize (headless); memory / poll + model-join cost / PTY B/s
 ccc peek [out.png]                  # PNG of the window from our view hierarchy (no screen permission)
+ccc capture [out.png] [--json]      # PNG of the window AS IT IS ON SCREEN, via `screencapture -l` — the
+                                    # presentation oracle. Screen Recording permission belongs to whoever
+                                    # runs it, which is why the app never asks for it and peek always works
+ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect '#RRGGBB' [--tolerance N]]
+                                    # the colour at one pixel; --cell aims through the window's geometry,
+                                    # --expect makes the exit code the answer, so a script can judge a colour
+ccc geometry [--json]               # the window id screencapture wants, the pane's rect, the cell size
 ccc theme [--json]                  # the pane's colours: 16 ANSI + 6 specials, with a swatch per row
                                     # --json is the shape CCC_THEME reads; 16-255 are the xterm cube, not a choice
 ccc window show|hide|close|resize <c> <r>

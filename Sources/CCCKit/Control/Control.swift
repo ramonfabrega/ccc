@@ -70,6 +70,10 @@ public enum ControlRequest: Codable, Sendable {
     /// list and opens it the way the click does — so what the hand can
     /// click, a script can name.
     case links(open: Int? = nil)
+    /// Where the window is and how big a cell is (v8 slice 3), so a real
+    /// `screencapture` can be aimed at this one window and a cell can be
+    /// turned into a pixel. Headless servers have no window and say so.
+    case geometry
 }
 
 public enum ControlResponse: Codable, Sendable {
@@ -78,8 +82,80 @@ public enum ControlResponse: Codable, Sendable {
     case links([LinkInfo])
     case stats(StatsInfo)
     case peek(png: Data)
+    case geometry(WindowGeometry)
     case ok(String)
     case error(String)
+}
+
+/// Where the window and its pane are on screen, in points, with the scale
+/// that turns points into the pixels of a captured image.
+///
+/// This exists because of one missing number. CLAUDE.md makes a real
+/// `screencapture` the oracle for presentation — `ccc peek` composites the
+/// pane from an offscreen render, so it can show a perfect TUI over a pane
+/// that is black on screen, and it did for a day (docs/DESIGN.md §7) — but
+/// `screencapture -l` wants a `CGWindowID` that nothing in the repo
+/// produced. `NSWindow.windowNumber` *is* that id; it just never left the
+/// app. Queue item 10.
+public struct WindowGeometry: Codable, Sendable, Equatable {
+    /// The id `screencapture -l` takes.
+    public var windowID: Int
+    /// Backing scale of the screen the window is on: 2.0 on Retina. A
+    /// captured image is this many pixels per point, and every rect here
+    /// is in points, so nothing in this struct changes when the window
+    /// moves between displays — only this number does.
+    public var scale: Double
+    /// The window's frame size, which is what a window capture covers —
+    /// title bar included. Pane coordinates are relative to *this*, not to
+    /// the content view, because that is what indexes the image.
+    public var width: Double
+    public var height: Double
+    /// The attached pane, when one is mounted.
+    public var pane: Pane?
+
+    /// The pane's rect inside the window, origin **top-left** so it
+    /// indexes a captured image directly rather than AppKit's bottom-left.
+    public struct Pane: Codable, Sendable, Equatable {
+        public var x: Double
+        public var y: Double
+        public var width: Double
+        public var height: Double
+        public var cols: Int
+        public var rows: Int
+        /// One cell, in points. Taken from the renderer's own `CellMetrics`
+        /// rather than divided out of the pane's size: the grid is laid
+        /// from the top-left with exact metrics and any remainder is slack
+        /// at the right and bottom, so dividing would drift a little
+        /// further from the truth with every column.
+        public var cellWidth: Double
+        public var cellHeight: Double
+
+        public init(x: Double, y: Double, width: Double, height: Double,
+                    cols: Int, rows: Int, cellWidth: Double, cellHeight: Double) {
+            self.x = x; self.y = y; self.width = width; self.height = height
+            self.cols = cols; self.rows = rows
+            self.cellWidth = cellWidth; self.cellHeight = cellHeight
+        }
+
+        /// The centre of a cell, in **pixels** of an image captured at
+        /// `scale`, measured from the image's top-left. The centre and not
+        /// a corner on purpose: a corner sits on the boundary between two
+        /// cells and on the edge of a glyph's antialiasing, where the
+        /// answer to "what colour is this" is legitimately ambiguous.
+        public func pixel(col: Int, row: Int, scale: Double) -> (x: Int, y: Int) {
+            let px = x + (Double(col) + 0.5) * cellWidth
+            let py = y + (Double(row) + 0.5) * cellHeight
+            return (Int((px * scale).rounded(.down)), Int((py * scale).rounded(.down)))
+        }
+    }
+
+    public init(windowID: Int, scale: Double, width: Double, height: Double, pane: Pane? = nil) {
+        self.windowID = windowID
+        self.scale = scale
+        self.width = width
+        self.height = height
+        self.pane = pane
+    }
 }
 
 /// One roster row as ccc shows it: the harness's session plus what ccc adds

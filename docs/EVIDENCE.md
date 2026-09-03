@@ -1050,3 +1050,76 @@ everything it has, and the prompt read decides it.
 code with a longer wait, and item 3 still has no real remote to run it on.
 `ccc send --key left`'s reply lost the words "on an empty prompt", which
 were no longer true of both cases. 285 tests.
+
+## v8 slice 3 — the oracle gets its twin, and 8b answers "no" (2026-09-03)
+
+Queue item 10: CLAUDE.md makes a real `screencapture` the oracle for
+presentation, but nothing in the repo could take one of a single window —
+`screencapture -l` wants a `CGWindowID` nothing here produced — and nothing
+could read a colour back out of a PNG, so `Grid` (which carries no colour
+at all) was the only oracle and it cannot answer a colour question.
+
+**The missing number was already in the app.** `NSWindow.windowNumber` *is*
+the `CGWindowID`; it had no way out. `ccc geometry` is that way out, and it
+carries what aiming needs besides the id: the window's size, the backing
+scale, and the pane's rect and cell size in points.
+
+    window 8864  1280x800pt  @1.0x
+    pane   429,38  843x755pt  93x47 cells  cell 9.0x16.0pt
+
+Cell size comes from the renderer's own `CellMetrics`, not from dividing
+the pane's width by its columns: the grid is laid from the top-left with
+exact metrics and the remainder is slack at the right and bottom, so
+dividing drifts a little further off with every column.
+
+**The capture runs in the CLI, not the app.** Screen Recording permission
+belongs to whoever asks. Doing it in the app would put ccc behind that
+prompt forever, including for `peek`, which needs no permission at all.
+The split is the point: `peek` always works, `capture` tells the truth —
+and the difference is visible, since a real capture carries the title bar
+and the status line that `peek`'s composite of the view hierarchy never
+drew.
+
+**`ccc pixel` judges rather than reports.** `--cell <col> <row>` asks the
+running app for the geometry and reads the pixel at the cell's *centre* —
+a corner sits on a cell boundary and on the edge of a glyph's
+antialiasing, where the answer is legitimately ambiguous. `--expect`
+makes the exit code the answer:
+
+    ccc pixel shot.png --cell 90 4              #15191F  rgb(21, 25, 31)  at 1243,110
+    ccc pixel shot.png --cell 90 4 --expect '#15191F'   matches, exit 0
+
+### 8b: there is no colour-management residual
+
+The open half of item 8 said the on-screen difference "is the colour
+management": `MetalPaneView` sets no `colorspace` on its `.bgra8Unorm`
+layer, so the pane is unmanaged while iTerm is managed, and an unmanaged
+layer against a non-sRGB panel moves every value. **Measured, it does not.**
+
+One `screencapture` of the whole screen with ccc and iTerm both visible —
+one composite, one output profile, nothing differing but the app — then
+`ccc pixel` on each:
+
+    ccc's pane (Metal, unmanaged)   #15191F at 1250,470
+                                    #15191F at 1250,880
+                                    #15191F at 700,940
+    iTerm2 (colour-managed)         #15191F at 1880,400
+                                    #15191F at 1700,300
+
+Bit-identical, and both equal to the theme's nominal `#15191F`. A profile
+conversion moves dark values too, so "both unshifted" is a real answer and
+not an insensitive probe. The background is the probe rather than any
+glyph because text pixels are antialiased and a glyph's centre is not its
+nominal colour.
+
+So the premise was wrong twice over — first about *why* (studio's display
+answers `NSScreen.colorSpace` with its own EDID profile, which was already
+recorded as a correction), and now about *whether*. On this display the
+two panes are indistinguishable, and the complaint that opened v8 is
+answered in full by the theme alone.
+
+**Not done.** One display, one profile, at 1x — a Retina panel or a
+different profile is untested, and `pixel --cell`'s scale arithmetic is
+covered by tests but has never run at 2x for real. Whether a replay golden
+could assert RGB is still unanswered: `GridBuilder` carries no colour, so
+the headless oracle still cannot judge one. 295 tests.
