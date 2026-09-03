@@ -79,6 +79,21 @@ enum CLI {
                 return try await rm(ref: ref, json: json)
             case "spawn", "new":
                 return try await spawn(rest, json: json)
+            case "merge":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                var strategy = MergeStrategy.ffOnly
+                for flag in rest.filter({ $0.hasPrefix("--") }) {
+                    guard let s = MergeStrategy.parse(flag: flag) else {
+                        stderr("ccc: unknown flag '\(flag)' (\(MergeStrategy.allCases.map(\.flag).joined(separator: "|")))")
+                        return 2
+                    }
+                    strategy = s
+                }
+                return try await merge(strategy, ref: ref, json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -203,6 +218,31 @@ enum CLI {
         let said = try await cli.mark(change, id: ref.id)
         if json { printJSON(["ref": ref.description, change.rawValue: "true", "said": said]) } else { print(said) }
         return 0
+    }
+
+    /// `ccc merge <ref> [--ff-only|--no-ff|--squash]` (v6): land the
+    /// session's worktree branch on the repository's default branch, where
+    /// the repository is — git here, or the same verb on the far side's
+    /// ccc. Exit 0 when something merged, 1 when it refused (the reason is
+    /// the sentence): a refusal is the guard working, not an error of ours.
+    static func merge(_ strategy: MergeStrategy, ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let outcome = try await cli.merge(strategy, id: ref.id)
+        if json {
+            printJSON(["ref": ref.description, "strategy": strategy.rawValue, "merged": outcome.merged ? "true" : "false", "said": outcome.said])
+        } else {
+            print(outcome.said)
+        }
+        return outcome.merged ? 0 : 1
     }
 
     /// Delete a session: `claude rm` behind the ref's host prefix, its
@@ -938,8 +978,11 @@ enum CLI {
             let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
             let archived = row.archived ? " (archived)" : ""
             let model = row.model.map { shortModel($0) } ?? "-"
-            let cwd = hosts.shortCwd(s.cwd, host: row.host)
-            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(waiting)\(archived)")
+            // The worktree (v6): the repository, then the branch and its
+            // standing — the same reading as the window's row.
+            let cwd = hosts.shortCwd(row.worktree?.repo ?? s.cwd, host: row.host)
+            let worktree = row.worktree.map { " ⎇ \($0.summary)" } ?? ""
+            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
         }
         }
     }
@@ -1055,6 +1098,11 @@ enum CLI {
                                                   draft that waits for one; --from forks a new session off <ref>'s
                                                   transcript, on its host and in its folder unless told otherwise
                                                   (`--resume <session id> --fork-session`); --attach opens it in the app
+               ccc merge <ref> [--ff-only|--no-ff|--squash] [--json]
+                                                  land the session's worktree branch on the repo's default branch,
+                                                  where the repo is; --ff-only (default) refuses when master moved;
+                                                  every strategy refuses a dirty or wrong-branch checkout and backs
+                                                  out of a conflict (exit 1 with the reason; nothing is ever lost)
                ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
                ccc resize <cols> <rows>
                ccc stats [--json]

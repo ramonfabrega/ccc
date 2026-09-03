@@ -82,6 +82,11 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     /// where the daemon's files are and carried across the hop like the
     /// model; false off the wire from an older ccc.
     public var draft: Bool
+    /// The session's folder as a worktree (v6, `WorktreeProbe`): its
+    /// branch and how it stands against the default branch. Joined where
+    /// the repository is and carried across the hop like the model; nil
+    /// off the wire from an older ccc, and nil for a plain folder.
+    public var worktree: WorktreeInfo?
 
     /// The address: what `ccc attach` takes and the roster's row identity.
     public var ref: SessionRef { SessionRef(host: host, id: session.id) }
@@ -102,7 +107,7 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     public var rank: Int { draft ? 2 : session.rank }
 
     public init(session: Session, host: String = Host.localName, model: String?, attached: Bool,
-                archived: Bool = false, pinned: Bool = false, draft: Bool = false) {
+                archived: Bool = false, pinned: Bool = false, draft: Bool = false, worktree: WorktreeInfo? = nil) {
         self.session = session
         self.host = host
         self.model = model
@@ -110,6 +115,7 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         self.archived = archived
         self.pinned = pinned
         self.draft = draft
+        self.worktree = worktree
     }
 
     /// Lenient on everything ccc adds, because these rows now arrive over
@@ -128,6 +134,7 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
         pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
         draft = try container.decodeIfPresent(Bool.self, forKey: .draft) ?? false
+        worktree = try? container.decodeIfPresent(WorktreeInfo.self, forKey: .worktree)
     }
 }
 

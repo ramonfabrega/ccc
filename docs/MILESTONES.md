@@ -441,5 +441,54 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   see is wrong. Found on the way: `ccc window show` did not bring the
   window front while another app held focus (`NSApp.activate()` is
   cooperative since macOS 14); `open -a` did. Queued. 211 tests.
+- **v6 — worktree awareness.** The row knows its branch and how it stands
+  against master, and the context menu lands it.
+  **Slice 1 — done 2026-09-02, late: the reading and the three verbs.**
+  Decided from the nightly `git merge --ff-only worktree-v2` on master,
+  and the user's ask for a submenu of strategies. The reading
+  (`WorktreeProbe`) is git's own files, not git: a worktree's `.git` is
+  a file naming its `gitdir`, whose `commondir` names the repository and
+  whose `HEAD` names the branch; the base is what `origin/HEAD` names
+  when that branch exists locally, else `master`, else `main` — *local*,
+  since the nightly fast-forward is a local act; the two tips are read
+  from `refs/heads/` or `packed-refs`, and `git rev-list --left-right
+  --count` runs once per distinct pair of shas. Steady state, twenty
+  rows, 2 s poll: zero processes (the test counts spawns). The reading is
+  `SessionRow.worktree` (branch, base, ahead, behind, repo), rides the
+  far side's `ccc list --json` like the model, nil off an older ccc, and
+  shows as `⎇ worktree-v2 ↑3 ↓2` — ↑ what the branch holds over master,
+  ↓ in orange what master holds over it, since that is what blocks a
+  fast-forward — beside the *repository* (a worktree row no longer shows
+  its worktree path: the branch names it, and the row is 400 pt wide;
+  the path stays in the tooltip). `ccc list` prints the same. The verb is
+  `ccc merge <ref> [--ff-only|--no-ff|--squash]`, git's own words so
+  nothing new is learned; the row's context menu is **Merge <branch>
+  into <base> ▸** with Fast-forward (enabled only while master has not
+  moved), Merge (a merge commit; repeatable, the base moves with it),
+  Squash (one commit carrying every subject; the answer says the branch
+  is done, since a second squash re-applies the same diff), and the
+  standing as an inert last line. Rebase is not offered: it rewrites
+  the branch under a session that may still be committing to it. Every
+  strategy refuses a main checkout that is dirty or not on the base
+  branch, and a conflict backs out (`merge --abort`, or `reset --merge`
+  for a squash) with the files named — conflicts are a terminal's job.
+  The merge runs where the repository is: git here, the far side's own
+  `ccc merge` for a remote ref. A refusal exits 1 with the reason and
+  stays on the banner until read; it is the guard talking. The click
+  is the user's (plan.md's rule: the command is for parity, not for an
+  agent to press unasked). Proved: fourteen tests on real temp repos in
+  the harness's layout (level, ahead, diverged, packed refs, the cache,
+  each strategy landing, each refusal, a conflict backing out to a clean
+  checkout); live, `ccc list` read `⎇ worktree-bill-currency-derive ↑7`
+  on the real roster, `ccc merge b3919c35` on a level branch answered
+  "nothing to merge" (exit 1), `--rebase` was refused (exit 2), a plain
+  folder answered "not in a worktree on a branch", and the dev bundle
+  showed the submenu on the row. Found on the way: `URL(filePath:
+  relativeTo:)` resolves `../..` against the parent of a base with no
+  trailing slash — the repo read as `/` and every row was nil until the
+  directory hint went in. 226 tests. Next, incremental (the user's ask):
+  the standing against origin — the branch against its upstream, master
+  against `origin/master` — from the last-fetched remote refs, so it
+  costs no network and says "as of the last fetch".
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.

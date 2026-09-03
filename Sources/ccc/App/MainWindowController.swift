@@ -108,6 +108,8 @@ final class MainWindowController: NSWindowController {
             self?.newSessionAction(nil)
         }, newSessionHere: { [weak self] ref in
             self?.presentNewSession(here: ref)
+        }, merge: { [weak self] ref, strategy in
+            self?.merge(ref, strategy)
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -348,6 +350,21 @@ final class MainWindowController: NSWindowController {
                 showNotice(try await controller.mark(ref, change))
             } catch {
                 showNotice("\(error)")
+            }
+        }
+    }
+
+    /// The row's Merge submenu (v6): the controller does what `ccc merge
+    /// <ref> --<strategy>` does, and its one sentence — merged, or why not
+    /// — is the notice. A refusal stays up until read: it is the guard
+    /// talking, and worth a look.
+    func merge(_ ref: SessionRef, _ strategy: MergeStrategy) {
+        Task { @MainActor in
+            do {
+                let outcome = try await controller.merge(ref, strategy)
+                showNotice(outcome.said, for: outcome.merged ? .seconds(8) : nil)
+            } catch {
+                showNotice("\(error)", for: nil)
             }
         }
     }

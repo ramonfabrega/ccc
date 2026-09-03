@@ -29,6 +29,8 @@ struct RosterView: View {
     /// The same sheet on a row's host and folder (slice 3): `ccc spawn
     /// --host <h> --cwd <dir>` with the row's answers filled in.
     let newSessionHere: (SessionRef) -> Void
+    /// The row's Merge submenu (v6): `ccc merge <ref> --<strategy>`.
+    let merge: (SessionRef, MergeStrategy) -> Void
     @State private var selection: SessionRef?
     /// Keyboard focus on the list, set by the same click that selects a
     /// row. Measured 2026-09-02 on the shipped build: a click highlighted
@@ -84,8 +86,11 @@ struct RosterView: View {
     }
 
     private func rowView(_ row: SessionRow) -> some View {
+        // A worktree row shows its repository, not the worktree's path: the
+        // branch already names the worktree, and the row is 400 pt wide.
+        // The full path stays in the tooltip.
         RosterRow(row: row, showsHost: showsHost && group != .host,
-                  shortCwd: hosts.shortCwd(row.session.cwd, host: row.host),
+                  shortCwd: hosts.shortCwd(row.worktree?.repo ?? row.session.cwd, host: row.host),
                   stale: poller.state.host(row.host)?.isStale ?? false)
             .tag(row.ref)
             .contentShape(Rectangle())
@@ -123,6 +128,21 @@ struct RosterView: View {
         Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
         if row.attached { Button("Detach") { detach() } }
         Button("New Session Here…") { newSessionHere(row.ref) }
+        // The worktree's landing (v6): three strategies, each enabled by
+        // what the row measures — fast-forward only while master has not
+        // moved, merge and squash whenever there is work — and the
+        // standing itself as the last, inert line. The merge runs where
+        // the repository is, so a remote row needs a ccc there.
+        if let wt = row.worktree {
+            Menu("Merge \(wt.branch) into \(wt.base)") {
+                Button("Fast-forward") { merge(row.ref, .ffOnly) }.disabled(!wt.canFastForward)
+                Button("Merge (merge commit)") { merge(row.ref, .noFF) }.disabled(!wt.hasWork)
+                Button("Squash into one commit") { merge(row.ref, .squash) }.disabled(!wt.hasWork)
+                Divider()
+                Text(standing(wt))
+            }
+            .disabled(!canMark(row))
+        }
         Divider()
         Button(row.pinned ? "Unpin" : "Pin") { mark(row.ref, row.pinned ? .unpin : .pin) }
             .disabled(!row.session.isAttachable || !canMark(row))
@@ -146,6 +166,16 @@ struct RosterView: View {
         }
         Divider()
         Button("Delete…") { delete(row.ref) }.disabled(!row.session.isAttachable)
+    }
+
+    /// "3 ahead", "3 ahead, 2 behind (master moved)", "level with master".
+    private func standing(_ wt: WorktreeInfo) -> String {
+        if wt.ahead == 0 && wt.behind == 0 { return "level with \(wt.base)" }
+        var parts: [String] = []
+        if wt.ahead > 0 { parts.append("\(wt.ahead) ahead") }
+        if wt.behind > 0 { parts.append("\(wt.behind) behind (\(wt.base) moved)") }
+        if wt.ahead == 0 { parts.append("nothing to merge") }
+        return parts.joined(separator: ", ")
     }
 
     /// One Mac looks exactly like v1: the host is only worth a column once
@@ -251,14 +281,28 @@ struct RosterRow: View {
                     Text(row.model.map(shortModel) ?? "").font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
-                    Text(stateText).font(.caption).foregroundStyle(color)
+                    Text(stateText).font(.caption).foregroundStyle(color).fixedSize()
                     if let waiting = row.session.waitingFor {
-                        Text(waiting).font(.caption).foregroundStyle(.orange)
+                        Text(waiting).font(.caption).foregroundStyle(.orange).lineLimit(1)
                     }
                     if row.archived {
-                        Label("archived", systemImage: "archivebox").font(.caption).foregroundStyle(.tertiary)
+                        Label("archived", systemImage: "archivebox").font(.caption).foregroundStyle(.tertiary).fixedSize()
                     }
                     Spacer()
+                    // The worktree (v6): the branch, with what it holds over
+                    // master and — in orange, since it blocks a fast-forward
+                    // — what master holds over it. Beside the folder, which
+                    // the sort and the sheet still read.
+                    if let wt = row.worktree {
+                        HStack(spacing: 3) {
+                            Text("⎇ \(wt.branch)").foregroundStyle(.secondary)
+                            if wt.ahead > 0 { Text("↑\(wt.ahead)").foregroundStyle(.primary) }
+                            if wt.behind > 0 { Text("↓\(wt.behind)").foregroundStyle(.orange) }
+                        }
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    }
                     Text(shortCwd).font(.caption.monospaced()).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
                 }
             }

@@ -1,10 +1,14 @@
 # plan.md — ephemeral handoff
 
 **Status 2026-09-02, late.** Everything landed is in `docs/MILESTONES.md`
-(v0 through v5 slice 3, plus the UI pass). **v0.1.12 is the cut** (the
-UI pass; on the feed through ota, GitHub release v0.1.12); studio runs
-it (`--dist`), air takes it through Sparkle when it wakes. Master wants
-`git merge --ff-only worktree-v2`. This file carries only what is
+(v0 through v6 slice 1). **v0.1.12 is the cut** (the UI pass; on the feed
+through ota, GitHub release v0.1.12); air takes it through Sparkle when
+it wakes. **Studio runs the dev bundle (v6 slice 1: worktree rows and
+the Merge submenu) — `scripts/install --dist` puts the cut back**, or cut
+v0.1.13 once a hand has used the submenu. Master wants
+`git merge --ff-only worktree-v2` — or, from now on, the **ccc** row's
+context menu → Merge worktree-v2 into master → Fast-forward, which is
+the same act and the hand proof this slice is owed. This file carries only what is
 *not* settled: the queue, trimmed to what has a measured reason, and
 what is owed.
 
@@ -27,24 +31,22 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
 
 ## Owed a hand (studio)
 
-Nothing. The UI pass (docs/MILESTONES.md, v5) was clicked by a hand
-2026-09-02, late — rows, keys after a click, the pane's edges, ⇧⌘N
-end to end — and read "all working as expected".
+- **The Merge submenu, by a hand** (v6 slice 1): the `ccc` row reads
+  `⎇ worktree-v2 ↑N` once this slice is committed; its context menu's
+  Merge ▸ Fast-forward should land master and the row should read
+  `level` on the next tick, with the sentence on the banner. Proved by
+  script up to the click; the click is the user's by rule.
 
 ## Queue
 
-1. **Worktree awareness, with one verb** (decided 2026-09-02, late, from
-   the nightly `git merge --ff-only worktree-v2` on master): a row that
-   lives in a worktree says so and shows its branch and how far ahead of
-   the repo's default branch it is (`state.json` carries `worktreePath`;
-   the harness isolates before the first edit on its own, so nothing to
-   dispatch). When the default branch can fast-forward to it cleanly,
-   the row's context menu offers **Fast-forward master**; `ccc ff <ref>`
-   is the twin. Pure fast-forward only — it refuses a merge, a dirty
-   main checkout, or a diverged master, so it can never lose work. The
-   click is the user's: the harness's guard keeps an agent from reaching
-   across worktrees for a reason, and the command exists for parity, not
-   for an agent to press unasked.
+1. **Worktree awareness, slice 2 — the standing against origin** (the
+   user's ask 2026-09-02, late, "git status-esque in each tab",
+   incremental): beside `↑3 ↓2` against master, the branch against its
+   upstream and master against `origin/master`, read from the
+   last-fetched remote refs (`refs/remotes/origin/…`, no network — the
+   reading says "as of the last fetch"). Display only; pushing is not a
+   ccc verb. Slice 1 (the reading, the three strategies, `ccc merge`) is
+   in `docs/MILESTONES.md` v6.
 2. **Host picker** off `tailscale status --json` (MagicDNS names are the
    ssh destinations; Bonjour never crosses the tailnet). With it, the §4c
    question: whether a secondary viewer renders the shared grid as-is

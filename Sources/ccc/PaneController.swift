@@ -178,6 +178,15 @@ final class PaneController {
         return said
     }
 
+    /// Land a worktree branch (v6): exactly `ccc merge <ref> --<strategy>`
+    /// — git in the main checkout here, the far side's own verb for a
+    /// remote ref — then a poll, so the row's ↑ count moves now.
+    func merge(_ ref: SessionRef, _ strategy: MergeStrategy) async throws -> MergeOutcome {
+        let outcome = try await cli(for: ref).merge(strategy, id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return outcome
+    }
+
     /// The harness's `rm` behind the host prefix (`ccc rm <ref>`), its
     /// sentence returned whether it removed or kept. A poll after, so a
     /// removed row leaves the roster at once.

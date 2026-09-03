@@ -82,6 +82,8 @@ public final class HostPoller {
 
     public let cli: ClaudeCLI?
     private let probe = ModelProbe()
+    /// The worktree column (v6), local rows only — same rule as the model.
+    private let worktrees = WorktreeProbe()
     private var loop: Task<Void, Never>?
     private var inFlight: Task<Void, Never>?
     private var totalPollMs: Double = 0
@@ -210,6 +212,7 @@ public final class HostPoller {
         }
         let decoded = RosterDecoder.decode(data)
         let probe = self.probe
+        let worktrees = self.worktrees
         let attached = attachedRef
         let known = transcriptPaths
         let hostName = state.host
@@ -247,7 +250,11 @@ public final class HostPoller {
                 // daemon's job file, which only this Mac can open for its
                 // own sessions; the far side's ccc answers for its rows.
                 let draft = isLocal && DraftProbe.isDraft(session, transcriptFound: found[session.sessionId ?? ""] != nil)
-                return SessionRow(session: session, host: hostName, model: model, attached: ref == attached, draft: draft)
+                // The worktree reading (v6): files, and one `git rev-list`
+                // per moved sha — steady state costs no process at all.
+                let worktree = isLocal ? worktrees.info(forCwd: session.cwd) : nil
+                return SessionRow(session: session, host: hostName, model: model, attached: ref == attached, draft: draft,
+                                  worktree: worktree)
             }
             return (rows, found, lookups, unresolved)
         }.value
