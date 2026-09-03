@@ -57,11 +57,29 @@ struct RosterView: View {
             header
             Divider()
             List(selection: $selection) {
+                // A host's condition sits above its rows: in its section's
+                // header when grouped by host, at the top of the list
+                // otherwise. The roster grows by a line; nothing outside
+                // it moves, and the pane is never resized for it.
+                let failures = poller.state.failures
+                if group != .host, !failures.isEmpty {
+                    Section {
+                        ForEach(failures, id: \.host) { failed in HostCondition(poll: failed) }
+                    }
+                }
                 ForEach(sections) { section in
                     Section {
                         ForEach(section.rows) { row in rowView(row) }
                     } header: {
-                        if !section.title.isEmpty { Text(section.title).font(.caption.monospaced()) }
+                        // Only a header that has something to say: an empty
+                        // one still takes a header's height at the top.
+                        let failed = group == .host ? failures.first(where: { $0.host == section.title }) : nil
+                        if !section.title.isEmpty || failed != nil {
+                            VStack(alignment: .leading, spacing: 4) {
+                                if !section.title.isEmpty { Text(section.title).font(.caption.monospaced()) }
+                                if let failed { HostCondition(poll: failed) }
+                            }
+                        }
                     }
                 }
             }
@@ -240,8 +258,21 @@ struct RosterView: View {
             Text("\(poller.state.rows.count) sessions")
             ForEach(poller.state.failures, id: \.host) { failed in
                 // "stale" when its last rows are still on screen, "down"
-                // when it never answered; the banner has the sentence.
+                // when it never answered; the line above its rows has the
+                // sentence.
                 Text("\(failed.host) \(failed.rows.isEmpty ? "down" : "stale")").foregroundStyle(.orange)
+            }
+            // The roster's own conditions, a word each with the detail as
+            // the tooltip: fields that did not decode, and a marks file
+            // that did not parse (marks ignored until it does).
+            let issues = poller.state.issues
+            if !issues.isEmpty {
+                Text("shape changed").foregroundStyle(.orange)
+                    .help("roster shape changed — showing what still decodes: " + issues.map(\.description).joined(separator: "; "))
+            }
+            let notes = poller.state.notes
+            if !notes.isEmpty {
+                Text("marks off").foregroundStyle(.orange).help(notes.joined(separator: "\n"))
             }
             Spacer()
             if let at = poller.state.lastPolledAt {
@@ -251,6 +282,40 @@ struct RosterView: View {
         .font(.caption2.monospacedDigit())
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12).padding(.vertical, 4)
+    }
+}
+
+/// One host that is not answering, above its rows: what is wrong, in a
+/// word, and when it last was right. The error itself is the tooltip.
+struct HostCondition: View {
+    let poll: HostPoll
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
+            Text(poll.host).font(.caption.monospaced())
+            Text(poll.rows.isEmpty ? "is down" : "is not answering").font(.caption)
+            Spacer()
+            Text(poll.rows.isEmpty ? "never answered" : "last seen \(Age.text(since: poll.lastSuccessAt))")
+                .font(.caption2.monospaced()).foregroundStyle(.secondary)
+        }
+        .foregroundStyle(.orange)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        .help(poll.error ?? "")
+        .listRowSeparator(.hidden)
+    }
+}
+
+enum Age {
+    /// "42 s ago", "3 min ago", "2 h ago"; "before" when there never was a
+    /// success to date from.
+    static func text(since date: Date?) -> String {
+        guard let date else { return "before" }
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 90 { return "\(seconds) s ago" }
+        if seconds < 5400 { return "\(seconds / 60) min ago" }
+        return "\(seconds / 3600) h ago"
     }
 }
 

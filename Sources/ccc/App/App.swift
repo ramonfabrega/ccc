@@ -45,7 +45,7 @@ enum App {
         } catch {
             // Another ccc (or a headless attach) holds the socket. The window
             // still works; the CLI just talks to the other one.
-            window.showNotice("\(error)", for: nil)
+            window.noteSocketHeld("\(error)")
         }
         controller.poller.start()
         // The poll is the first notifier (v3): one banner per transition,
@@ -272,7 +272,7 @@ enum App {
         do {
             try AppDelegate.setMuted(name, sender.state != .on)
         } catch {
-            window?.showNotice("could not write \(HostConfig.defaultPath): \(error)")
+            window?.showNotice("could not write \(HostConfig.defaultPath): \(error)", kind: .problem)
         }
     }
 

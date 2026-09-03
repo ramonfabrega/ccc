@@ -3,12 +3,10 @@
 **Status 2026-09-02, late.** Everything landed is in `docs/MILESTONES.md`
 (v0 through v6 slice 1). **v0.1.12 is the cut** (the UI pass; on the feed
 through ota, GitHub release v0.1.12); air takes it through Sparkle when
-it wakes. **Studio runs the dev bundle (v6 slice 1: worktree rows and
-the Merge submenu) — `scripts/install --dist` puts the cut back**, or cut
-v0.1.13 once a hand has used the submenu. Master wants
-`git merge --ff-only worktree-v2` — or, from now on, the **ccc** row's
-context menu → Merge worktree-v2 into master → Fast-forward, which is
-the same act and the hand proof this slice is owed. This file carries only what is
+it wakes. **Studio runs the dev bundle (v6 slice 1 and the HUD) —
+`scripts/install --dist` puts the cut back**, or cut v0.1.13. Master
+lands through the **ccc** row's context menu → Merge worktree-v2 into
+master → Fast-forward (proved by a hand 2026-09-02, late). This file carries only what is
 *not* settled: the queue, trimmed to what has a measured reason, and
 what is owed.
 
@@ -31,11 +29,10 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
 
 ## Owed a hand (studio)
 
-- **The Merge submenu, by a hand** (v6 slice 1): the `ccc` row reads
-  `⎇ worktree-v2 ↑N` once this slice is committed; its context menu's
-  Merge ▸ Fast-forward should land master and the row should read
-  `level` on the next tick, with the sentence on the banner. Proved by
-  script up to the click; the click is the user's by rule.
+- **The HUD, by a hand**: an answer (pin a row with `p`) should float
+  over the pane and fade; a refusal should stay until clicked; nothing
+  in the window should move. Proved by script and screencapture
+  (docs/MILESTONES.md, v6); the feel is the hand's. Then cut v0.1.13.
 
 ## Queue
 

@@ -2,20 +2,23 @@ import AppKit
 import CCCKit
 import SwiftUI
 
-/// One window: roster on the left, the pane on the right, a banner above
-/// when the roster changed shape or the socket is held elsewhere. Every
-/// button calls the same `PaneController` method the socket does.
+/// One window: roster on the left, the pane on the right. Every button
+/// calls the same `PaneController` method the socket does. What ccc has
+/// to say goes to one of two places, by kind (2026-09-02): the answer to
+/// a click floats over the pane (`NoticeHUD`); a condition — a host down,
+/// the roster's shape changed — lives in the roster beside the rows it is
+/// about, and the one condition about this window (another ccc holds the
+/// socket) is the pane's empty state. Nothing ever resizes the pane for a
+/// sentence: a pane resize is a PTY resize, and the TUI reflows.
 @MainActor
 final class MainWindowController: NSWindowController {
     let controller: PaneController
     private let split = NSSplitView()
     private let paneContainer = NSView()
-    private let placeholder = NSTextField(labelWithString: "Select a session and press ⏎ to attach")
-    private let banner = NSTextField(wrappingLabelWithString: "")
-    private let bannerBox = NSView()
-    private var bannerTask: Task<Void, Never>?
-    private var noticeText: String?
-    private var noticeTask: Task<Void, Never>?
+    private let placeholder = NSTextField(wrappingLabelWithString: "")
+    private let hud = NoticeHUD()
+    /// The pane's empty state carries the one condition about this window.
+    private var socketNote: String?
 
     init(controller: PaneController) {
         self.controller = controller
@@ -73,25 +76,6 @@ final class MainWindowController: NSWindowController {
             root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
         ])
 
-        bannerBox.wantsLayer = true
-        bannerBox.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(0.25).cgColor
-        banner.font = .systemFont(ofSize: 12)
-        banner.translatesAutoresizingMaskIntoConstraints = false
-        bannerBox.addSubview(banner)
-        NSLayoutConstraint.activate([
-            banner.topAnchor.constraint(equalTo: bannerBox.topAnchor, constant: 6),
-            banner.bottomAnchor.constraint(equalTo: bannerBox.bottomAnchor, constant: -6),
-            banner.leadingAnchor.constraint(equalTo: bannerBox.leadingAnchor, constant: 12),
-            banner.trailingAnchor.constraint(equalTo: bannerBox.trailingAnchor, constant: -12),
-        ])
-        bannerBox.isHidden = true
-        // A click dismisses a notice; the host and shape lines are
-        // conditions and stay until they clear themselves.
-        bannerBox.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(bannerClicked(_:))))
-        bannerBox.toolTip = "Click to dismiss"
-        root.addArrangedSubview(bannerBox)
-        bannerBox.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-
         split.isVertical = true
         split.dividerStyle = .thin
         let roster = NSHostingView(rootView: RosterView(poller: controller.poller, hosts: controller.hosts, attach: { [weak self] ref in
@@ -126,75 +110,43 @@ final class MainWindowController: NSWindowController {
         placeholder.textColor = .secondaryLabelColor
         placeholder.alignment = .center
         placeholder.translatesAutoresizingMaskIntoConstraints = false
+        refreshPlaceholder()
         paneContainer.addSubview(placeholder)
         NSLayoutConstraint.activate([
             placeholder.centerXAnchor.constraint(equalTo: paneContainer.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: paneContainer.centerYAnchor),
+            placeholder.widthAnchor.constraint(lessThanOrEqualTo: paneContainer.widthAnchor, multiplier: 0.7),
         ])
+        hud.install(in: paneContainer)
         split.addArrangedSubview(paneContainer)
         root.addArrangedSubview(split)
         split.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         roster.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
         paneContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
         DispatchQueue.main.async { [split] in split.setPosition(420, ofDividerAt: 0) }
-
-        bannerTask = Task { @MainActor [weak self] in
-            while let self {
-                self.refreshBanner()
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
     }
 
-    private func refreshBanner() {
-        var parts: [String] = []
-        if let noticeText { parts.append(noticeText) }
-        let state = controller.poller.state
-        // Per host, never roster-wide: studio asleep is one line about
-        // studio, above a roster that still shows this Mac's sessions and
-        // studio's last known ones (marked stale in the footer).
-        for failed in state.failures {
-            let kept = failed.rows.isEmpty ? "" : " — showing its \(failed.rows.count) sessions from \(Self.age(since: failed.lastSuccessAt))"
-            parts.append("\(failed.host): \(failed.error ?? "unreachable")\(kept)")
-        }
-        parts += state.notes
-        if !state.issues.isEmpty {
-            parts.append("roster shape changed — showing what still decodes: " +
-                         state.issues.prefix(3).map(\.description).joined(separator: "; ") +
-                         (state.issues.count > 3 ? " (+\(state.issues.count - 3))" : ""))
-        }
-        let text = parts.joined(separator: "\n")
-        if banner.stringValue != text { banner.stringValue = text }
-        bannerBox.isHidden = text.isEmpty
+    /// A sentence over the pane. An answer ("installed …", "archived a1b2")
+    /// fades on its own; a problem stays until a click, because it is the
+    /// guard talking. `for:` overrides the kind's own timing.
+    func showNotice(_ text: String, kind: NoticeHUD.Kind = .answer, for duration: Duration?? = nil) {
+        hud.show(text, kind: kind, for: duration ?? kind.duration)
     }
 
-    /// A sentence on the banner. Transient by default: it goes away on
-    /// its own, or on a click, because "installed …" and "archived a1b2"
-    /// are answers, not conditions. Found on air 2026-09-02 when the
-    /// first notice a hand ever triggered ("Install ‘ccc’ Command…")
-    /// stayed up for good — before this, nothing ever cleared it.
-    /// `for: nil` keeps one up until the next notice or a click: the
-    /// socket held by another process is a condition worth staring at.
-    func showNotice(_ text: String, for duration: Duration? = .seconds(8)) {
-        noticeText = text
-        noticeTask?.cancel()
-        noticeTask = nil
-        refreshBanner()
-        guard let duration else { return }
-        noticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: duration)
-            guard !Task.isCancelled, let self, self.noticeText == text else { return }
-            self.noticeText = nil
-            self.refreshBanner()
-        }
+    /// Another ccc (or a headless attach) holds the control socket: the
+    /// command line talks to it, this window still attaches. Said where it
+    /// is true — the pane's empty state — for as long as it is.
+    func noteSocketHeld(_ message: String) {
+        socketNote = message
+        refreshPlaceholder()
     }
 
-    @objc private func bannerClicked(_ sender: Any?) {
-        guard noticeText != nil else { return }
-        noticeText = nil
-        noticeTask?.cancel()
-        noticeTask = nil
-        refreshBanner()
+    private func refreshPlaceholder() {
+        var text = "Select a session and press ⏎ to attach"
+        if let socketNote {
+            text = "Another ccc holds the control socket — the command line talks to it; this window still attaches.\n(\(socketNote))\n\n" + text
+        }
+        placeholder.stringValue = text
     }
 
     // MARK: pane
@@ -216,6 +168,7 @@ final class MainWindowController: NSWindowController {
         view.frame = Self.paneFrame(in: paneContainer.bounds)
         view.autoresizingMask = [.width, .height]
         paneContainer.addSubview(view)
+        hud.keepOnTop()
         window?.makeFirstResponder(view)
         if let host = session.host as? SwiftTermHost {
             host.onSizeChanged = { [weak session] cols, rows in session?.viewResized(cols: cols, rows: rows) }
@@ -240,7 +193,7 @@ final class MainWindowController: NSWindowController {
     }
 
     private func unmount() {
-        for view in paneContainer.subviews where view !== placeholder { view.removeFromSuperview() }
+        for view in paneContainer.subviews where view !== placeholder && view !== hud { view.removeFromSuperview() }
         placeholder.isHidden = false
         window?.title = BuildInfo.current.appTitle
     }
@@ -250,7 +203,7 @@ final class MainWindowController: NSWindowController {
         do {
             try controller.attach(ref: ref)
         } catch {
-            showNotice("\(error)")
+            showNotice("\(error)", kind: .problem)
         }
     }
 
@@ -349,22 +302,21 @@ final class MainWindowController: NSWindowController {
             do {
                 showNotice(try await controller.mark(ref, change))
             } catch {
-                showNotice("\(error)")
+                showNotice("\(error)", kind: .problem)
             }
         }
     }
 
     /// The row's Merge submenu (v6): the controller does what `ccc merge
     /// <ref> --<strategy>` does, and its one sentence — merged, or why not
-    /// — is the notice. A refusal stays up until read: it is the guard
-    /// talking, and worth a look.
+    /// — is the notice. A refusal is a problem: it stays until read.
     func merge(_ ref: SessionRef, _ strategy: MergeStrategy) {
         Task { @MainActor in
             do {
                 let outcome = try await controller.merge(ref, strategy)
-                showNotice(outcome.said, for: outcome.merged ? .seconds(8) : nil)
+                showNotice(outcome.said, kind: outcome.merged ? .answer : .problem)
             } catch {
-                showNotice("\(error)", for: nil)
+                showNotice("\(error)", kind: .problem)
             }
         }
     }
@@ -388,7 +340,7 @@ final class MainWindowController: NSWindowController {
             do {
                 showNotice(try await controller.delete(ref))
             } catch {
-                showNotice("\(error)")
+                showNotice("\(error)", kind: .problem)
             }
         }
     }
@@ -421,16 +373,6 @@ final class MainWindowController: NSWindowController {
 
     @objc func refreshAction(_ sender: Any?) {
         Task { await controller.poller.tick() }
-    }
-
-    /// "42 s ago", "3 min ago", or "a while ago" when there never was a
-    /// success to date from.
-    static func age(since date: Date?) -> String {
-        guard let date else { return "before" }
-        let seconds = Int(Date().timeIntervalSince(date))
-        if seconds < 90 { return "\(seconds) s ago" }
-        if seconds < 5400 { return "\(seconds / 60) min ago" }
-        return "\(seconds / 3600) h ago"
     }
 
     /// The whole window as PNG via our own view hierarchy — TCC-free eyes on

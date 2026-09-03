@@ -490,5 +490,36 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   the standing against origin — the branch against its upstream, master
   against `origin/master` — from the last-fetched remote refs, so it
   costs no network and says "as of the last fetch".
+  **The banner goes — done 2026-09-02, late.** Noticed by the user on
+  the first Fast-forward from the row: the banner sat in the window's
+  vertical stack, so every sentence resized the pane, which resized the
+  PTY, which reflowed the TUI — the shift was the terminal redrawing.
+  Mocked three shapes at the window's proportions (Xcode's build HUD,
+  Mail's "Cannot Get Mail" strip, conditions in the roster) and chose by
+  kind, since Apple's apps never put both in one bar. **Answers** — what
+  a click did: pinned, drafted, deleted or kept, merged or refused,
+  attach refused as busy — float over the pane as `NoticeHUD`, an
+  `NSVisualEffectView` capsule with a symbol and one sentence; an answer
+  fades after six seconds, a problem stays until clicked. It overlays the
+  grid and never changes its size. **Conditions** live where they are
+  true: a host that is not answering is a line above its rows (in its
+  section's header when grouped by host, at the top of the list
+  otherwise) with "last seen N ago" and the error as the tooltip; the
+  roster's own conditions — fields that did not decode, a marks file
+  that did not parse — are a footer word each with the detail as the
+  tooltip; and the one condition about this window, another ccc holding
+  the control socket, is the pane's empty state. The titlebar strip was
+  the honest native shape for a condition but keeps the resize, and once
+  conditions live in the roster nothing is left for it to carry. Proved
+  on the dev bundle with a real screencapture: `p` on a row → "✓ pinned
+  a18a763f" over the pane and no row moved; ⏎ on a second row while
+  attached → "⚠ already attached to a18a763f; detach first" over live
+  output, still there after seven seconds, gone on a click; a host
+  named `dead` added for the proof → "dead is down · never answered"
+  above the rows and `dead down` in the footer, then removed (the
+  placement in a host section's header is by construction; the window
+  reads its grouping from its own menu, not from a `defaults write`). Found by doing it: a section header that renders an empty
+  `VStack` still takes a header's height, so the roster had a gap at the
+  top until the header became conditional. 226 tests.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.
