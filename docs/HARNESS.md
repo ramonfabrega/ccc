@@ -262,6 +262,27 @@ is the sanctioned inbound surface (not investigated).
    later) rendered the prompt as `❯ hello from exp3` before any new input.
    The draft lives with the session, not the client. Killing the terminal
    outright (SIGHUP, no `Ctrl+Z`) is still untested.
+6. **← in an attached session.** `claude attach --help` says "← returns to
+   agent view". What does a standalone client do with it, and can ccc
+   redirect it? **Answered 2026-09-03 (2.1.259), headless from an
+   untrusted folder against a `done` session.** One bare ← on the empty
+   prompt (`❯` + U+00A0, cursor at column 2) left the session and, in
+   the *same* `claude attach` process, opened the agents view — which
+   starts with the workspace-trust dialog for the client's cwd
+   ("Accessing workspace: … Yes, I trust this folder"). That is the
+   "strange perms screen" in the app, whose attach child inherits the
+   bundle's cwd. Inside the binary the gesture is gated by
+   `leftArrowOpensAgents` (a `~/.claude.json` setting, default on, the
+   `/config` "opens agents" row) and refused with a warning when there is
+   a draft ("Cannot open agents — you have unsent text"), queued
+   commands, or a foregrounded task; an editing guard absorbs a ← that
+   lands right after deleting to empty. The status line shows `← 1
+   agent` only while the input is empty — the harness's own statement of
+   the condition. ccc does not touch the setting (it is the user's, and
+   fleet-wide): `LeaveGesture` recognizes the condition off the grid and
+   the key is never written to the PTY; the roster takes the keyboard
+   instead. Measured through `ccc send --key left`: "taken" on `❯ `, sent
+   and the cursor moved inside a draft.
 
 ## Probes
 

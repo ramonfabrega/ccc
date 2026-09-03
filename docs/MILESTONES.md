@@ -711,6 +711,33 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   been through a real sleep; it is the launch round's code behind
   `didWakeNotification`, after the reconnect. Five tests against a bare
   origin and a second clone. 247 tests.
+- **v7 — keyboard parity.** What the agents view's keys do, ours do.
+  **Slice 1 — done 2026-09-03: ← on an empty prompt goes to the
+  roster.** Spiked from the user's "is this possible?": in the app ←
+  on an empty prompt landed on a workspace-trust dialog, because the
+  attach client answers the harness's "← returns to agent view" by
+  opening the agents view *inside itself*, from the bundle's cwd
+  (docs/HARNESS.md experiment 6). The harness's own switch
+  (`leftArrowOpensAgents`) is the user's and fleet-wide, so ccc leaves
+  it alone and answers the press one layer up: `LeaveGesture` reads the
+  harness's condition off the grid (cursor visible at column 2 of a row
+  that starts with the prompt glyph and its U+00A0 — the NBSP cost one
+  false negative on the first headless run) and the key is never
+  written to the PTY. The seam grew one member, `keyInterceptor` on
+  `TerminalHost`, consulted by every core's `press`, so the window's
+  keyboard and `ccc send --key` meet the same gate; `AttachSession`
+  installs it only when the owner set `onLeaveGesture`, so a shell pane
+  sends every ← through. The window hands the keyboard to the roster
+  with the attached row selected (`RosterFocus`, a request SwiftUI's
+  `@FocusState` answers); → on the list, or ⏎ on the attached row,
+  gives it back. Twins: `ccc send --key left` replies "taken" instead
+  of "sent"; headless says so on stderr. Not replicated: the harness's
+  editing guard, and ← at the very start of a draft is ours too (the
+  harness would have refused it with a warning; a placeholder after the
+  cursor looks the same on the grid). **Proved** headless (taken on
+  `❯ `, sent inside a draft) and in the window (build 105: the roster
+  row lit in the focused blue after a socket-sent ←, pane unchanged,
+  `screencapture`). Nine tests. 256 tests.
 - **next** (what plan.md carried when it was retired 2026-09-02, late;
   the queue is this file from here on). The sequence agreed the same
   night, one confirmed before the next, comes first:

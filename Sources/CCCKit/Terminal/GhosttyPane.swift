@@ -75,6 +75,13 @@ public final class GhosttyPane: TerminalHost {
 
     public func press(_ key: NamedKey) -> Bool { core.press(key) }
 
+    /// The core's gate: `keyDown` goes to `core.press` too, so the window's
+    /// keyboard and `ccc send --key` are answered by the same closure.
+    public var keyInterceptor: ((NamedKey) -> Bool)? {
+        get { core.keyInterceptor }
+        set { core.keyInterceptor = newValue }
+    }
+
     public func paste(_ text: String) -> Bool { core.paste(text) }
 
     /// Pixels of the pane as drawn — `ccc peek` composites this over the

@@ -14,6 +14,12 @@ public protocol TerminalHost: AnyObject {
     /// to queries (DA, cursor position), bracketed-paste wrapping. The owner
     /// wires this to the PTY's write side.
     var onOutput: ((Data) -> Void)? { get set }
+    /// Asked before `press` encodes a key; true means the owner took the
+    /// press and nothing is sent. The one gate on the key path, so the
+    /// window's keyboard and `ccc send --key` meet the same answer. Set by
+    /// `AttachSession` for the harness's ← gesture (`LeaveGesture`); nil
+    /// on a pane that has no such gesture (a shell).
+    var keyInterceptor: ((NamedKey) -> Bool)? { get set }
     /// Resize the grid. The owner mirrors the same size onto the PTY.
     func resize(cols: Int, rows: Int)
     /// The text grid as the user sees it. The headless surface and the

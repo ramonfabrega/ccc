@@ -46,6 +46,11 @@ final class MainWindowController: NSWindowController {
         }
         controller.onSessionStarted = { [weak self] session in self?.mount(session) }
         controller.onSessionEnded = { [weak self] _ in self?.unmount() }
+        // ← on an empty prompt (v7 slice 1): the harness's "back to the
+        // agents view", answered here by the roster taking the keyboard
+        // with the attached row selected, so ↑↓ move from where you are
+        // and ⏎ or → return to the pane.
+        controller.onLeaveRequested = { [weak self] in self?.focusRoster() }
         controller.onShellStarted = { [weak self] shell in self?.mountShell(shell) }
         controller.onShellEnded = { [weak self] in self?.unmountShell() }
         controller.defaultSize = gridSize()
@@ -84,8 +89,10 @@ final class MainWindowController: NSWindowController {
 
         split.isVertical = true
         split.dividerStyle = .thin
-        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, hosts: controller.hosts, attach: { [weak self] ref in
+        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, hosts: controller.hosts, focus: rosterFocus, attach: { [weak self] ref in
             self?.attach(ref)
+        }, focusPane: { [weak self] in
+            self?.focusPane()
         }, detach: { [weak self] in
             self?.detachAction(nil)
         }, attachCommandLine: { [weak self] ref in
@@ -264,6 +271,12 @@ final class MainWindowController: NSWindowController {
     }
 
     func attach(_ ref: SessionRef) {
+        // ⏎ on the row already attached: the keyboard goes back to the
+        // pane, which is what ← from the pane left for.
+        if let session = controller.session, session.isRunning, session.ref == ref {
+            focusPane()
+            return
+        }
         controller.defaultSize = gridSize()
         Task { @MainActor in
             do {
@@ -429,6 +442,23 @@ final class MainWindowController: NSWindowController {
 
     /// The roster's selection, for ⌘T when nothing is attached.
     private var currentSelection: SessionRef?
+
+    // MARK: keyboard between the roster and the pane (v7 slice 1)
+
+    private let rosterFocus = RosterFocus()
+
+    /// The roster takes the keyboard, with the attached row selected.
+    /// SwiftUI owns the list's focus, so this is a request the view
+    /// answers (`RosterFocus`), not a `makeFirstResponder` from here.
+    private func focusRoster() {
+        rosterFocus.request(selecting: controller.poller.attachedRef)
+    }
+
+    /// The pane takes the keyboard back: → or ⏎ on the attached row.
+    private func focusPane() {
+        guard let view = controller.session?.host.view, view.superview != nil else { return }
+        window?.makeFirstResponder(view)
+    }
 
     /// Update from master (v6 slice 6): the controller does what `ccc
     /// update <ref>` does. Updated is an answer; a refusal is a problem;

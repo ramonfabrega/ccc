@@ -1,6 +1,20 @@
 import CCCKit
 import SwiftUI
 
+/// AppKit asking SwiftUI for the keyboard (v7 slice 1). The list's focus
+/// is a `@FocusState` the view owns; the window cannot reach it, so it
+/// bumps a counter the view observes and names the row to select.
+@MainActor
+final class RosterFocus: ObservableObject {
+    @Published private(set) var requests = 0
+    private(set) var target: SessionRef?
+
+    func request(selecting ref: SessionRef?) {
+        target = ref
+        requests += 1
+    }
+}
+
 /// The roster: what `claude agents` shows, plus the model column and our
 /// marks (v4). Grouped and sorted by the View menu's choices (`RosterGroup`,
 /// `RosterSort`, persisted in UserDefaults — `ccc list --group/--sort` are
@@ -13,7 +27,13 @@ struct RosterView: View {
     /// it — `~/code` on studio is not `~/code` on air once the usernames
     /// differ.
     let hosts: HostConfig
+    /// The window's request for the keyboard (v7 slice 1): ← on an empty
+    /// prompt in the pane lands here, selecting the attached row.
+    @ObservedObject var focus: RosterFocus
     let attach: (SessionRef) -> Void
+    /// → on the list, or ⏎ on the attached row: the pane takes the
+    /// keyboard back.
+    let focusPane: () -> Void
     let detach: () -> Void
     /// The exact command the pane would run for a row — asked of the
     /// controller rather than rebuilt here, so the copied line and the
@@ -110,7 +130,15 @@ struct RosterView: View {
             .onKeyPress("p") { press { mark($0, marks($0)?.pinned == true ? .unpin : .pin) } }
             .onKeyPress("n") { press(newSessionHere) }
             .onKeyPress("t") { press { openShell($0, false) } }
+            .onKeyPress(.rightArrow) {
+                focusPane()
+                return .handled
+            }
             .onChange(of: selection) { _, new in selectionChanged(new) }
+            .onChange(of: focus.requests) { _, _ in
+                if let target = focus.target { selection = target }
+                focused = true
+            }
             footer
         }
         .frame(minWidth: 320)

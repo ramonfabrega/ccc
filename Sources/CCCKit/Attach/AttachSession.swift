@@ -14,6 +14,13 @@ public final class AttachSession {
     private var throughput = Throughput()
     public private(set) var exitStatus: Int32?
     public var onExit: ((Int32) -> Void)?
+    /// The harness's ← gesture (`LeaveGesture`), taken before the key is
+    /// sent: set by the owner of a *session* pane, whose child is `claude
+    /// attach` and would otherwise leave for the agents view. Nil — the
+    /// default, and a shell pane — sends every ← through.
+    public var onLeaveGesture: (() -> Void)? {
+        didSet { installInterceptor() }
+    }
     public let startedAt = Date()
 
     public struct Options: Sendable {
@@ -62,6 +69,21 @@ public final class AttachSession {
 
     public var isRunning: Bool { exitStatus == nil }
     public var childPID: pid_t { pty.pid }
+
+    /// The gate on the host's key path. Only a bare ← costs a snapshot;
+    /// every other key is answered without one.
+    private func installInterceptor() {
+        guard onLeaveGesture != nil else {
+            host.keyInterceptor = nil
+            return
+        }
+        host.keyInterceptor = { [weak self] key in
+            guard let self, let handler = self.onLeaveGesture else { return false }
+            guard key.base == .left, LeaveGesture.matches(key, in: self.host.snapshot()) else { return false }
+            handler()
+            return true
+        }
+    }
 
     public func send(text: String) {
         pty.write(Data(text.utf8))

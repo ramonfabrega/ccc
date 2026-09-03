@@ -18,6 +18,7 @@ public final class GhosttyHost: TerminalHost {
     private var cellSize: (width: UInt32, height: UInt32) = (8, 17)
 
     public var onOutput: ((Data) -> Void)?
+    public var keyInterceptor: ((NamedKey) -> Bool)?
     public var view: NSView? { nil }
     public private(set) var lastError: String?
 
@@ -96,6 +97,7 @@ public final class GhosttyHost: TerminalHost {
     /// modifier, or an unmapped key.
     public func press(_ key: NamedKey) -> Bool {
         guard terminal != nil else { return false }
+        if keyInterceptor?(key) == true { return true }
         let keys = self.keys ?? GhosttyKeys(terminal: terminal)
         self.keys = keys
         let bytes = keys.encode(key)

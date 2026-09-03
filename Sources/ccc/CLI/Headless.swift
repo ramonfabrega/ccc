@@ -38,6 +38,12 @@ enum Headless {
         }
         CLI.stderr("ccc: attached \(ref) headless (\(cols)x\(rows)); socket \(controller.server?.path ?? "-"); `ccc snapshot` to look, `ccc detach` to leave")
 
+        // No roster to focus without a window; the send reply carries the
+        // same fact to the script that pressed it.
+        controller.onLeaveRequested = {
+            CLI.stderr("ccc: ← on an empty prompt taken — in the window the roster takes the keyboard; the key was not sent")
+        }
+
         nonisolated(unsafe) var exitCode: Int32 = 0
         controller.onSessionEnded = { status in
             exitCode = status

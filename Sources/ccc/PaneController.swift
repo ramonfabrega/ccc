@@ -18,6 +18,12 @@ final class PaneController {
     private var shellCwd: String?
     /// Called when the attached child exits (detach or crash).
     var onSessionEnded: ((Int32) -> Void)?
+    /// Called when ← on an empty prompt was taken instead of sent
+    /// (`LeaveGesture`, v7 slice 1): the window hands the keyboard to the
+    /// roster; headless says so on stderr. `leaveGestures` counts them for
+    /// the send reply and `ccc stats`.
+    var onLeaveRequested: (() -> Void)?
+    private(set) var leaveGestures = 0
     /// Called when a session is attached; the window mounts `host.view`.
     var onSessionStarted: ((AttachSession) -> Void)?
     /// The shell pane's mount and unmount; nil headless, which is how
@@ -125,6 +131,11 @@ final class PaneController {
         let host = makeHost(size.0, size.1)
         let session = try AttachSession(ref: ref, argv: cli.attachArgv(id: ref.id), host: host,
                                         options: .init(cols: size.0, rows: size.1))
+        session.onLeaveGesture = { [weak self] in
+            guard let self else { return }
+            self.leaveGestures += 1
+            self.onLeaveRequested?()
+        }
         session.onExit = { [weak self] status in
             guard let self else { return }
             self.poller.attachedRef = nil
@@ -456,10 +467,17 @@ final class PaneController {
             if let paste {
                 guard session.paste(paste) else { return .error("host cannot paste (\(PaneController.selectedCore) core)") }
             }
+            var taken = 0
             for name in keys ?? [] {
                 guard let key = NamedKey(name) else { return .error("unknown key '\(name)'") }
+                let before = leaveGestures
                 guard session.press(key) else { return .error("host cannot encode '\(name)'") }
+                taken += leaveGestures - before
             }
+            // The gesture's twin says what the window did instead of
+            // sending: the reply is how a script learns the key went to
+            // the roster, not the child.
+            if taken > 0 { return .ok("sent; ← on an empty prompt taken (the roster takes the keyboard, the key is not sent)") }
             if let wheel, wheel != 0 {
                 guard let pane = session.host as? GhosttyPane else { return .error("wheel needs the ghostty pane; this session is on the \(PaneController.selectedCore) core") }
                 pane.wheel(lines: wheel)

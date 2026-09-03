@@ -12,6 +12,7 @@ public final class HeadlessHost: TerminalHost {
     private var cursorVisible = true
 
     public var onOutput: ((Data) -> Void)?
+    public var keyInterceptor: ((NamedKey) -> Bool)?
     public var view: NSView? { nil }
 
     public init(cols: Int = 80, rows: Int = 24, scrollback: Int = 2_000) {

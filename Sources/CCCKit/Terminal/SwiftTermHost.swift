@@ -13,6 +13,10 @@ public final class SwiftTermHost: TerminalHost {
     private var cursorVisible = true
 
     public var onOutput: ((Data) -> Void)?
+    /// Consulted by `press` only: the stock view's own `keyDown` goes
+    /// straight to SwiftTerm, so the window's keyboard is not gated on
+    /// this core (the escape hatch; `ccc send --key` is).
+    public var keyInterceptor: ((NamedKey) -> Bool)?
     /// Fired when the view's own layout changes its grid (window resize).
     /// The owner mirrors the size onto the PTY.
     public var onSizeChanged: ((Int, Int) -> Void)?
@@ -83,6 +87,7 @@ public final class SwiftTermHost: TerminalHost {
     /// it to SwiftTerm's `keyDown`, so `ccc send --key ctrl-z` takes the
     /// same path — kitty encoding included — as a finger on the keyboard.
     public func press(_ key: NamedKey) -> Bool {
+        if keyInterceptor?(key) == true { return true }
         guard let event = Self.event(for: key) else { return false }
         terminalView.keyDown(with: event)
         return true
