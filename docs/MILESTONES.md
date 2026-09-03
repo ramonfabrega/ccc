@@ -802,6 +802,16 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      the ssh destinations; Bonjour never crosses the tailnet). With it,
      the §4c question: whether a secondary viewer renders the shared grid
      as-is instead of resizing it (last-resize-wins today). Needs air.
+     **Blocked on one toggle, measured 2026-09-03:** air is up on the
+     tailnet (active, direct) but `ssh air` answers *"connect to host air
+     port 22: Connection refused"* — no Remote Login, exactly as
+     RELEASES.md says — and `ccc hosts` still lists only `local`. So
+     every ssh proof to date is `localhost` wearing a costume, and four
+     threads (this, §4c, item 6's two measurements, and whether copy over
+     ssh lands on the wrong Mac — v7 slice 2) wait on Sharing ▸ Remote
+     Login on air. **The order here is backwards and should invert:**
+     `ccc hosts add air` by hand and prove the hop first; a picker is a
+     convenience over a host list that has never held a real remote.
   4. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
      its timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
      nonblocking read before the host list grows.
@@ -819,6 +829,36 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   7. **Housekeeping:** remote branches `hotfix-gridbuilder`,
      `worktree-icon`, `worktree-v0`, `worktree-v1` are merged history;
      delete when convenient.
+  8. **The colours are off** — raised by the user 2026-09-03 ("feel
+     off / opaque'd", not what iTerm shows), and **already diagnosed, not
+     yet fixed.** Two stacking causes, both found by reading rather than
+     guessing. (a) `ghostty_terminal_set` is called with exactly three
+     options — userdata, write_pty, scrollback — so
+     `GHOSTTY_TERMINAL_OPT_COLOR_{FOREGROUND,BACKGROUND,CURSOR,PALETTE}`
+     are **never set** and every colour is the core's default. The
+     codebase already knows: `MetalRenderer.readableForeground` logs "the
+     palette is unset" and substitutes a fallback so default-coloured text
+     is not invisible, with the comment "the real repair belongs wherever
+     the frame's palette is filled in" — that repair is this item, and the
+     fallback should go with it. (b) `MetalPaneView` uses `.bgra8Unorm`
+     with **no `colorspace` on the layer**, so the pane is unmanaged while
+     iTerm is colour-managed — on a P3 display that alone moves every
+     value. **Do the measurement first:** the same content in iTerm and in
+     ccc, a real `screencapture` of both, and compare the RGB of known
+     cells. That says which cause is doing the damage before either is
+     touched, and it is the house rule (the human's screen is the oracle).
+  9. **The attach transition blanks the pane** — raised the same day, and
+     diagnosed: `PaneController.switchTo` does `await session.detach()`,
+     *then* `attach()`, which builds a brand-new host — a blank grid —
+     which the window mounts before the new `claude attach` has drawn.
+     Experiment 3 measured the TUI taking up to 12 s to paint over ssh
+     (`waitUntilDrawn`'s timeout is 8 s), so the blank is not a flicker,
+     it is the wait. The fix is available *because* of experiment 2: the
+     daemon accepts concurrent attaches, so the new session can start
+     **behind** the old one, reuse the existing `waitUntilDrawn`, and the
+     view swap only happens once it has painted — then the old one
+     detaches. No blank frame at all. Open question for the doing: which
+     pane owns the keyboard during the overlap.
   Dropped 2026-09-02: a "forked from" mark on the row; permission mode,
   effort and worktree as sheet fields (the command has them; nobody has
   missed them in the sheet).
