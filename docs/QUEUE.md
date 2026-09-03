@@ -33,14 +33,23 @@ DESIGN.md §4c: the daemon's PTY is last-resize-wins across viewers, so
 decide whether a secondary viewer renders the shared grid as-is instead of
 resizing it.
 
-**Blocked on one toggle, measured 2026-09-03.** Air is up on the tailnet
-(active, direct) but `ssh air` answers "connect to host air port 22:
-Connection refused" — no Remote Login, as RELEASES.md says. Every ssh
-proof to date is `localhost` wearing a costume. Four threads wait on
-Sharing ▸ Remote Login on air: this, §4c above, item 6, and whether copy
-over ssh lands on the wrong Mac's clipboard. **The order inverts:** `ccc
-hosts add air` by hand and prove the hop first — a picker is a
-convenience over a host list that has never held a real remote.
+**Not blocked on a toggle — blocked on there being a destination.**
+This file said four threads waited on turning Remote Login on for air.
+That was wrong, and the user said so 2026-09-03: **air is never an ssh
+destination.** It is the Mac you drive *from*, and the reason the whole
+release flow is a pull (RELEASES.md's own first paragraph says air cannot
+be pushed to). Measured the same day: neither Mac listens on 22, and the
+host list holds `local` alone, so every ssh proof to date is `localhost`
+wearing a costume — that part stands.
+
+What is actually open is which Mac is ever the far side. The shape the
+fleet has is air (roaming client) → studio (always-on, where the agents
+run), which would make studio the one thing to enable and air the one
+thing to run the proof from — but that is inference, not a decision, and
+nothing here should assume it. **Until a real destination exists, this
+item is a picker over a host list that can only ever hold one row**, and
+§4c, item 6 and the ssh-clipboard question have no way to be answered at
+all.
 
 ### 4. Debt: the blocking poll read
 
@@ -56,14 +65,16 @@ has them). `ccc window show` when another app holds focus — measured
 since macOS 14 and the window stayed behind while `open -a` brought it
 front, so `show`'s CLI side should activate through `NSWorkspace`.
 
-### 6. Open measurements, on air
+### 6. Open measurements that need a real hop
 
 The long sleep: `~/lidtest.py` is running on air appending to
-`~/lidtest.log`; `scp` it to studio when air is up. It decides whether the
-ssh master eviction ever fires (`ccc stats` → `evictions`). And the first
-real sleep for the remote-pane reattach — `sshExit` within 20 s of wake
-replays the same argv (`PaneController.reattachIfSleepKilledIt`), never
-yet through a real lid. Both blocked with item 3.
+`~/lidtest.log`, and its log is what decides whether the ssh master
+eviction ever fires (`ccc stats` → `evictions`) — the file comes off air
+by air's own hand, not by an `scp` from here (item 3: nothing ssh's into
+air). And the first real sleep for the remote-pane reattach — `sshExit`
+within 20 s of wake replays the same argv
+(`PaneController.reattachIfSleepKilledIt`), never yet through a real lid.
+Both wait on item 3 having a destination.
 
 ### 7. Housekeeping
 
@@ -110,7 +121,8 @@ the hole in the ← guard"). What is left:
 
 - **It is proved locally only.** Over ssh it is the same code with a much
   longer wait — the case the 8 s `waitUntilDrawn` timeout was written
-  for, and the case nothing has ever run. Blocked with item 3.
+  for, and the case nothing has ever run. Waits on item 3 the same way
+  everything remote does.
 - **"Drawn" is a shape, not a certainty.** `waitUntilDrawn` returns on
   the first stable screen with more than one row on it. That is enough to
   reject the attach client's one-line wake message, which is what it was
