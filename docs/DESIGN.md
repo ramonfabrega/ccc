@@ -285,12 +285,24 @@ sessions its own daemon runs and reads every host it lists. Should studio
 die, sessions started on air are air's and a third device lists air.
 
 The one cost the harness hands us is **size**. The shared PTY takes the
-last resize from any viewer and never shrinks back, so a laptop and a big
-monitor on the same session redraw each other. Two agents views behave
-identically today; the user lives with it. Because ccc owns its renderer
-it can do better — render the session's grid inside whatever window it has
-rather than resizing the PTY from a secondary viewer — and that is slice 4's
-question, a nice-to-have, not a blocker.
+last resize from any viewer, so a laptop and a big monitor on the same
+session redraw each other. Two agents views behave identically today; the
+user lives with it.
+
+**Measured 2026-09-03**, once the hop was real (docs/EVIDENCE.md "v9 slice
+1 — the hop is real"): with ccc's pane on a session at 100x30 and a bare
+`claude attach` alongside it at 60x20, ccc's *grid* stayed 100x30 and the
+*content* redrew at 60x20 — letterboxed into the corner, and back to full
+width the moment the small viewer left. So the cost is bounded (dead
+space, never corruption) and self-healing, which is why nothing had to
+change for a secondary viewer to be safe.
+
+What remains is a taste call with a known shape rather than an unknown
+one. Because ccc owns its renderer it could decline to resize the shared
+PTY when it is not the only viewer — rendering the session's grid inside
+whatever window it has — which would stop it *causing* this for others.
+It cannot stop it *suffering* it: any bare `claude attach` still moves the
+one PTY. A nice-to-have, and now one with a measurement under it.
 
 ## 6. Distribution: the fleet's release flow, Sparkle from day one (2026-09-02)
 

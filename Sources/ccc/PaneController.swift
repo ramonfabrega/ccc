@@ -66,11 +66,23 @@ final class PaneController {
     /// answers with what it did. `nil` headless.
     var hookSink: (@MainActor (HookEvent) -> String)?
 
-    /// The hosts ccc knows about, and why any were dropped. Loaded once at
-    /// start: a host list that changes under a running attach would change
-    /// what the pane is talking to.
-    let hosts: HostConfig
-    let hostIssues: [String]
+    /// The hosts ccc knows about, and why any were dropped. Re-read when
+    /// hosts.json's mtime moves, so `ccc hosts add studio` from a shell
+    /// reaches a running app on the next tick — the same rule the roster
+    /// overlay already follows, and one `stat` per tick to hold it.
+    ///
+    /// The load-once comment this replaces feared that a changing list
+    /// would "change what the pane is talking to". It cannot: an attached
+    /// pane holds an `AttachSession` whose argv was built when it started,
+    /// so a reload moves what *new* refs resolve against and which hosts
+    /// are polled, and never the running child.
+    private(set) var hosts: HostConfig
+    private(set) var hostIssues: [String]
+    private let hostsPath: String
+    private var hostsModifiedAt: Date?
+    private var hostsWatch: Task<Void, Never>?
+    /// Said once per change, for the window's notice and `ccc stats`.
+    private(set) var lastHostChange: String?
 
     /// The last attach and how it ended, for the wake-up reattach: a remote
     /// pane whose ssh died across a sleep comes back on its own.
@@ -83,16 +95,64 @@ final class PaneController {
     var remembersAttach = false
     private static let rememberedRefKey = "ccc.lastAttachedRef"
 
-    init(cli: ClaudeCLI, hosts: HostConfig.Loaded = HostConfig.load()) {
+    init(cli: ClaudeCLI, hosts: HostConfig.Loaded = HostConfig.load(),
+         hostsPath: String = HostConfig.defaultPath) {
         self.cli = cli
         self.hosts = hosts.config
         self.hostIssues = hosts.issues
-        // One poller per host, `local` reading through this process's own
-        // resolved `claude` (the config's `local` has no path of its own).
-        self.poller = RosterPoller(pollers: hosts.config.hosts.map { host in
-            HostPoller(cli: host.isLocal ? cli : ClaudeCLI.of(host), hostName: host.name)
-        })
+        self.hostsPath = hostsPath
+        self.hostsModifiedAt = HostConfig.modificationDate(path: hostsPath)
+        self.poller = RosterPoller(
+            pollers: hosts.config.hosts.map { Self.makePoller(for: $0, local: cli) },
+            built: Dictionary(uniqueKeysWithValues: hosts.config.hosts.map { ($0.name, $0) }))
     }
+
+    /// One poller per host: `local` reads through this process's own
+    /// resolved `claude` (the config's `local` has no path of its own),
+    /// everything else goes behind its ssh prefix. Static so `init` and
+    /// `reloadHostsIfChanged` share the one recipe — a host added at
+    /// runtime has to be wired exactly like one present at launch, and two
+    /// copies of this line is precisely how that would stop being true.
+    private static func makePoller(for host: CCCKit.Host, local: ClaudeCLI) -> HostPoller {
+        HostPoller(cli: host.isLocal ? local : ClaudeCLI.of(host), hostName: host.name)
+    }
+
+    /// Start the roster and the hosts.json watch together. Both faces call
+    /// this — the window at launch, `--headless` when it takes the socket —
+    /// so neither can have the roster without the watch.
+    func start() {
+        poller.start()
+        guard hostsWatch == nil else { return }
+        hostsWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                self.reloadHostsIfChanged()
+            }
+        }
+    }
+
+    /// Re-read hosts.json when its mtime moved, and bring the pollers in
+    /// line. Returns what changed, or nil when nothing did — one `stat` in
+    /// the common case. A file that goes bad degrades exactly as it does at
+    /// launch (`HostConfig.load`): local only, with the reason kept.
+    @discardableResult
+    func reloadHostsIfChanged() -> String? {
+        let modified = HostConfig.modificationDate(path: hostsPath)
+        guard modified != hostsModifiedAt else { return nil }
+        hostsModifiedAt = modified
+        let loaded = HostConfig.load(path: hostsPath)
+        guard loaded.config != hosts || loaded.issues != hostIssues else { return nil }
+        hosts = loaded.config
+        hostIssues = loaded.issues
+        let said = poller.sync(to: loaded.config) { Self.makePoller(for: $0, local: cli) }.said
+        lastHostChange = said
+        if let said { onHostsChanged?(said) }
+        return said
+    }
+
+    /// The window's notice when the host list moved under it. `nil` headless.
+    var onHostsChanged: ((String) -> Void)?
 
     /// The CLI for one host — this process's own `claude` for `local`, the
     /// ssh prefix for anything else. The single place a ref becomes a command.
@@ -124,6 +184,8 @@ final class PaneController {
 
     func stop() {
         poller.stop()
+        hostsWatch?.cancel()
+        hostsWatch = nil
         server?.stop()
         server = nil
     }

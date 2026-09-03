@@ -1123,3 +1123,116 @@ different profile is untested, and `pixel --cell`'s scale arithmetic is
 covered by tests but has never run at 2x for real. Whether a replay golden
 could assert RGB is still unanswered: `GridBuilder` carries no colour, so
 the headless oracle still cannot judge one. 295 tests.
+
+## v9 slice 1 — the hop is real, and the host list was frozen (2026-09-03)
+
+Queue item 3. Every ssh proof before today was `localhost` wearing a
+costume: nothing listened on 22 on either Mac, and `ccc hosts` held
+`local` alone. Remote Login went on for studio the same afternoon, so
+this is the first day a `Host` with an `ssh` destination pointed at a
+real `sshd`.
+
+**studio is both ends of this bench, and that is stated, not hidden.**
+The client half is the code air will run, byte for byte; the server half
+is the sshd air will reach. What a loopback hop cannot carry is latency,
+loss, and a second Mac's own config — so every number below is a floor,
+and the air→studio numbers will be larger.
+
+### The hop, end to end
+
+    ssh studio 'echo OK; hostname'                    OK / Ramons-Mac-Studio.local
+    ccc hosts add studio --ssh studio
+      → added studio (ssh studio, claude /Users/rf-studio/.local/bin/claude,
+        roster via ccc /opt/homebrew/bin/ccc, home /Users/rf-studio)
+    ccc hosts check studio    studio  ok  684 ms  ccc 21 sessions, 18 with a model  ccc 0.1.15 (118)
+    ccc hosts check local     local   ok  223 ms  claude 21 sessions
+
+`ccc hosts add` found both paths over the wire rather than being told
+them — **experiment 3's finding held**: a non-interactive ssh has no
+`claude` on PATH here (`~/.local/bin` is added by `.zshrc`, which even
+`zsh -lc` does not source), so the absolute path in `Host.claude` is
+load-bearing and `validate()` is right to refuse a host without one.
+
+Then a fixture spawned, attached and driven entirely over the hop
+(`--model haiku`, the fixture rule):
+
+    ccc spawn --host studio --model haiku --name ssh-hop-fixture …   736 ms → studio:549594ed
+    ccc attach studio:549594ed        attached studio:549594ed
+    ccc snapshot                      ▐▛███▛█  Claude Code v2.1.259 / Haiku 4.5 · Claude Max
+                                      ❯ Print the numbers 1 through 5 … / ⏺ 1 2 3 4 5
+    ccc resize 100 30                 grid cols 100 rows 30
+    ccc send "hello over ssh"         lands in the composer
+    ccc send --key ctrl-u             clears it ("Ctrl+Y to paste deleted text")
+
+Steady state over ~75 remote polls: `studio last 599 ms mean 543 ms`
+against `local last 161 ms mean 171 ms`, 0 failures, **0 evictions**, and
+the notifier fired for the remote host (`posted 4, last "ssh-hop-fixture-2
+finished"`). The model column works remotely, which is `Host.ccc` earning
+its place: 18 of 21 rows carried a model inside the one round trip.
+
+### The attach transition over ssh (item 9's first open end)
+
+`waitUntilDrawn`'s 8 s timeout was written for the long ssh wait and had
+never met one. Six alternating swaps between two remote fixtures, timed
+end to end, against the same two sessions reached by the local path:
+
+    remote (studio:)   1385, 1075, 1122, 1112, 1102, 1133 ms
+    local              1022, 1020, 1086, 1059, 1079, 1084 ms
+
+Every one answered `attached … (left …)`, so the old pane held until the
+new one drew — no blank grid, over ssh, ever. **The hop costs ~20–50 ms
+on a warm master**; the second is `waitUntilDrawn`'s own floor, which is
+two stable 250 ms samples. The 8 s timeout is ~7x the observed worst
+case on this bench, and untested against a hop with real latency.
+
+### §4c, answered by measurement: last-resize-wins is visible and heals
+
+With the app's pane on `studio:549594ed` at 100x30, a second viewer —
+plain `claude attach 549594ed` on its own PTY at 60x20 — was attached
+alongside it (`$CLAUDE_JOB_DIR/tmp/viewer2.py`, 2449 bytes read):
+
+    app pane, alone            grid 100x30, TUI drawn to 100 columns
+    app pane, viewer2 up       grid 100x30, TUI drawn to 60x20 — letterboxed
+    app pane, viewer2 gone     grid 100x30, TUI back to 100 columns
+
+So ccc's grid geometry is its own and never follows the shared PTY; what
+follows is the *content*, because the daemon resizes the one PTY to the
+newest viewer and mirrors it to all. The damage is bounded — dead space,
+never corruption — and it heals when the other viewer leaves. Nothing has
+to change for a secondary viewer to be safe; what is still open is whether
+ccc should decline to resize when it is not the only viewer, which would
+stop it *causing* this for others but cannot stop it *suffering* it, since
+any bare `claude attach` does the same.
+
+### The host list was read once at launch
+
+Found by doing the above: `ccc hosts add studio` succeeded, `ccc hosts
+check studio` and `ccc list --host studio` answered from the CLI, and the
+app said
+
+    ccc: unknown host 'studio' (known: local); add it with `ccc hosts add`
+
+`PaneController.hosts` was a `let`, loaded in `init`, on the reasoning
+that "a host list that changes under a running attach would change what
+the pane is talking to". It cannot: an attached pane holds an
+`AttachSession` whose argv was built when it started, so a reload moves
+what *new* refs resolve against and which hosts are polled, and never the
+running child. Meanwhile `Host.swift` already promised "one line adds a
+Mac" and `HostConfig.modificationDate` already existed, unused by anyone
+but the mute set.
+
+The fix is the rule the overlay has always followed, applied to
+hosts.json: one `stat` per 2 s tick, reload when the mtime moves,
+`RosterPoller.sync(to:make:)` to add, drop and rebuild pollers. A host
+that merely moved in the file keeps its slot and its counters; one whose
+`ssh`/`claude`/`ccc` was edited gets a fresh poller, or the roster would
+keep reading the command the user just changed.
+
+Proved live against the running app, no relaunch:
+
+    ccc hosts remove studio   → 3 s later: ccc: unknown host 'studio' (known: local)
+    ccc hosts add studio …    → 4 s later: the studio rows are back
+    ccc attach studio:549594ed → already attached to studio:549594ed
+
+That last line is the safety claim holding: the pane attached over the
+removed host stayed alive across its removal and re-addition. 299 tests.

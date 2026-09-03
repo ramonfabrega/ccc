@@ -27,7 +27,7 @@ enum Headless {
             CLI.stderr("ccc: \(error)")
             return 1
         }
-        controller.poller.start()
+        controller.start()
 
         do {
             try controller.attach(ref: ref, cols: cols, rows: rows)

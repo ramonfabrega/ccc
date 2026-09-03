@@ -73,15 +73,26 @@ public final class RosterPoller {
         public var hiddenCount: Int { rows.count { $0.isHidden } }
     }
 
-    public let pollers: [HostPoller]
+    public private(set) var pollers: [HostPoller]
     public var attachedRef: SessionRef? {
         didSet { for poller in pollers { poller.attachedRef = attachedRef } }
     }
 
+    /// The `Host` each poller was built from, so `sync` can tell a host that
+    /// merely moved in the file from one whose ssh destination or claude
+    /// path was edited — the second needs a new poller, the first does not.
+    /// Empty for the pollers-only init, which makes the first `sync` rebuild
+    /// everything: correct, and that init has no config to compare against.
+    private var built: [String: Host] = [:]
+    /// Whether `start` has been called, so a poller added later joins a
+    /// running fleet and stays idle in a stopped one.
+    private var running = false
+
     public var state: State { State(hosts: pollers.map(\.state)) }
 
-    public init(pollers: [HostPoller]) {
+    public init(pollers: [HostPoller], built: [String: Host] = [:]) {
         self.pollers = pollers
+        self.built = built
     }
 
     /// One host — what v1 had, and what `ccc list --host` still wants.
@@ -95,7 +106,71 @@ public final class RosterPoller {
     public convenience init(hosts: HostConfig, interval: Duration = .seconds(2)) {
         self.init(pollers: hosts.hosts.map { host in
             HostPoller(cli: ClaudeCLI.of(host), hostName: host.name, interval: interval)
-        })
+        }, built: Dictionary(uniqueKeysWithValues: hosts.hosts.map { ($0.name, $0) }))
+    }
+
+    /// What a `sync` did, as the sentence to show.
+    public struct HostChanges: Sendable, Equatable {
+        public var added: [String] = []
+        public var removed: [String] = []
+        public var replaced: [String] = []
+        public var isEmpty: Bool { added.isEmpty && removed.isEmpty && replaced.isEmpty }
+
+        public var said: String? {
+            guard !isEmpty else { return nil }
+            var parts: [String] = []
+            if !added.isEmpty { parts.append("added \(added.joined(separator: ", "))") }
+            if !replaced.isEmpty { parts.append("reloaded \(replaced.joined(separator: ", "))") }
+            if !removed.isEmpty { parts.append("dropped \(removed.joined(separator: ", "))") }
+            return "hosts: " + parts.joined(separator: "; ")
+        }
+    }
+
+    /// Bring the poller set in line with a host list that changed on disk —
+    /// the twin of what the overlay already does (`HostPoller.currentOverlay`),
+    /// applied to hosts.json, so `ccc hosts add studio` shows up in a running
+    /// app on the next tick instead of at the next launch. Measured
+    /// 2026-09-03: without this, the first real remote host answered
+    /// `ccc hosts check` and `ccc list` from the CLI while the app said
+    /// "unknown host 'studio'", because the app had loaded the file once.
+    ///
+    /// **A live attach is never touched.** A pane holds its own
+    /// `AttachSession` with an argv already built, so dropping a host stops
+    /// polling it and nothing else; the pane keeps working until it exits.
+    /// That is what makes reloading safe where the load-once comment feared
+    /// it would not be.
+    @discardableResult
+    public func sync(to config: HostConfig, make: (Host) -> HostPoller) -> HostChanges {
+        var changes = HostChanges()
+        let wanted = config.hosts
+        let wantedNames = Set(wanted.map(\.name))
+        var kept: [String: HostPoller] = [:]
+        for poller in pollers {
+            guard wantedNames.contains(poller.hostName) else {
+                poller.stop()
+                changes.removed.append(poller.hostName)
+                continue
+            }
+            kept[poller.hostName] = poller
+        }
+        for host in wanted {
+            if let existing = kept[host.name] {
+                guard built[host.name] != host else { continue }
+                existing.stop()
+                changes.replaced.append(host.name)
+            } else {
+                changes.added.append(host.name)
+            }
+            let fresh = make(host)
+            fresh.interval = interval
+            fresh.attachedRef = attachedRef
+            if running { fresh.start() }
+            kept[host.name] = fresh
+        }
+        // The file's order is the roster's order.
+        pollers = wanted.compactMap { kept[$0.name] }
+        built = Dictionary(uniqueKeysWithValues: wanted.map { ($0.name, $0) })
+        return changes
     }
 
     public var interval: Duration {
@@ -104,10 +179,12 @@ public final class RosterPoller {
     }
 
     public func start() {
+        running = true
         for poller in pollers { poller.start() }
     }
 
     public func stop() {
+        running = false
         for poller in pollers { poller.stop() }
     }
 

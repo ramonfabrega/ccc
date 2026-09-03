@@ -41,6 +41,10 @@ enum App {
         controller.peekProvider = { [weak window] in window?.peek() }
         controller.geometryProvider = { [weak window] in window?.geometry() }
         controller.windowAction = { [weak window] action in window?.windowAction(action) ?? false }
+        // `ccc hosts add|remove` from a shell edits hosts.json; the running
+        // app picks it up on the next tick and says so, so a new Mac never
+        // needs a relaunch to appear in the roster.
+        controller.onHostsChanged = { [weak window] said in window?.showNotice(said) }
         do {
             try controller.serve()
         } catch {
@@ -48,7 +52,7 @@ enum App {
             // still works; the CLI just talks to the other one.
             window.noteSocketHeld("\(error)")
         }
-        controller.poller.start()
+        controller.start()
         // The poll is the first notifier (v3): one banner per transition,
         // click to attach. Same detector as `ccc watch`.
         let notifier = Notifier(poller: controller.poller) { [weak window] ref in

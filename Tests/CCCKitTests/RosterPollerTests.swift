@@ -200,4 +200,109 @@ import Testing
             #expect(poller.state.notes.first?.contains("ignoring the overlay") == true)
         }
     }
+
+    // MARK: hosts.json under a running fleet (item 3)
+
+    /// `ccc hosts add studio` from a shell has to reach a running app.
+    /// Measured 2026-09-03, the first day a real remote host existed: the
+    /// CLI answered `ccc hosts check studio` while the app said "unknown
+    /// host 'studio'", because the host list was read once at launch.
+    @Test @MainActor func aHostAddedOnDiskJoinsARunningFleet() async throws {
+        try await withTempDir { dir in
+            let claude = try fakeClaude(in: dir)
+            let fleet = RosterPoller(pollers: [HostPoller(cli: ClaudeCLI(executable: claude, host: .local))],
+                                     built: [Host.localName: .local])
+            fleet.start()
+            defer { fleet.stop() }
+
+            let studio = Host(name: "studio", ssh: "studio", claude: claude)
+            let changes = fleet.sync(to: HostConfig(hosts: [.local, studio])) { host in
+                HostPoller(cli: ClaudeCLI(executable: claude, host: host), hostName: host.name)
+            }
+            #expect(changes.added == ["studio"])
+            #expect(changes.removed.isEmpty)
+            #expect(changes.said == "hosts: added studio")
+            #expect(fleet.pollers.map(\.hostName) == [Host.localName, "studio"])
+            // The new slot is polling, not waiting for the next launch.
+            await fleet.tick()
+            #expect(fleet.state.host("studio")?.rows.count == 2)
+        }
+    }
+
+    /// A removed host stops being polled and its rows leave. What it must
+    /// *not* do is take a live attach with it — the pane owns its own argv,
+    /// which is the whole reason reloading is safe.
+    @Test @MainActor func aHostRemovedOnDiskStopsBeingPolled() async throws {
+        try await withTempDir { dir in
+            let claude = try fakeClaude(in: dir)
+            let studio = Host(name: "studio", ssh: "studio", claude: claude)
+            let make: (CCCKit.Host) -> HostPoller = { host in
+                HostPoller(cli: ClaudeCLI(executable: claude, host: host), hostName: host.name)
+            }
+            let config = HostConfig(hosts: [.local, studio])
+            let fleet = RosterPoller(pollers: config.hosts.map(make),
+                                     built: Dictionary(uniqueKeysWithValues: config.hosts.map { ($0.name, $0) }))
+            await fleet.tick()
+            #expect(fleet.state.rows.count == 4)
+
+            let changes = fleet.sync(to: HostConfig(hosts: [.local]), make: make)
+            #expect(changes.removed == ["studio"])
+            #expect(changes.said == "hosts: dropped studio")
+            #expect(fleet.pollers.map(\.hostName) == [Host.localName])
+            #expect(fleet.state.rows.count == 2)
+        }
+    }
+
+    /// Editing a host's ssh destination or claude path has to replace its
+    /// poller: keeping the old one would leave the roster reading the
+    /// command the user just changed. A host that only moved in the file
+    /// keeps its slot, and with it its counters.
+    @Test @MainActor func anEditedHostIsRebuiltAndAMovedOneIsNot() async throws {
+        try await withTempDir { dir in
+            let claude = try fakeClaude(in: dir)
+            let studio = Host(name: "studio", ssh: "studio", claude: claude)
+            let make: (CCCKit.Host) -> HostPoller = { host in
+                HostPoller(cli: ClaudeCLI(executable: claude, host: host), hostName: host.name)
+            }
+            let config = HostConfig(hosts: [.local, studio])
+            let fleet = RosterPoller(pollers: config.hosts.map(make),
+                                     built: Dictionary(uniqueKeysWithValues: config.hosts.map { ($0.name, $0) }))
+            await fleet.tick()
+            #expect(fleet.state.host("studio")?.pollCount == 1)
+
+            // Reordered only: same hosts, same slots, counters intact.
+            let reordered = fleet.sync(to: HostConfig(hosts: [studio, .local]), make: make)
+            #expect(reordered.isEmpty)
+            #expect(reordered.said == nil)
+            #expect(fleet.pollers.map(\.hostName) == ["studio", Host.localName])
+            #expect(fleet.state.host("studio")?.pollCount == 1)
+
+            // The ssh destination moved: a fresh slot, so a fresh count.
+            var moved = studio
+            moved.ssh = "studio.tail-scale.ts.net"
+            let changes = fleet.sync(to: HostConfig(hosts: [.local, moved]), make: make)
+            #expect(changes.replaced == ["studio"])
+            #expect(changes.said == "hosts: reloaded studio")
+            #expect(fleet.state.host("studio")?.pollCount == 0)
+        }
+    }
+
+    /// A fleet that was never started does not start pollers behind the
+    /// user's back: `ccc list` syncs and ticks once, and must not leave a
+    /// 2 s loop running in a process that is about to print and exit.
+    @Test @MainActor func aStoppedFleetAddsAStoppedPoller() async throws {
+        try await withTempDir { dir in
+            let claude = try fakeClaude(in: dir)
+            let fleet = RosterPoller(pollers: [HostPoller(cli: ClaudeCLI(executable: claude, host: .local))],
+                                     built: [Host.localName: .local])
+            let studio = Host(name: "studio", ssh: "studio", claude: claude)
+            fleet.sync(to: HostConfig(hosts: [.local, studio])) { host in
+                HostPoller(cli: ClaudeCLI(executable: claude, host: host), hostName: host.name)
+            }
+            #expect(fleet.pollers.count == 2)
+            // Nothing has polled: no loop was started for the new slot.
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(fleet.state.host("studio")?.pollCount == 0)
+        }
+    }
 }

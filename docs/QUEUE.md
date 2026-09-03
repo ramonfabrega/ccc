@@ -19,35 +19,37 @@ colour-management residual v8 assumed does not exist (docs/EVIDENCE.md
 "8b: there is no colour-management residual"). Those three items have
 left; what survived them is item 12.
 
-**The frontier is item 3, and it is now one toggle.** Decided by the user
-2026-09-03: **studio is always the host, air always joins.** That makes
-`ssh studio` the only hop ccc needs, Remote Login on *studio* the only
-thing standing in front of it, and items 6, 9 and DESIGN.md §4c
-answerable the moment it is on.
+**The hop is live.** Remote Login went on for studio 2026-09-03 and
+item 3's first two steps shipped the same day: a real `Host` behind a
+real `sshd`, a fixture spawned, attached, resized and driven over it, and
+DESIGN.md §4c answered by measurement (docs/EVIDENCE.md "v9 slice 1 — the
+hop is real"). Doing it found the host list frozen at launch, now fixed.
+**The frontier is item 3's last step — the picker — and item 12**, which
+is the one thing left of v8 and needs no hop at all.
 
 ## Open
 
-### 3. The hop: one toggle on studio
+### 3. The hop: the picker is what is left
 
-**Decided 2026-09-03: studio is always the host, air always joins.** Not
-symmetric and not meant to be — studio is the always-on Mac where the
-agents run, air is the roaming client, and nothing ever ssh's into air
-(which is also why the release flow is a pull; RELEASES.md's first
-paragraph). Generalising to any-Mac-to-any-Mac is a someday, not a goal.
+**Shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 1 — the hop is real"):
+`ccc hosts add studio --ssh studio`, `ccc hosts check studio` at 684 ms
+against local's 223 ms, and a haiku fixture spawned, attached, resized and
+typed into entirely over ssh. Steady state 543 ms mean over ~75 polls, 0
+failures, 0 evictions, the model column intact remotely, and the notifier
+firing for the remote host. `Host.claude`'s absolute path is load-bearing:
+experiment 3's "no claude on PATH" still holds on this Mac.
 
-**Blocked on Sharing ▸ Remote Login on studio.** Measured 2026-09-03:
-nothing listens on 22 on either Mac and `ccc hosts` holds `local` alone,
-so every ssh proof to date is `localhost` wearing a costume. With it on,
-in order: `ccc hosts add studio --ssh studio` from air, prove one real
-`ccc attach studio:<id>`, then the picker off `tailscale status --json`
-(MagicDNS names are the ssh destinations; Bonjour never crosses the
-tailnet) — a picker is a convenience over a host list that has never held
-a real remote.
+**The bench was studio→studio**, which carries the real client code and
+the real sshd but no latency, so every number is a floor. The air→studio
+direction still needs air, and air alone.
 
-With the hop live, the question deferred in DESIGN.md §4c comes due: the
-daemon's PTY is last-resize-wins across viewers, so decide whether a
-secondary viewer renders the shared grid as-is instead of resizing it.
-Air joining a session studio already has on screen is exactly that case.
+**What is left: the picker off `tailscale status --json`.** MagicDNS names
+are the ssh destinations (Bonjour never crosses the tailnet); `tailscale
+status` already lists `studio 100.81.87.24` and `air 100.122.216.104`
+alongside non-Mac peers, so the picker's real work is filtering to hosts
+that can answer `claude` and not offering air as a target (CLAUDE.md: one
+hop, one way). The host list it writes to is now hot-reloaded, so the
+picker's add lands in the running app the way `ccc hosts add` does.
 
 ### 4. Debt: the blocking poll read
 
@@ -65,7 +67,8 @@ front, so `show`'s CLI side should activate through `NSWorkspace`.
 
 ### 6. Two measurements that need the hop
 
-Both wait on item 3, and both are lid-driven, so neither can be forced.
+Both are air's to run — the hop is live but these need air's own lid, so
+neither can be forced from studio.
 
 - **The ssh master's eviction.** `~/lidtest.py` runs on air appending to
   `~/lidtest.log`; that log decides whether the eviction ever fires
@@ -81,20 +84,21 @@ Re-checked 2026-09-03 against `git branch -a`, which this item asked for:
 master and safe to delete on origin. **`worktree-icon` is not merged** —
 it was on the old list and does not belong in a bulk delete.
 
-### 9. The attach transition: two ends left
+### 9. The attach transition: one end left
 
 Shipped (docs/EVIDENCE.md "the attach transition, and the hole in the ←
-guard"). What is left:
+guard"), and **proved over ssh 2026-09-03**: six alternating swaps between
+two remote fixtures ran 1075–1385 ms against the local path's 1022–1086 ms,
+every one answering "attached … (left …)", so the hop costs ~20–50 ms on a
+warm master and the 8 s `waitUntilDrawn` timeout has ~7x headroom. On a
+loopback hop — a latent one is still untested, and that is air's to run.
 
-- **Proved locally only.** Over ssh it is the same code with a much
-  longer wait — the case the 8 s `waitUntilDrawn` timeout was written for
-  and the case nothing has ever run. Waits on item 3.
-- **"Drawn" is a shape, not a certainty.** `waitUntilDrawn` returns on
-  the first stable screen with more than one painted row. That is enough
-  to reject the attach client's one-line wake message, which is what it
-  was wrong about before; it is not proof the TUI finished, and a render
-  that pauses over 250 ms mid-paint can still swap in early. Not seen in
-  the wild.
+What is left is the shape, not the wait: **"drawn" is a shape, not a
+certainty.** `waitUntilDrawn` returns on the first stable screen with more
+than one painted row. That is enough to reject the attach client's
+one-line wake message, which is what it was wrong about before; it is not
+proof the TUI finished, and a render that pauses over 250 ms mid-paint can
+still swap in early. Not seen in the wild.
 
 ### 12. Colour has to cross the seam
 
