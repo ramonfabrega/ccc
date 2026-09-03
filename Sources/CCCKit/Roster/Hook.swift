@@ -7,7 +7,7 @@ import Foundation
 /// blocked on `AskUserQuestion` carries no `waitingFor` (docs/HARNESS.md),
 /// so neither can say *what* is being asked. The hook's `message` can.
 ///
-/// Localhost only, by decision (docs/MILESTONES.md v3): the hook fires on
+/// Localhost only, by decision (docs/EVIDENCE.md, v3 slice 2): the hook fires on
 /// the Mac the session runs on and reaches that Mac's app over the control
 /// socket. Nothing is forwarded — another Mac learns of the same session
 /// from its own roster poll.

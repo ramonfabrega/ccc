@@ -1,4 +1,32 @@
-# Queue
+# Evidence
+
+What was measured, with the command that measured it and the number it
+answered. One `## ` section per shipped slice, named the way the commit
+that shipped it is.
+
+**Do not read this file. Grep it.** Its value is that it exists and is
+searchable, not that it is read: a session working the queue needs the
+conclusion, which the queue item already carries inlined, and comes here
+only for the command behind that conclusion — how a thing was proved, so
+the proof can be re-run.
+
+Two rules keep it usable:
+
+- **A queue item inlines its conclusion and never says only "see
+  experiment 3".** The queue is the entry point and must stand alone; the
+  moment an item delegates its substance here, a cold session has to read
+  both files and the split has cost more than it saved.
+- **A queue item that cites a past measurement cites it by a string that
+  appears verbatim here** — `experiment 2`, `waitUntilDrawn`, `lidtest`,
+  a slice name. Those are the grep keys, so they may not be paraphrased on
+  either side.
+
+`docs/CHECKS.md` is the shape this file's sections aspire to: a claim, the
+command that proved it, the number it returned. Nothing here is a story
+about a day's work — that lives in the lore wiki
+(`~/code/personal/lore-wiki/projects/ccc.md`), which keeps the arguments,
+the reversals and the user's own words. This file keeps the milliseconds
+and the symbol names.
 
 Each milestone is comparable against `claude agents` on its own. Experiments
 (docs/HARNESS.md) gate the feature that needs them, not the milestone before.
@@ -882,96 +910,3 @@ answered "no link 9; the grid has 1", exit 1. Eleven tests. 267 tests.
 Not done: no ⌘-hover affordance (the pane installs no tracking area, so
 `mouseMoved` never fires), and SwiftTerm's pane does not have the
 gesture — the twin covers both, since it reads `snapshot()`.
-
-## Open
-
-**next** (what plan.md carried when it was retired 2026-09-02, late;
-the queue is this file from here on). The sequence agreed the same
-night, one confirmed before the next, comes first:
-1. **Update from master** (v6 slice 6) — **done 2026-09-03, above.**
-   As agreed: GitHub's "Update branch" as a
-   submenu item enabled while `↓` is above zero — `git merge <base>`
-   *inside the worktree*, a merge, never a rewrite; refuses a dirty
-   worktree (so it only acts at a commit boundary, which is what makes
-   it safe under a running session) and backs out of a conflict. Twin
-   `ccc update <ref>`. On a conflict, the refusal offers the one thing
-   a menu cannot and a session can: **Ask the session to merge
-   master**, which sends "merge master into this branch and resolve
-   the conflicts" as a prompt through the pane (`ccc send`'s road).
-2. **Fetch, and Pull master** (v6 slice 7) — **done 2026-09-03,
-   above.** As agreed: `⇣N` marks from the
-   last-fetched remote refs; Fetch on demand from the submenu, once on
-   launch and on wake (a timer only after those are measured), twin
-   `ccc fetch <ref>`; Pull master fast-forward only, the mirror of
-   Push master, twin `ccc pull <ref>`. Into the worktree branch is
-   rebase's problem by another name and stays out.
-Then, in no order:
-3. **Host picker** off `tailscale status --json` (MagicDNS names are
-   the ssh destinations; Bonjour never crosses the tailnet). With it,
-   the §4c question: whether a secondary viewer renders the shared grid
-   as-is instead of resizing it (last-resize-wins today). Needs air.
-   **Blocked on one toggle, measured 2026-09-03:** air is up on the
-   tailnet (active, direct) but `ssh air` answers *"connect to host air
-   port 22: Connection refused"* — no Remote Login, exactly as
-   RELEASES.md says — and `ccc hosts` still lists only `local`. So
-   every ssh proof to date is `localhost` wearing a costume, and four
-   threads (this, §4c, item 6's two measurements, and whether copy over
-   ssh lands on the wrong Mac — v7 slice 2) wait on Sharing ▸ Remote
-   Login on air. **The order here is backwards and should invert:**
-   `ccc hosts add air` by hand and prove the hop first; a picker is a
-   convenience over a host list that has never held a real remote.
-4. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
-   its timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
-   nonblocking read before the host list grows.
-5. **Small leftovers:** a sort by model; the Session menu's archive/pin
-   items (the context menu has them); `ccc window show` when another
-   app holds focus — measured 2026-09-02 with a Wine window in front:
-   `NSApp.activate()` is cooperative since macOS 14 and the window
-   stayed behind, while `open -a` brought it front, so the CLI side of
-   `show` should activate through `NSWorkspace`.
-6. **Open measurements, on air:** the long sleep (`~/lidtest.py` left
-   running on air, appending to `~/lidtest.log`; `scp` it to studio
-   when air is up — it decides whether the eviction ever fires,
-   `ccc stats` → `evictions`), and the first real sleep for the
-   remote-pane reattach (`PaneController.reattachIfSleepKilledIt`).
-7. **Housekeeping:** remote branches `hotfix-gridbuilder`,
-   `worktree-icon`, `worktree-v0`, `worktree-v1` are merged history;
-   delete when convenient.
-8. **The colours are off** — raised by the user 2026-09-03 ("feel
-   off / opaque'd", not what iTerm shows), and **already diagnosed, not
-   yet fixed.** Two stacking causes, both found by reading rather than
-   guessing. (a) `ghostty_terminal_set` is called with exactly three
-   options — userdata, write_pty, scrollback — so
-   `GHOSTTY_TERMINAL_OPT_COLOR_{FOREGROUND,BACKGROUND,CURSOR,PALETTE}`
-   are **never set** and every colour is the core's default. The
-   codebase already knows: `MetalRenderer.readableForeground` logs "the
-   palette is unset" and substitutes a fallback so default-coloured text
-   is not invisible, with the comment "the real repair belongs wherever
-   the frame's palette is filled in" — that repair is this item, and the
-   fallback should go with it. (b) `MetalPaneView` uses `.bgra8Unorm`
-   with **no `colorspace` on the layer**, so the pane is unmanaged while
-   iTerm is colour-managed — on a P3 display that alone moves every
-   value. **Do the measurement first:** the same content in iTerm and in
-   ccc, a real `screencapture` of both, and compare the RGB of known
-   cells. That says which cause is doing the damage before either is
-   touched, and it is the house rule (the human's screen is the oracle).
-9. **The attach transition blanks the pane** — raised the same day, and
-   diagnosed: `PaneController.switchTo` does `await session.detach()`,
-   *then* `attach()`, which builds a brand-new host — a blank grid —
-   which the window mounts before the new `claude attach` has drawn.
-   Experiment 3 measured the TUI taking up to 12 s to paint over ssh
-   (`waitUntilDrawn`'s timeout is 8 s), so the blank is not a flicker,
-   it is the wait. The fix is available *because* of experiment 2: the
-   daemon accepts concurrent attaches, so the new session can start
-   **behind** the old one, reuse the existing `waitUntilDrawn`, and the
-   view swap only happens once it has painted — then the old one
-   detaches. No blank frame at all. Open question for the doing: which
-   pane owns the keyboard during the overlap.
-Dropped 2026-09-02: a "forked from" mark on the row; permission mode,
-effort and worktree as sheet fields (the command has them; nobody has
-missed them in the sheet).
-
-## Later
-
-**later** — peek/reply without attach (experiment 4); RC-free approvals via
-the PermissionRequest hook; the phone, if the Mac app earns it.

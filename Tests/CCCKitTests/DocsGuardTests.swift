@@ -42,9 +42,18 @@ import Testing
     /// that a session cannot read in one sitting; split it instead.
     static let over: [String: Int] = [:]
 
+    /// The queue's whole length, in lines. Eleven open items at a paragraph
+    /// each, the frontier, and the entry rule come to 156, so this bites at
+    /// about a quarter's growth — enough to catch the file becoming a
+    /// changelog again, not so tight that it bites on an item's honest
+    /// size. attrition raised its own 180 to 200 for exactly that reason:
+    /// the bound should bite on bloat, and a session golfing lines instead
+    /// of deleting stories is the bound set wrong.
+    static let queueLines = 200
+
     private static let docs = [
         "docs/DESIGN.md", "docs/HARNESS.md", "docs/TERMINAL.md",
-        "docs/CHECKS.md", "docs/MILESTONES.md",
+        "docs/CHECKS.md", "docs/QUEUE.md", "docs/EVIDENCE.md",
     ]
 
     private static var root: URL {
@@ -102,6 +111,24 @@ import Testing
                     """)
             }
         }
+    }
+
+    /// The queue is bounded; `docs/EVIDENCE.md` deliberately is not. An
+    /// unbounded file is safe only when it is addressed — every section
+    /// there carries a `## ` heading and is reached by grep, never read
+    /// whole — and the queue is the opposite: it is read whole, every
+    /// session, so its length is a tax on every session.
+    @Test func theQueueIsBounded() throws {
+        let text = try Self.read("docs/QUEUE.md")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
+        #expect(
+            lines <= Self.queueLines,
+            """
+            docs/QUEUE.md is \(lines) lines, over \(Self.queueLines). A \
+            finished item leaves — its commands and numbers go to \
+            docs/EVIDENCE.md under a heading, its argument to the lore \
+            wiki. Delete, do not golf.
+            """)
     }
 
     /// A finished item leaves; it is not struck through. A struck line is a

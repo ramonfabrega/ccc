@@ -7,7 +7,7 @@ as first-class citizens. Seeded 2026-09-02 out of `~/code/fun/lore`'s well;
 the research trail, fact sheets, and spawn ledger live in the lore wiki
 (`~/code/personal/lore-wiki/projects/ccc.md`). Decision narrative:
 `docs/DESIGN.md`. Harness surface: `docs/HARNESS.md`. Terminal stack:
-`docs/TERMINAL.md`. Queue: `docs/MILESTONES.md`.
+`docs/TERMINAL.md`. Queue: `docs/QUEUE.md`.
 
 ## Thesis
 

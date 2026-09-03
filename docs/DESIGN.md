@@ -245,7 +245,7 @@ insurance (it is twenty lines and a false eviction costs one handshake), and
 the wake notification's immediate re-poll is worth having regardless — it
 turns "up to 2 s of tick plus 2.1 s" into 2.1 s.
 
-**Shipped 2026-09-02** as v2 slice 2 (docs/MILESTONES.md): per-host slots
+**Shipped 2026-09-02** as v2 slice 2 (docs/EVIDENCE.md): per-host slots
 merged at read time, one in-flight tick per host, eviction on a degraded or
 failed hop, the wake re-poll and its `ccc hosts reconnect` twin. And one
 finding that only the default path could produce: the master socket lived

@@ -4,26 +4,32 @@ Claude Code Command — a native macOS client for Claude Code's background
 sessions. The `claude agents` view, replicated, then made ours: roster,
 attached terminal, notifications on every device, ssh hosts as first-class.
 
-Private. See `CLAUDE.md` for the thesis and locked decisions, `docs/` for the
-design narrative, the harness fact sheet, the terminal stack, and the queue.
+Private. `CLAUDE.md` is the thesis and the locked decisions; read it and
+`docs/QUEUE.md` and nothing else by default. The rest is reference, opened
+when the work touches it:
 
 ```
-docs/DESIGN.md      decisions + rejected alternatives
-docs/HARNESS.md     the daemon / attach / hooks surface, triaged
-docs/TERMINAL.md    libghostty-vt + our Metal renderer + our PTY
-docs/MILESTONES.md  the queue, v0 → v5, and the experiments
+docs/QUEUE.md       what is next — read this
+docs/DESIGN.md      decisions + rejected alternatives; read the § an item cites
+docs/HARNESS.md     the daemon / attach / hooks surface — when you touch roster, attach or hooks
+docs/TERMINAL.md    libghostty-vt + our Metal renderer + our PTY — when you touch core, renderer or PTY
+docs/CHECKS.md      the v1 six-check scoreboard; closed, only if reopening the core decision
+docs/EVIDENCE.md    what was measured and the command that measured it — do NOT read it, grep it
 ```
 
-**Status: v1 (2026-09-02) — the SOTA pane.** One binary, two faces: `ccc`
-with no arguments opens the window (roster + attached pane + menubar item);
-every gesture has a command twin over a unix socket. The pane is
-libghostty-vt + our Metal renderer, which took all six checks
+**Status: v0.1.14 (2026-09-03) — through v7 slice 2.** One binary, two
+faces: `ccc` with no arguments opens the window (roster + attached pane +
+menubar item); every gesture has a command twin over a unix socket. The
+pane is libghostty-vt + our Metal renderer, which took all six checks
 (`docs/CHECKS.md`) and became the default core; SwiftTerm stays only as the
 `CCC_CORE=swiftterm` escape hatch.
 
 ```
-swift build && swift test           # 121 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer
+git submodule update --init         # vendor/ghostty, pinned to one commit; scripts/fetch-zig gets the Zig it needs
+swift build && swift test           # 272 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer, docs guard
 scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH (symlink into the bundle)
+                                    # run it UNSANDBOXED: sandboxed it quits the app, half-copies the
+                                    # bundle and leaves it dead
 
 ccc hosts [add <n> --ssh <d>|remove <n>|check]  # the Macs ccc can reach; check runs the real poll on each
                                     # a remote host's roster comes from ITS ccc (--ccc <path>), so the
@@ -41,6 +47,14 @@ ccc replay <bytes> [--bytes N] [--core X]  # render a recording headlessly (the 
 ccc bench <bytes> [--repeat N]      # throughput, snapshot cost, footprint delta, grid digest
 scripts/record-attach <id>          # record a real `claude attach` as the replay fixture
 ```
+
+**Which binary you are measuring.** `ccc` on PATH is a symlink into
+`~/Applications/ccc.app`, which is whatever `scripts/install` last put
+there — the installed release on a normal day, not a build of the branch
+you are on. `ccc version` reads version and build from the bundle the
+executable actually lives in, and says `dev` for a bundle without Sparkle
+keys. Check it before trusting a measurement of the app: `swift build`
+alone changes nothing that `ccc` runs.
 
 Layout: `Sources/CCCKit` (roster, transcript, PTY, terminal seam, renderer,
 control, stats — everything without a window), `Sources/ccc` (CLI, headless
