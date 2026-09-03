@@ -20,13 +20,40 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     public var behind: Int
     /// The main checkout, where the merge runs.
     public var repo: String
+    /// Commits on `branch` that are on no `origin/*` ref (slice 2) —
+    /// what a push would send, and what makes the harness keep the
+    /// worktree on `claude rm`. Nil when the repository has no origin,
+    /// where the word means nothing. Exact from local refs, as of the
+    /// last fetch or push; never a network call.
+    public var unpushed: Int?
+    /// `base` ahead of `origin/<base>` by name: a master that was
+    /// fast-forwarded here and never pushed is one the other Mac cannot
+    /// see, even though every commit is on origin under the branch's
+    /// name. Nil when origin has no such branch.
+    public var baseUnpushed: Int?
 
-    public init(branch: String, base: String, ahead: Int, behind: Int, repo: String) {
+    public init(branch: String, base: String, ahead: Int, behind: Int, repo: String,
+                unpushed: Int? = nil, baseUnpushed: Int? = nil) {
         self.branch = branch
         self.base = base
         self.ahead = ahead
         self.behind = behind
         self.repo = repo
+        self.unpushed = unpushed
+        self.baseUnpushed = baseUnpushed
+    }
+
+    /// Lenient on what slice 2 added: a slice-1 ccc on the far side sends
+    /// no `unpushed`, and that must not cost the row its branch.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        branch = try c.decode(String.self, forKey: .branch)
+        base = try c.decode(String.self, forKey: .base)
+        ahead = try c.decode(Int.self, forKey: .ahead)
+        behind = try c.decode(Int.self, forKey: .behind)
+        repo = try c.decode(String.self, forKey: .repo)
+        unpushed = try c.decodeIfPresent(Int.self, forKey: .unpushed)
+        baseUnpushed = try c.decodeIfPresent(Int.self, forKey: .baseUnpushed)
     }
 
     /// `base` can take `branch` without a merge commit.
@@ -34,13 +61,22 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     /// There is something to bring over at all.
     public var hasWork: Bool { ahead > 0 }
 
-    /// "worktree-v2 ↑3", "worktree-v2 ↑3 ↓2", "worktree-v2 level".
+    /// "worktree-v2 ↑3", "worktree-v2 ↑3 ↓2 ⇡1", "worktree-v2 level". ↑↓
+    /// are against master; ⇡ is what is not on origin (starship's glyph
+    /// for the same thing).
     public var summary: String {
         var out = branch
         if ahead > 0 { out += " ↑\(ahead)" }
         if behind > 0 { out += " ↓\(behind)" }
         if ahead == 0 && behind == 0 { out += " level" }
+        if let unpushed, unpushed > 0 { out += " ⇡\(unpushed)" }
         return out
+    }
+
+    /// "⇡2" after the repository when master itself is unpushed.
+    public var baseMark: String? {
+        guard let baseUnpushed, baseUnpushed > 0 else { return nil }
+        return "⇡\(baseUnpushed)"
     }
 }
 
@@ -62,6 +98,9 @@ public final class WorktreeProbe: @unchecked Sendable {
     private var cache: [String: Entry] = [:]
     /// Per repository: the default branch, found once.
     private var bases: [String: String] = [:]
+    /// Per repository: master's own unpushed count, keyed like `cache`,
+    /// so twenty rows on one repo cost one count.
+    private var baseUnpushed: [String: (key: String, count: Int)] = [:]
     public private(set) var spawns = 0
     public let git: String
 
@@ -120,16 +159,33 @@ public final class WorktreeProbe: @unchecked Sendable {
 
     /// The sha a local branch points at: the loose ref, else `packed-refs`.
     public static func sha(of branch: String, commonDir: String) -> String? {
-        let loose = URL(filePath: commonDir).appending(path: "refs/heads/\(branch)")
+        sha(ofRef: "refs/heads/\(branch)", commonDir: commonDir)
+    }
+
+    /// `origin/<branch>` as of the last fetch or push, or nil when origin
+    /// has no such branch.
+    public static func remoteSHA(of branch: String, commonDir: String) -> String? {
+        sha(ofRef: "refs/remotes/origin/\(branch)", commonDir: commonDir)
+    }
+
+    /// Any `origin/*` ref at all — without one, "unpushed" means nothing.
+    public static func hasOrigin(commonDir: String) -> Bool {
+        let dir = URL(filePath: commonDir).appending(path: "refs/remotes/origin")
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path), !names.isEmpty { return true }
+        guard let packed = try? String(contentsOf: URL(filePath: commonDir).appending(path: "packed-refs"), encoding: .utf8) else { return false }
+        return packed.contains(" refs/remotes/origin/")
+    }
+
+    static func sha(ofRef ref: String, commonDir: String) -> String? {
+        let loose = URL(filePath: commonDir).appending(path: ref)
         if let text = try? String(contentsOf: loose, encoding: .utf8) {
             let sha = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if sha.count == 40 { return sha }
         }
         guard let packed = try? String(contentsOf: URL(filePath: commonDir).appending(path: "packed-refs"), encoding: .utf8) else { return nil }
-        let want = "refs/heads/\(branch)"
         for line in packed.split(separator: "\n") where !line.hasPrefix("#") && !line.hasPrefix("^") {
             let parts = line.split(separator: " ", maxSplits: 1)
-            if parts.count == 2, parts[1] == want { return String(parts[0]) }
+            if parts.count == 2, parts[1] == ref { return String(parts[0]) }
         }
         return nil
     }
@@ -164,7 +220,12 @@ public final class WorktreeProbe: @unchecked Sendable {
         guard branch != base else { return nil }   // a worktree on master itself has nothing to land
         guard let branchSHA = Self.sha(of: branch, commonDir: layout.commonDir),
               let baseSHA = Self.sha(of: base, commonDir: layout.commonDir) else { return nil }
-        let key = "\(branchSHA)/\(baseSHA)"
+        // A push moves `origin/<branch>`; that sha is in the key so the
+        // unpushed count follows it without a process in between.
+        let origin = Self.hasOrigin(commonDir: layout.commonDir)
+        let originBranch = origin ? Self.remoteSHA(of: branch, commonDir: layout.commonDir) ?? "-" : "none"
+        let originBase = origin ? Self.remoteSHA(of: base, commonDir: layout.commonDir) ?? "-" : "none"
+        let key = "\(branchSHA)/\(baseSHA)/\(originBranch)/\(originBase)"
         lock.lock()
         if let entry = cache[cwd], entry.key == key {
             lock.unlock()
@@ -172,17 +233,54 @@ public final class WorktreeProbe: @unchecked Sendable {
         }
         lock.unlock()
         guard let (ahead, behind) = count(base: base, branch: branch, in: layout.repo) else { return nil }
-        let info = WorktreeInfo(branch: branch, base: base, ahead: ahead, behind: behind, repo: layout.repo)
+        var info = WorktreeInfo(branch: branch, base: base, ahead: ahead, behind: behind, repo: layout.repo)
+        if origin {
+            info.unpushed = unpushedCount(of: branch, in: layout.repo)
+            let baseKey = "\(baseSHA)/\(originBase)"
+            lock.lock()
+            let known = baseUnpushed[layout.repo]
+            lock.unlock()
+            if let known, known.key == baseKey {
+                info.baseUnpushed = known.count
+            } else if let n = behindOriginCount(of: base, in: layout.repo) {
+                info.baseUnpushed = n
+                lock.lock()
+                baseUnpushed[layout.repo] = (baseKey, n)
+                lock.unlock()
+            }
+        }
         lock.lock()
         cache[cwd] = Entry(key: key, info: info)
         lock.unlock()
         return info
     }
 
+    /// Master against `origin/master` by name: after a fast-forward to a
+    /// pushed branch every commit *is* on origin, under the branch's
+    /// name, and the question is still whether the other Mac's master
+    /// has them. Nil when origin has no such branch.
+    private func behindOriginCount(of branch: String, in repo: String) -> Int? {
+        lock.lock(); spawns += 1; lock.unlock()
+        guard let out = try? Git.run(git, ["-C", repo, "rev-list", "--count",
+                                          "refs/remotes/origin/\(branch)..refs/heads/\(branch)"]).stdout else { return nil }
+        return Int(out.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// `git rev-list --count <branch> --not --remotes=origin`: commits on
+    /// the branch that no origin ref reaches. One definition for a branch
+    /// with an upstream and one that was never pushed.
+    private func unpushedCount(of branch: String, in repo: String) -> Int? {
+        lock.lock(); spawns += 1; lock.unlock()
+        guard let out = try? Git.run(git, ["-C", repo, "rev-list", "--count", "refs/heads/\(branch)",
+                                          "--not", "--remotes=origin"]).stdout else { return nil }
+        return Int(out.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// Always a fresh count — what the merge verb reads before acting.
     public func fresh(forCwd cwd: String) -> WorktreeInfo? {
         lock.lock()
         cache[cwd] = nil
+        baseUnpushed = [:]
         lock.unlock()
         return info(forCwd: cwd)
     }

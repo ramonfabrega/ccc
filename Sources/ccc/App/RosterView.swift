@@ -186,16 +186,30 @@ struct RosterView: View {
         Button("Delete…") { delete(row.ref) }.disabled(!row.session.isAttachable)
     }
 
-    /// "3 ahead", "3 ahead, 2 behind (master moved)", "level with master".
-    private func standing(_ wt: WorktreeInfo) -> String {
-        if wt.ahead == 0 && wt.behind == 0 { return "level with \(wt.base)" }
-        var parts: [String] = []
-        if wt.ahead > 0 { parts.append("\(wt.ahead) ahead") }
-        if wt.behind > 0 { parts.append("\(wt.behind) behind (\(wt.base) moved)") }
-        if wt.ahead == 0 { parts.append("nothing to merge") }
-        return parts.joined(separator: ", ")
-    }
+    private func standing(_ wt: WorktreeInfo) -> String { wt.standing }
+}
 
+extension WorktreeInfo {
+    /// "3 ahead, 1 unpushed", "3 ahead, 2 behind (master moved)", "level
+    /// with master; master has 2 unpushed" — the submenu's last line and
+    /// the row's tooltip.
+    var standing: String {
+        var parts: [String] = []
+        if ahead == 0 && behind == 0 {
+            parts.append("level with \(base)")
+        } else {
+            if ahead > 0 { parts.append("\(ahead) ahead") }
+            if behind > 0 { parts.append("\(behind) behind (\(base) moved)") }
+            if ahead == 0 { parts.append("nothing to merge") }
+        }
+        if let up = unpushed, up > 0 { parts.append("\(up) unpushed") }
+        var text = parts.joined(separator: ", ")
+        if let up = baseUnpushed, up > 0 { text += "; \(base) has \(up) unpushed" }
+        return text
+    }
+}
+
+extension RosterView {
     /// One Mac looks exactly like v1: the host is only worth a column once
     /// there is more than one answer to "which".
     private var showsHost: Bool {
@@ -363,12 +377,22 @@ struct RosterRow: View {
                             Text("⎇ \(wt.branch)").foregroundStyle(.secondary)
                             if wt.ahead > 0 { Text("↑\(wt.ahead)").foregroundStyle(.primary) }
                             if wt.behind > 0 { Text("↓\(wt.behind)").foregroundStyle(.orange) }
+                            // ⇡ what origin does not have (slice 2): the
+                            // harness keeps such a worktree on delete.
+                            if let up = wt.unpushed, up > 0 { Text("⇡\(up)").foregroundStyle(.secondary) }
                         }
                         .font(.caption.monospaced())
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .help(wt.standing)
                     }
-                    Text(shortCwd).font(.caption.monospaced()).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+                    HStack(spacing: 3) {
+                        Text(shortCwd).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+                        // Master itself unpushed: the other Mac cannot see
+                        // what was just fast-forwarded here.
+                        if let mark = row.worktree?.baseMark { Text(mark).foregroundStyle(.orange).help(row.worktree!.standing) }
+                    }
+                    .font(.caption.monospaced())
                 }
             }
         }

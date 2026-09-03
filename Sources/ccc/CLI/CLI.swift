@@ -980,7 +980,7 @@ enum CLI {
             let model = row.model.map { shortModel($0) } ?? "-"
             // The worktree (v6): the repository, then the branch and its
             // standing — the same reading as the window's row.
-            let cwd = hosts.shortCwd(row.worktree?.repo ?? s.cwd, host: row.host)
+            let cwd = hosts.shortCwd(row.worktree?.repo ?? s.cwd, host: row.host) + (row.worktree?.baseMark.map { " \($0)" } ?? "")
             let worktree = row.worktree.map { " ⎇ \($0.summary)" } ?? ""
             print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
         }

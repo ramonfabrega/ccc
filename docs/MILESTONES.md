@@ -490,6 +490,26 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   the standing against origin — the branch against its upstream, master
   against `origin/master` — from the last-fetched remote refs, so it
   costs no network and says "as of the last fetch".
+  **Slice 2 — done 2026-09-02, late: unpushed, and nothing more.** The
+  user's "git status-esque" ask, narrowed the same night to the one
+  reading that drives an act: `⇡N` on the row when the branch holds
+  commits no `origin/*` ref reaches (`git rev-list --count <branch>
+  --not --remotes=origin` — one definition for a branch with an upstream
+  and one never pushed; the harness keeps such a worktree on `claude
+  rm`, and the Delete alert now says so before the harness does), and
+  `⇡N` in orange after the repository when master is ahead of
+  `origin/master` *by name* — found by the test: after a fast-forward to
+  a pushed branch every commit is on origin under the branch's name, and
+  "not on any origin ref" read zero while the other Mac's master still
+  lacked them. Nil, and no mark, when the repository has no origin. Exact
+  from local refs as of the last fetch or push; `origin/<branch>` and
+  `origin/master` are in the cache key, so a push moves the mark with no
+  process between. The submenu's standing line and the row's tooltip
+  read "3 ahead, 1 unpushed; master has 2 unpushed". A slice-1 ccc on
+  the far side sends no such keys and its rows keep their branch
+  (lenient decode, pinned). Not in scope, and not coming: the other
+  direction (meaningless without a fetch), a fetch loop, a push verb —
+  git's job in a terminal. Three tests against a bare origin. 229 tests.
   **The banner goes — done 2026-09-02, late.** Noticed by the user on
   the first Fast-forward from the row: the banner sat in the window's
   vertical stack, so every sentence resized the pane, which resized the
@@ -523,34 +543,25 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   top until the header became conditional. 226 tests.
 - **next** (what plan.md carried when it was retired 2026-09-02, late;
   the queue is this file from here on):
-  1. **v6 slice 2 — unpushed, and nothing more.** Beside `↑3 ↓2` against
-     master, one mark, `↑2 unpushed`, when the branch is ahead of its
-     upstream (`refs/remotes/origin/<branch>`), and the same on master
-     against `origin/master` when it applies. Exact from local refs, no
-     network. It drives two real acts: the harness refuses `claude rm`
-     on unpushed work, and a fast-forwarded master that was never pushed
-     is one air cannot see. Not in scope: the other direction
-     (meaningless without a fetch), a fetch loop, a push verb — git's
-     job in a terminal, not a roster's.
-  2. **Host picker** off `tailscale status --json` (MagicDNS names are
+  1. **Host picker** off `tailscale status --json` (MagicDNS names are
      the ssh destinations; Bonjour never crosses the tailnet). With it,
      the §4c question: whether a secondary viewer renders the shared grid
      as-is instead of resizing it (last-resize-wins today). Needs air.
-  3. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
+  2. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
      its timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
      nonblocking read before the host list grows.
-  4. **Small leftovers:** a sort by model; the Session menu's archive/pin
+  3. **Small leftovers:** a sort by model; the Session menu's archive/pin
      items (the context menu has them); `ccc window show` when another
      app holds focus — measured 2026-09-02 with a Wine window in front:
      `NSApp.activate()` is cooperative since macOS 14 and the window
      stayed behind, while `open -a` brought it front, so the CLI side of
      `show` should activate through `NSWorkspace`.
-  5. **Open measurements, on air:** the long sleep (`~/lidtest.py` left
+  4. **Open measurements, on air:** the long sleep (`~/lidtest.py` left
      running on air, appending to `~/lidtest.log`; `scp` it to studio
      when air is up — it decides whether the eviction ever fires,
      `ccc stats` → `evictions`), and the first real sleep for the
      remote-pane reattach (`PaneController.reattachIfSleepKilledIt`).
-  6. **Housekeeping:** remote branches `hotfix-gridbuilder`,
+  5. **Housekeeping:** remote branches `hotfix-gridbuilder`,
      `worktree-icon`, `worktree-v0`, `worktree-v1` are merged history;
      delete when convenient.
   Dropped 2026-09-02: a "forked from" mark on the row; permission mode,

@@ -252,3 +252,79 @@ import Testing
         #expect(ClaudeCLI(executable: "/x/claude").mergeArgv(.ffOnly, id: "a1b2") == nil)
     }
 }
+
+/// Slice 2: what origin does not have. A bare repo stands in for GitHub;
+/// pushes and local commits move `⇡` the way a hand would see it.
+@Suite(.serialized) struct UnpushedTests {
+    private func withOrigin(_ body: (URL, URL, (String, URL) throws -> String) throws -> Void) throws {
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-up-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let origin = dir.appending(path: "origin.git"), root = dir.appending(path: "repo")
+        func git(_ line: String, _ at: URL) throws -> String {
+            try Git.run(WorktreeProbe.defaultGit, ["-C", at.path] + line.split(separator: " ").map(String.init)).stdout
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "--bare", origin.path])
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "-b", "master", root.path])
+        _ = try git("config user.email t@example.com", root)
+        _ = try git("config user.name t", root)
+        try "one\n".write(to: root.appending(path: "a.txt"), atomically: true, encoding: .utf8)
+        _ = try git("add a.txt", root)
+        _ = try git("commit -q --no-verify -m first", root)
+        _ = try git("remote add origin \(origin.path)", root)
+        _ = try git("push -q -u origin master", root)
+        try FileManager.default.createDirectory(at: root.appending(path: ".claude"), withIntermediateDirectories: true)
+        let wt = root.appending(path: ".claude/worktrees/t")
+        _ = try git("worktree add -q -b worktree-t \(wt.path) master", root)
+        try body(root, wt, git)
+    }
+
+    private func commit(_ name: String, in dir: URL, _ git: (String, URL) throws -> String) throws {
+        try "x\n".write(to: dir.appending(path: name), atomically: true, encoding: .utf8)
+        _ = try git("add \(name)", dir)
+        _ = try git("commit -q --no-verify -m \(name)", dir)
+    }
+
+    @Test func noOriginMeansNoReading() throws {
+        // The slice-1 suite's repos have no remote: unpushed stays nil there.
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-noorigin-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "-b", "master", dir.path])
+        #expect(!WorktreeProbe.hasOrigin(commonDir: dir.appending(path: ".git").path))
+    }
+
+    @Test func unpushedFollowsCommitsAndPushes() throws {
+        try withOrigin { root, wt, git in
+            let probe = WorktreeProbe()
+            // A branch that was never pushed, level with a pushed master: nothing unpushed.
+            let fresh = try #require(probe.info(forCwd: wt.path))
+            #expect(fresh.unpushed == 0 && fresh.baseUnpushed == 0)
+            #expect(fresh.summary == "worktree-t level" && fresh.baseMark == nil)
+            try commit("b.txt", in: wt, git)
+            try commit("c.txt", in: wt, git)
+            let two = try #require(probe.info(forCwd: wt.path))
+            #expect(two.ahead == 2 && two.unpushed == 2)
+            #expect(two.summary == "worktree-t ↑2 ⇡2")
+            _ = try git("push -q -u origin worktree-t", wt)
+            let pushed = try #require(probe.info(forCwd: wt.path))
+            #expect(pushed.ahead == 2 && pushed.unpushed == 0, "a push moves origin/<branch>, which is in the cache key")
+            #expect(pushed.summary == "worktree-t ↑2")
+            // Fast-forward master here: master is now what the other Mac cannot see.
+            let info = try #require(probe.fresh(forCwd: wt.path))
+            #expect(GitMerge.perform(.ffOnly, on: info).merged)
+            let landed = try #require(probe.info(forCwd: wt.path))
+            #expect(landed.ahead == 0 && landed.unpushed == 0 && landed.baseUnpushed == 2)
+            #expect(landed.baseMark == "⇡2" && landed.summary == "worktree-t level")
+            _ = try git("push -q origin master", root)
+            #expect(probe.info(forCwd: wt.path)?.baseUnpushed == 0)
+        }
+    }
+
+    @Test func aSliceOneRowStillDecodes() throws {
+        let data = Data(#"{"branch":"worktree-v2","base":"master","ahead":3,"behind":0,"repo":"/x"}"#.utf8)
+        let info = try JSONDecoder().decode(WorktreeInfo.self, from: data)
+        #expect(info.ahead == 3 && info.unpushed == nil && info.baseUnpushed == nil)
+    }
+}

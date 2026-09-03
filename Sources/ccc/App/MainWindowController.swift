@@ -332,6 +332,9 @@ final class MainWindowController: NSWindowController {
         alert.informativeText = "Runs `claude rm \(ref.id)`" + (ref.isLocal ? "" : " on \(ref.host)")
             + ": the session and its worktree go, unless the worktree has uncommitted or unpushed work, in which case the harness keeps both."
             + (cwd.isEmpty ? "" : "\n\n\(cwd)")
+            // What the row already knows (slice 2): say it before the
+            // harness does, so "kept" is never a surprise.
+            + ((row?.worktree?.unpushed ?? 0) > 0 ? "\n\(row!.worktree!.branch) has \(row!.worktree!.unpushed!) unpushed commit\(row!.worktree!.unpushed! == 1 ? "" : "s"); the harness will keep it." : "")
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
