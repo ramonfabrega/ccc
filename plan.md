@@ -41,9 +41,18 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
 
 1. **UI pass** — the three items above, together, when the pane is the
    subject again.
-2. **Worktree awareness**, display only: a row that lives in a worktree
-   says so (`state.json` carries `worktreePath`; the harness isolates
-   before the first edit on its own, so there is nothing to dispatch).
+2. **Worktree awareness, with one verb** (decided 2026-09-02, late, from
+   the nightly `git merge --ff-only worktree-v2` on master): a row that
+   lives in a worktree says so and shows its branch and how far ahead of
+   the repo's default branch it is (`state.json` carries `worktreePath`;
+   the harness isolates before the first edit on its own, so nothing to
+   dispatch). When the default branch can fast-forward to it cleanly,
+   the row's context menu offers **Fast-forward master**; `ccc ff <ref>`
+   is the twin. Pure fast-forward only — it refuses a merge, a dirty
+   main checkout, or a diverged master, so it can never lose work. The
+   click is the user's: the harness's guard keeps an agent from reaching
+   across worktrees for a reason, and the command exists for parity, not
+   for an agent to press unasked.
 3. **Host picker** off `tailscale status --json` (MagicDNS names are the
    ssh destinations; Bonjour never crosses the tailnet). With it, the §4c
    question: whether a secondary viewer renders the shared grid as-is
