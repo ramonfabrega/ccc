@@ -1,12 +1,10 @@
 # plan.md — ephemeral handoff
 
 **Status 2026-09-02, late.** Everything landed is in `docs/MILESTONES.md`
-(v0 through v5 slice 3, plus the UI pass). **v0.1.11 (build 90) is cut
-and on the feed** (through ota, live length 4627875; GitHub release
-v0.1.11); air takes it through Sparkle when it wakes. **Studio runs the
-dev bundle (`ccc·dev`, the UI pass) — `scripts/install --dist` puts the
-cut back**, or cut v0.1.12 once a hand has clicked the roster. Master
-wants `git merge --ff-only worktree-v2`. This file carries only what is
+(v0 through v5 slice 3, plus the UI pass). **v0.1.12 is the cut** (the
+UI pass; on the feed through ota, GitHub release v0.1.12); studio runs
+it (`--dist`), air takes it through Sparkle when it wakes. Master wants
+`git merge --ff-only worktree-v2`. This file carries only what is
 *not* settled: the queue, trimmed to what has a measured reason, and
 what is owed.
 
@@ -29,14 +27,9 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
 
 ## Owed a hand (studio)
 
-- **The UI pass, by a hand.** Landed and proved by script
-  (docs/MILESTONES.md, v5): the banner and the pane below the title bar,
-  a gutter around the grid, and a click on a row that gives the list
-  keyboard focus — ⏎, `a`, `p`, `n` after a click all went nowhere on
-  v0.1.11, which is what "iffy to click" was. New Session Here… ran end
-  to end (⇧⌘N → sheet on the attached row's folder → ⌘↩ → the pane on
-  the draft). A script cannot feel a click; the dev bundle is on studio
-  for the hand. Then cut v0.1.12.
+Nothing. The UI pass (docs/MILESTONES.md, v5) was clicked by a hand
+2026-09-02, late — rows, keys after a click, the pane's edges, ⇧⌘N
+end to end — and read "all working as expected".
 
 ## Queue
 
