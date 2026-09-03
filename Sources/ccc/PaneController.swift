@@ -140,6 +140,17 @@ final class PaneController {
         onSessionStarted?(session)
     }
 
+    /// Spawn (v5): `claude --bg` on `hostName` with the request's words —
+    /// what `ccc spawn --host <name>` runs — then a poll so the roster
+    /// carries the row before the sheet closes. The one place the sheet's
+    /// fields become a command.
+    func spawn(_ request: SpawnRequest, on hostName: String) async throws -> SpawnResult {
+        let cli = try cli(for: SessionRef(host: hostName, id: "-"))
+        let result = try await cli.spawn(request)
+        await poller.tick()
+        return result
+    }
+
     /// Attach to what the last run was attached to, if it is still in the
     /// roster and attachable. Called by the window after its first poll.
     func reattachAfterRelaunch() {

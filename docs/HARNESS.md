@@ -92,14 +92,29 @@ This is the mechanism behind "text typed on one Mac survived on the other".
 Whether the daemon exposes it outside the TUI is unknown (experiment 4).
 
 **Dispatch.** `claude --bg "<prompt>"` with `--name --model --agent
---permission-mode --effort --exec`. cwd = the invocation directory (no
-`--cwd`; `claude agents --cwd` only filters). Worktree isolation is automatic
-before the first edit (`worktree.bgIsolation: "none"` disables). `claude
---resume <id|name>`; `/fork [prompt]` inside a session creates a new
-background session — **with no prompt it sits idle awaiting its first
-instruction: the "not started" draft.** `claude agents --model/--effort/
---agent/...` set fleet-wide dispatch defaults for the TUI, not per-call
-overrides.
+--permission-mode --effort --exec --worktree [name]`. cwd = the invocation
+directory (no `--cwd`; `claude agents --cwd` only filters). Worktree
+isolation is automatic before the first edit (`worktree.bgIsolation:
+"none"` disables). `claude --resume <id|name>`; `/fork [prompt]` inside a
+session creates a new background session. **Measured 2026-09-02 (2.1.259,
+`scripts/spawn-probe`), the facts v5 is built on:**
+- `claude --bg` **with no prompt is the draft from the command line** — no
+  `/fork` needed. The answer says so: `backgrounded · <id> · <name>` then a
+  dim `(idle — send a prompt to start)`; with a prompt the parenthesis is
+  absent. The id is wrapped in `\e[36m…\e[39m`, the name is only there when
+  `--name` was given, and four hint lines follow. Exit 0 in 0.6 s, before
+  the session has done anything.
+- **A draft is `state: blocked, status: idle` with no `waitingFor`** from its
+  first roster row, and stays there — 11 min observed with nothing else
+  touching it. So the poll's detector reports a fresh draft as `⏸ blocked`
+  and the notifier banners it (v3 slice 1's "blocked without `waitingFor`"
+  case, seen again). A prompted spawn is `working · busy` inside a second
+  and `done · idle` when finished.
+- The row is in `claude agents --json --all` by the time `--bg` has exited
+  (the probe never had to wait), so `claude attach <id>` straight after is
+  safe — that is what "Attach when started" does.
+`claude agents --model/--effort/--agent/...` set fleet-wide dispatch
+defaults for the TUI, not per-call overrides.
 
 **Hooks.** `Notification` (matcher = `notification_type`): `permission_prompt`
 (~6 s idle), `idle_prompt` (~60 s), `elicitation_*`, `auth_success`,
@@ -161,7 +176,16 @@ is the sanctioned inbound surface (not investigated).
    another Claude Code session inherits `CLAUDE_CODE_CHILD_SESSION` (and
    friends), runs with "transcript saving is off", and **never registers
    with the daemon**. ccc's own spawns (v5) must strip `CLAUDE*` from the
-   child environment; the experiment script does.
+   child environment; the experiment script does. **Amended 2026-09-02
+   (2.1.259):** a `claude --bg` run from inside a Claude Code session with
+   every `CLAUDE*` marker inherited *did* register (it printed
+   `backgrounded · 6b7e3fe6` and the roster listed it) — `--bg` registers
+   regardless. What the markers still change is the child's own behaviour
+   ("transcript saving is off"), which is the model column gone and lore
+   blind to it, so `ClaudeCLI.spawn` strips them either way. That
+   inherited-env draft also drifted to `done` within a couple of minutes,
+   which a clean draft never did (11 min observed at `blocked · idle`);
+   one observation each, noted rather than explained.
 2. **[state-changing]** `claude attach <same-id>` from studio and from air
    simultaneously; record the refusal text and what the first client sees.
    **Answered 2026-09-02 (2.1.258), `scripts/attach-probe` against an idle

@@ -181,6 +181,10 @@ enum App {
         main.addItem(appItem)
 
         let session = NSMenu(title: "Session")
+        // One window, so ⌘N is a new *session* (v5): the sheet, whose
+        // Start is `ccc spawn`.
+        session.addItem(withTitle: "New Session…", action: #selector(MainWindowController.newSessionAction(_:)), keyEquivalent: "n")
+        session.addItem(.separator())
         session.addItem(withTitle: "Detach", action: #selector(MainWindowController.detachAction(_:)), keyEquivalent: "d")
         session.addItem(withTitle: "Refresh Roster", action: #selector(MainWindowController.refreshAction(_:)), keyEquivalent: "r")
         let sessionItem = NSMenuItem()

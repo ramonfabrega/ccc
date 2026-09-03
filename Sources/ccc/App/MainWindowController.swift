@@ -91,6 +91,8 @@ final class MainWindowController: NSWindowController {
             self?.mark(ref, change)
         }, delete: { [weak self] ref in
             self?.confirmDelete(ref)
+        }, newSession: { [weak self] in
+            self?.newSessionAction(nil)
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -227,6 +229,69 @@ final class MainWindowController: NSWindowController {
 
     @objc func detachAction(_ sender: Any?) {
         Task { await controller.detach() }
+    }
+
+    // MARK: new session (v5)
+
+    private var newSessionSheet: NSWindow?
+
+    /// ⌘N, the Session menu, the roster header's +: one sheet, whose
+    /// Start runs what `ccc spawn` runs and then attaches (unless told
+    /// not to). The sheet stays up over a harness error with the fields
+    /// intact.
+    @objc func newSessionAction(_ sender: Any?) {
+        guard let window, newSessionSheet == nil else { return }
+        let model = NewSessionModel(
+            hosts: controller.hosts.hosts,
+            recentFolders: { [weak self] host in self?.recentFolders(on: host) ?? [] },
+            shortCwd: { [weak self] cwd, host in self?.controller.hosts.shortCwd(cwd, host: host) ?? cwd },
+            commandLine: { [weak self] host, request in
+                guard let self, let cli = try? self.controller.cli(for: SessionRef(host: host, id: "-")) else { return "" }
+                return cli.spawnCommandLine(request)
+            })
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: NewSessionView(
+            model: model,
+            submit: { [weak self] in self?.submitNewSession(model) },
+            cancel: { [weak self] in self?.dismissNewSession() })))
+        newSessionSheet = sheet
+        window.beginSheet(sheet)
+    }
+
+    private func dismissNewSession() {
+        guard let window, let sheet = newSessionSheet else { return }
+        window.endSheet(sheet)
+        newSessionSheet = nil
+    }
+
+    private func submitNewSession(_ model: NewSessionModel) {
+        guard !model.busy else { return }
+        model.busy = true
+        model.error = nil
+        Task { @MainActor in
+            defer { model.busy = false }
+            do {
+                let result = try await controller.spawn(model.request, on: model.host)
+                model.remember()
+                dismissNewSession()
+                showNotice(result.description)
+                if model.attachAfter { attach(result.ref) }
+            } catch {
+                model.error = "\(error)"
+            }
+        }
+    }
+
+    /// Distinct folders the roster knows on a host, most recent first,
+    /// a worktree folded to its repository. Where new work usually starts.
+    private func recentFolders(on host: String) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for row in controller.poller.state.sorted where row.host == host {
+            let root = RepoPath.root(of: row.session.cwd)
+            if seen.insert(root).inserted { out.append(root) }
+            if out.count == 8 { break }
+        }
+        return out
     }
 
     /// Archive / pin (v4): the controller does what `ccc archive <ref>`

@@ -8,6 +8,7 @@ import Foundation
 ///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
+///   ccc spawn [--host <name>] [--cwd <dir>] [<prompt>… | -]   `claude --bg` on a host (v5) — the New Session sheet's twin
 ///
 /// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
 ///   ccc snapshot [--json]             the pane's grid as text
@@ -76,6 +77,8 @@ enum CLI {
                     return 2
                 }
                 return try await rm(ref: ref, json: json)
+            case "spawn", "new":
+                return try await spawn(rest, json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -225,6 +228,94 @@ enum CLI {
             print(result.said)
         }
         return result.removed ? 0 : 1
+    }
+
+    /// `ccc spawn` (v5): `claude --bg` on a host, the New Session sheet's
+    /// twin. Needs no running app; `--attach` then asks the app to attach,
+    /// the way `ccc attach` does. The prompt is every word that is not a
+    /// flag, joined by spaces — or stdin when that one word is `-`, which
+    /// is how an agent hands over a prompt with its newlines intact. No
+    /// prompt is the draft: the session registers and waits for one.
+    static func spawn(_ args: [String], json: Bool) async throws -> Int32 {
+        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort"]
+        var spec = SpawnRequest()
+        var hostName = Host.localName
+        var attach = false
+        var words: [String] = []
+        var i = 0
+        while i < args.count {
+            let arg = args[i]
+            if valued.contains(arg) {
+                guard i + 1 < args.count else {
+                    stderr("ccc: \(arg) needs a value")
+                    return 2
+                }
+                let value = args[i + 1]
+                switch arg {
+                case "--host": hostName = value
+                case "--cwd": spec.cwd = value
+                case "--name": spec.name = value
+                case "--model": spec.model = value
+                case "--agent": spec.agent = value
+                case "--permission-mode": spec.permissionMode = value
+                default: spec.effort = value
+                }
+                i += 2
+                continue
+            }
+            switch arg {
+            case "--attach": attach = true
+            // `--worktree` is bare (the harness names it) or `--worktree=<name>`:
+            // never `--worktree <name>`, which would eat the prompt's first word.
+            case "--worktree": spec.worktree = ""
+            case _ where arg.hasPrefix("--worktree="): spec.worktree = String(arg.dropFirst("--worktree=".count))
+            case _ where arg.hasPrefix("--") && arg.count > 2:
+                stderr("ccc: unknown flag '\(arg)' for spawn")
+                return 2
+            default: words.append(arg)
+            }
+            i += 1
+        }
+        if words == ["-"] {
+            spec.prompt = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+        } else if !words.isEmpty {
+            spec.prompt = words.joined(separator: " ")
+        }
+        // A cwd given as `~/…` or relative is this shell's to resolve for
+        // a local spawn; a remote one keeps `~` for the far side's shell.
+        if hostName == Host.localName, let cwd = spec.cwd {
+            spec.cwd = (cwd as NSString).expandingTildeInPath
+            if !spec.cwd!.hasPrefix("/") {
+                spec.cwd = FileManager.default.currentDirectoryPath + "/" + spec.cwd!
+            }
+        } else if hostName == Host.localName {
+            spec.cwd = FileManager.default.currentDirectoryPath
+        }
+
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: hostName) else {
+            stderr("ccc: unknown host '\(hostName)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(hostName)'")")
+            return 1
+        }
+        let result: SpawnResult
+        do {
+            result = try await cli.spawn(spec)
+        } catch {
+            stderr("ccc: \(error)")
+            return 1
+        }
+        if json {
+            printJSON(result)
+        } else {
+            print(result.description)
+        }
+        guard attach else { return 0 }
+        return try request(.attach(id: result.ref), json: json)
     }
 
     /// The notification center's twin (v3): the same poll, the same
@@ -917,6 +1008,11 @@ enum CLI {
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach
+               ccc spawn [--host <name>] [--cwd <dir>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
+                         [--effort <e>] [--worktree[=<name>]] [--attach] [--json] [<prompt>... | -]
+                                                  `claude --bg` on a host (cwd: here, or the far side's home); the
+                                                  prompt is the remaining words, or stdin for `-`; none makes a
+                                                  draft that waits for one; --attach opens it in the app
                ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
                ccc resize <cols> <rows>
                ccc stats [--json]

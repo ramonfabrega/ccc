@@ -294,7 +294,52 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   in-process. The menus themselves have not been clicked by a hand.
   Open: the main menu's Session items for archive/pin (the context menu
   has them).
-- **v5 — spawn.** `claude --bg` with cwd, model, prompt, agent; drafts via
-  `/fork` with no prompt; worktree awareness.
+- **v5 — spawn.** `claude --bg` with cwd, model, prompt, agent; drafts;
+  worktree awareness.
+  **Slice 1 — done 2026-09-02: `ccc spawn` and the New Session sheet.**
+  One definition in CCCKit (`SpawnRequest` → `ClaudeCLI.spawnArgv` /
+  `spawn`), two faces. The harness has no `--cwd`, so the cwd is where
+  the command runs: the child's working directory locally, and `cd <dir>
+  && claude --bg …` behind the same ssh prefix remotely, with every word
+  that could split or glob single-quoted for the far side's shell and a
+  bare `~/…` left bare so that shell expands it (`ClaudeCLI.remoteWord`).
+  The child's environment loses `CLAUDE*` (docs/HARNESS.md experiment 1,
+  amended: `--bg` registers with them, but keeps no transcript). The
+  answer is parsed off the harness's one line (`parseSpawnAnswer`,
+  pinned to the two recorded answers, ANSI included); `SpawnResult` says
+  `spawned <ref>` or `drafted <ref> (idle — attach and send a prompt)`.
+  `ccc spawn [--host] [--cwd] [--name] [--model] [--agent]
+  [--permission-mode] [--effort] [--worktree[=name]] [--attach] [<prompt>…
+  | -]`: the prompt is the remaining words, or stdin for `-` (an agent's
+  way to keep newlines), none is the draft; `--worktree` is bare or
+  `=name`, never `--worktree name`, which would eat the prompt's first
+  word; `--attach` then asks the app, like `ccc attach`. The sheet
+  (⌘N, Session → New Session…, the roster header's +) has host, folder
+  (with the roster's recent folders on that host, worktrees folded to
+  their repo, and Choose… locally), name, model with alias shortcuts,
+  agent, prompt, and the exact command line it will run, updated as you
+  type; the button reads Create Draft or Start by the prompt's emptiness;
+  ⌘↩ submits, Esc cancels, a harness error stays in the sheet with the
+  fields intact; "Attach when started" attaches on success. Permission
+  mode, effort and worktree are the command's alone for now.
+  `scripts/spawn-probe` is the experiment tool. **Proved live** on studio:
+  `ccc spawn --cwd ~/cc-test --name ccc-v5-cli <prompt>` → `spawned
+  8ab526c3`, `working · busy` then `done`; the draft as `--json` with
+  `draft: true`; `--bogus` exit 2, `--cwd /nope` exit 1; through `loop`
+  (localhost as a host, re-added for the proof) `spawned loop:3548ad7e`
+  with `cd ~/cc-test` expanded on the far side and a prompt carrying `;`
+  and `'` intact, and a no-cwd remote draft landing in the far side's
+  home; in the window, the dev bundle (build 82) opened the sheet on a
+  real ⌘N, a name and prompt typed by System Events flipped the button to
+  Start and the preview to `--name ccc-v5-sheet 'Reply with…'`, ⌘↩ spawned
+  `a48c3c5d`, the pane attached and showed the prompt and `pong`. Found by
+  doing it: an empty submit makes a draft in the default folder at once
+  (correct, and fast enough to do by accident — ⌘↩ with nothing typed),
+  and **a fresh draft banners as "is waiting"** through the poll, since it
+  is `blocked · idle` from its first row (docs/HARNESS.md). Left as is
+  until it annoys: it *is* waiting, and the sheet's attach puts it on
+  screen anyway. 199 tests. Next: `/fork`-style drafts *from* a session,
+  worktree awareness in the sheet, and whether the harness's "not started"
+  should read as `draft` in the roster rather than `blocked · idle`.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.

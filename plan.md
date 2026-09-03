@@ -20,7 +20,26 @@ proof and closes the old lane for good. Left on air: answer the
 notification permission banner once, `ccc stats` on air says
 `authorized` when done.
 
-## Current: v4, the roster ours
+## Current: v5, spawn
+
+Slice 1 landed 2026-09-02 (docs/MILESTONES.md v5): `ccc spawn` and the
+New Session sheet (⌘N, Session menu, the roster header's +), one
+definition (`SpawnRequest`, `ClaudeCLI.spawn`) behind both; drafts are
+`claude --bg` with no prompt (docs/HARNESS.md, measured — no `/fork`
+needed). 199 tests. Proved on studio's CLI face, through `loop`
+(localhost as a host, added for the proof and removed after), and in
+the window by a real ⌘N, typed fields and ⌘↩ on the dev bundle (build
+82). **Studio is on the dev bundle now** — `scripts/install --dist` puts
+v0.1.9 back, or the next cut carries spawn to every Mac. Owed by a hand:
+the Choose… panel and the recent-folders menu have not been clicked; the
+host picker was seen with two hosts but not switched. Known and left: a
+fresh draft banners as "is waiting" (it is `blocked · idle` from its
+first row). Next slices: drafts *from* a session (`/fork`), worktree
+awareness in the sheet (the harness isolates before the first edit on
+its own, so this is display more than dispatch), a `draft` reading in
+the roster for a never-prompted `blocked · idle` row.
+
+## v4, the roster ours (landed)
 
 Slice 1 landed (docs/MILESTONES.md v4): the overlay
 (`~/Library/Application Support/ccc/roster.json`, lives with the

@@ -360,12 +360,16 @@ public struct ClaudeCLI: Sendable {
         try await run(argv, accepting: [0], program: program).stdout
     }
 
-    private func run(_ argv: [String],
-                     accepting accepted: Set<Int32>,
-                     program: String) async throws -> (stdout: Data, stderr: String, status: Int32) {
+    func run(_ argv: [String],
+             accepting accepted: Set<Int32>,
+             program: String,
+             cwd: String? = nil,
+             environment: [String: String]? = nil) async throws -> (stdout: Data, stderr: String, status: Int32) {
         let process = Process()
         process.executableURL = URL(filePath: argv[0])
         process.arguments = Array(argv.dropFirst())
+        if let cwd { process.currentDirectoryURL = URL(filePath: cwd) }
+        if let environment { process.environment = environment }
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err

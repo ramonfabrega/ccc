@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""spawn-probe — what `claude --bg` prints and what the roster then shows.
+
+usage: scripts/spawn-probe [--cwd DIR] [--name NAME] [--rm] [prompt...]
+
+Runs `claude --bg [--name NAME] [prompt]` in DIR (default ~/cc-test) with
+CLAUDE* stripped from the child's environment (docs/HARNESS.md experiment
+1), prints the harness's answer byte-for-byte (`cat -v` style, so the ANSI
+codes v5's parser has to skip are visible), waits for the roster to carry
+the row, and prints that row as JSON. `--rm` removes it afterwards. No
+prompt is the draft case: the session sits idle awaiting its first
+instruction, which is the "not started" session ccc's thesis names.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+
+def main(argv):
+    cwd = os.path.expanduser("~/cc-test")
+    name = None
+    remove = False
+    prompt = []
+    it = iter(argv)
+    for a in it:
+        if a == "--cwd":
+            cwd = os.path.expanduser(next(it))
+        elif a == "--name":
+            name = next(it)
+        elif a == "--rm":
+            remove = True
+        else:
+            prompt.append(a)
+    os.makedirs(cwd, exist_ok=True)
+    env = dict(os.environ)
+    for k in [k for k in env if k.startswith("CLAUDE")]:
+        del env[k]
+    cmd = ["claude", "--bg"]
+    if name:
+        cmd += ["--name", name]
+    if prompt:
+        cmd.append(" ".join(prompt))
+    print("$", " ".join(cmd), f"(cwd {cwd})")
+    t0 = time.monotonic()
+    p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True)
+    dt = time.monotonic() - t0
+    print(f"exit {p.returncode} in {dt:.2f}s")
+    print("stdout:", repr(p.stdout.decode("utf-8", "replace")))
+    print("stderr:", repr(p.stderr.decode("utf-8", "replace")))
+    # The id is the word after "backgrounded ·", once the ANSI is gone.
+    import re
+    plain = re.sub(rb"\x1b\[[0-9;]*m", b"", p.stdout).decode("utf-8", "replace")
+    m = re.search(r"backgrounded\s*·\s*([0-9a-f]{6,})", plain)
+    sid = m.group(1) if m else None
+    print("parsed id:", sid)
+    if not sid:
+        return 1
+    row = None
+    for _ in range(20):
+        rows = json.loads(subprocess.run(["claude", "agents", "--json", "--all"],
+                                         capture_output=True, env=env).stdout)
+        row = next((r for r in rows if r.get("id") == sid), None)
+        if row:
+            break
+        time.sleep(0.5)
+    print("roster row:", json.dumps(row, sort_keys=True) if row else "never appeared")
+    if remove:
+        r = subprocess.run(["claude", "rm", sid], capture_output=True, env=env, text=True)
+        print("rm:", r.returncode, (r.stdout + r.stderr).strip())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

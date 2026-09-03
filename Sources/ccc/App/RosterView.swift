@@ -24,6 +24,8 @@ struct RosterView: View {
     let mark: (SessionRef, MarkChange) -> Void
     /// The harness's `rm`, behind a confirmation the controller owns.
     let delete: (SessionRef) -> Void
+    /// The New Session sheet (v5) — ⌘N's twin in the header.
+    let newSession: () -> Void
     @State private var selection: SessionRef?
     @AppStorage(RosterPrefs.archivedKey) private var showsArchived = false
     @AppStorage(RosterPrefs.groupKey) private var groupName = RosterGroup.none.rawValue
@@ -134,6 +136,12 @@ struct RosterView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("Sessions").font(.headline)
+            Button(action: newSession) {
+                Image(systemName: "plus.circle")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("New session (⌘N)")
             Spacer()
             let blocked = poller.state.rows.filter { $0.session.state == .blocked }.count
             if blocked > 0 {
