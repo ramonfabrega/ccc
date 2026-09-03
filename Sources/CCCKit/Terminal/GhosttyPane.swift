@@ -31,6 +31,9 @@ public final class GhosttyPane: TerminalHost {
     /// The grid changed because the view did (window resize); the owner
     /// mirrors it onto the PTY. Same contract as `SwiftTermHost`.
     public var onSizeChanged: ((Int, Int) -> Void)?
+    /// A ⌘-click landed on a link. Unset means `NSWorkspace` opens it;
+    /// the app sets it to count the gesture and name what it opened.
+    public var onOpenLink: ((LinkScanner.Link) -> Void)?
     public var view: NSView? { container }
     public var metrics: CellMetrics { metalView.metrics }
     public var presentation: (frames: Int, lastAt: Date?)? {
@@ -137,6 +140,28 @@ public final class GhosttyPane: TerminalHost {
         }
     }
 
+    /// ⌘-click: open the link under the pointer (v7 slice 2). Answers
+    /// whether it took the press, so the caller knows not to encode it.
+    /// `onOpenLink` exists so the app can count the gesture and say what it
+    /// opened; the default is `NSWorkspace`, which is what a terminal does.
+    fileprivate func openLink(at event: NSEvent) -> Bool {
+        guard event.modifierFlags.contains(.command) else { return false }
+        let cell = self.cell(for: event)
+        guard let link = LinkScanner.link(in: snapshot(), atColumn: cell.col, row: cell.row) else { return false }
+        open(link)
+        return true
+    }
+
+    /// Open a link the way the window does. Also the road `ccc links --open`
+    /// takes, so the gesture and its twin end in one place.
+    public func open(_ link: LinkScanner.Link) {
+        if let onOpenLink {
+            onOpenLink(link)
+        } else {
+            NSWorkspace.shared.open(link.url)
+        }
+    }
+
     fileprivate func pasteFromPasteboard() {
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
         _ = core.paste(text)
@@ -236,6 +261,9 @@ public final class GhosttyPane: TerminalHost {
 @MainActor
 final class PaneInputView: NSView {
     weak var pane: GhosttyPane?
+    /// A left press swallowed by the ⌘-click link gesture, so its release
+    /// and drag are swallowed with it.
+    private var swallowedPress = false
 
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
@@ -262,14 +290,29 @@ final class PaneInputView: NSView {
     // pure encoding, and produces no bytes at all while tracking is off.
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        // ⌘-click is ours (v7 slice 2): a link under the pointer opens and
+        // nothing is encoded. Without a link the press falls through, so a
+        // ⌘-click on ordinary text still reaches a child that asked for it.
+        if pane?.openLink(at: event) == true {
+            swallowedPress = true
+            return
+        }
         pane?.mouseEvent(event, button: .left, action: .press)
     }
 
     override func mouseUp(with event: NSEvent) {
+        // The press that opened a link was never encoded, so its release
+        // and any drag in between must not be either: a child that saw no
+        // button-down would otherwise get a button-up out of nowhere.
+        if swallowedPress {
+            swallowedPress = false
+            return
+        }
         pane?.mouseEvent(event, button: .left, action: .release)
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if swallowedPress { return }
         pane?.mouseEvent(event, button: .left, action: .motion)
     }
 

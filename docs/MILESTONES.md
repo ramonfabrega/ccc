@@ -738,6 +738,45 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   `❯ `, sent inside a draft) and in the window (build 105: the roster
   row lit in the focused blue after a socket-sent ←, pane unchanged,
   `screencapture`). Nine tests. 256 tests.
+  **Slice 2 — done 2026-09-03: ⌘-click opens a link.** Found by using it,
+  not by planning it: a CDN URL in the pane could not be clicked. The
+  slice began by settling who owns copy, since that was the assumed gap —
+  and it is **not ours**. Measured in an attached session: a drag
+  highlights the row and the TUI answers "copied 88 chars to clipboard ·
+  disable auto-copy in /config". Claude Code keeps mouse tracking on, does
+  its own selection, and — being a local process — writes the local
+  pasteboard itself; ccc is a conduit. So copy needs nothing here, with
+  three consequences worth writing down: it is **dead in the shell pane**
+  (no TUI, tracking off, ccc emits nothing — dragged across a prompt, zero
+  highlight and the pasteboard untouched), the Edit menu's Copy / Paste /
+  Select All are all `enabled = false` (⌘V works only because
+  `performKeyEquivalent` special-cases it before the menu sees it), and
+  **over ssh the far Mac's Claude would write the far Mac's clipboard** —
+  untested, and the fix if it bites is `GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE`
+  (OSC 52), which ccc has never wired though `SwiftTermHost` implements it.
+  What ccc does own is the gesture the child does not want: ⌘-click, taken
+  in `mouseDown` before the mouse encoder the way ← is taken before the key
+  encoder, with the release and drag swallowed alongside the press so no
+  child sees a button-up out of nowhere. `LinkScanner` reads the URL off
+  the grid — text, not OSC 8, because the URLs that actually appear are
+  printed by programs that never emitted a hyperlink sequence; `https`,
+  `http`, `file` only; sentence punctuation and unbalanced brackets
+  trimmed off the tail. **One row at a time, deliberately:** rejoining a
+  wrapped URL needs a soft-wrap flag, and the render state ccc reads has
+  none (`GHOSTTY_ROW_DATA_WRAP` is on the screen API the snapshot path
+  never touches) — guessing from "the run reached the last column" is
+  wrong more often than right here, since Claude Code hard-wraps its own
+  output, and it would hand the browser a URL with prose glued to its
+  path. Twin: `ccc links` numbers what is on the grid, `ccc links --open N`
+  opens the Nth through the same `openLink`. **Proved live** (build 108):
+  `ccc links` on a real pane answered `1 https://cdn.ramonfabrega.com/…png
+  (row 43, col 6)`, correctly stopping before the trailing ` ok`; a
+  ⌘-click on that text took the frontmost app from `ccc` to `firefox` with
+  exactly that URL in the bar; `--open 1` did the same and `--open 9`
+  answered "no link 9; the grid has 1", exit 1. Eleven tests. 267 tests.
+  Not done: no ⌘-hover affordance (the pane installs no tracking area, so
+  `mouseMoved` never fires), and SwiftTerm's pane does not have the
+  gesture — the twin covers both, since it reads `snapshot()`.
 - **next** (what plan.md carried when it was retired 2026-09-02, late;
   the queue is this file from here on). The sequence agreed the same
   night, one confirmed before the next, comes first:

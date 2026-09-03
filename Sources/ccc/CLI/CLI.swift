@@ -144,6 +144,18 @@ enum CLI {
                 return try await mark(MarkChange(rawValue: verb)!, ref: ref, json: json)
             case "snapshot":
                 return try request(.snapshot, json: json)
+            case "links":
+                // `ccc links` lists; `ccc links --open N` opens the Nth,
+                // which is the ⌘-click on that link.
+                var open: Int?
+                if let flag = rest.firstIndex(of: "--open") {
+                    guard let n = rest.dropFirst(flag + 1).first.flatMap({ Int($0) }) else {
+                        stderr("ccc: --open needs a link number (ccc links to see them)")
+                        return 2
+                    }
+                    open = n
+                }
+                return try request(.links(open: open), json: json)
             case "send":
                 return try send(rest, json: json)
             case "detach":
@@ -1060,6 +1072,17 @@ enum CLI {
             if json { printJSON(rows) } else { printRoster(rows, issues: [], hosts: HostConfig.load().config) }
         case .snapshot(let info):
             if json { printJSON(info) } else if let grid = info.grid { print(grid.rendered()) } else { print("(nothing attached)") }
+        case .links(let found):
+            if json {
+                printJSON(found)
+            } else if found.isEmpty {
+                print("(no links on the grid)")
+            } else {
+                // 1-based, matching what --open takes.
+                for (i, link) in found.enumerated() {
+                    print("\(i + 1)  \(link.url)  (row \(link.row), col \(link.col))")
+                }
+            }
         case .stats(let stats):
             if json { printJSON(stats) } else { printStats(stats) }
         case .peek:
@@ -1225,6 +1248,8 @@ enum CLI {
                                                   <ref> is `id` (this Mac) or `host:id`; the pane follows: an attached
                                                   session is left (Ctrl+Z, the harness's detach) for the new one
                ccc snapshot [--json]
+               ccc links [--open N] [--json]      the URLs on the pane's grid, numbered from 1; --open N opens
+                                                  the Nth — the twin of Command-clicking that link
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach

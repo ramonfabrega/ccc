@@ -24,6 +24,12 @@ final class PaneController {
     /// the send reply and `ccc stats`.
     var onLeaveRequested: (() -> Void)?
     private(set) var leaveGestures = 0
+    /// ⌘-click on a link, and its twin `ccc links --open` (v7 slice 2),
+    /// end here — one definition, so the gesture and the command cannot
+    /// drift apart.
+    func openLink(_ link: LinkScanner.Link) {
+        NSWorkspace.shared.open(link.url)
+    }
     /// Called when a session is attached; the window mounts `host.view`.
     var onSessionStarted: ((AttachSession) -> Void)?
     /// The shell pane's mount and unmount; nil headless, which is how
@@ -129,6 +135,9 @@ final class PaneController {
         try cli.prepareControlDirectory()
         let size = (cols ?? defaultSize.cols, rows ?? defaultSize.rows)
         let host = makeHost(size.0, size.1)
+        // The click and `ccc links --open` end in the same `openLink`, so
+        // the gesture is counted once wherever it came from.
+        (host as? GhosttyPane)?.onOpenLink = { [weak self] in self?.openLink($0) }
         let session = try AttachSession(ref: ref, argv: cli.attachArgv(id: ref.id), host: host,
                                         options: .init(cols: size.0, rows: size.1))
         session.onLeaveGesture = { [weak self] in
@@ -461,6 +470,19 @@ final class PaneController {
         case .snapshot:
             guard let session else { return .snapshot(SnapshotInfo(attachedTo: nil, grid: nil)) }
             return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.ref : nil, grid: session.host.snapshot()))
+        case .links(let open):
+            guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
+            let found = LinkScanner.links(in: session.host.snapshot())
+            guard let open else {
+                return .links(found.map { LinkInfo(url: $0.url.absoluteString, row: $0.row, col: $0.columns.lowerBound) })
+            }
+            // 1-based, because the list it indexes is printed 1-based.
+            guard open >= 1, open <= found.count else {
+                return .error(found.isEmpty ? "no links on the grid" : "no link \(open); the grid has \(found.count)")
+            }
+            let link = found[open - 1]
+            openLink(link)
+            return .ok("opened \(link.url.absoluteString)")
         case .send(let text, let keys, let wheel, let paste):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             if let text { session.send(text: text) }

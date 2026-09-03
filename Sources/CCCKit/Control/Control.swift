@@ -65,11 +65,17 @@ public enum ControlRequest: Codable, Sendable {
     /// master" does when an update backs out of a conflict; `ccc update
     /// --ask` is its twin. `ccc send`'s road, with the attach in front.
     case ask(id: SessionRef, prompt: String)
+    /// The ⌘-click gesture's twin (v7 slice 2): the URLs on the pane's
+    /// grid, in reading order. `open` is a 1-based index into that same
+    /// list and opens it the way the click does — so what the hand can
+    /// click, a script can name.
+    case links(open: Int? = nil)
 }
 
 public enum ControlResponse: Codable, Sendable {
     case list([SessionRow])
     case snapshot(SnapshotInfo)
+    case links([LinkInfo])
     case stats(StatsInfo)
     case peek(png: Data)
     case ok(String)
@@ -162,6 +168,19 @@ extension JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+/// One URL on the pane's grid, as `ccc links` reports it. `row` and `col`
+/// are where the ⌘-click would have to land to open the same link.
+public struct LinkInfo: Codable, Sendable, Equatable {
+    public var url: String
+    public var row: Int
+    public var col: Int
+    public init(url: String, row: Int, col: Int) {
+        self.url = url
+        self.row = row
+        self.col = col
     }
 }
 
