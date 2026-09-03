@@ -262,3 +262,10 @@ is the sanctioned inbound surface (not investigated).
    later) rendered the prompt as `❯ hello from exp3` before any new input.
    The draft lives with the session, not the client. Killing the terminal
    outright (SIGHUP, no `Ctrl+Z`) is still untested.
+
+## Probes
+
+`scripts/attach-probe` is the tool for anything attach-shaped;
+`scripts/spawn-probe` for anything `--bg`-shaped (`--` passes
+`--flag=value` words to the harness). Every "measured" above came from
+one of them.

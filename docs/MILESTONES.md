@@ -521,5 +521,40 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   reads its grouping from its own menu, not from a `defaults write`). Found by doing it: a section header that renders an empty
   `VStack` still takes a header's height, so the roster had a gap at the
   top until the header became conditional. 226 tests.
+- **next** (what plan.md carried when it was retired 2026-09-02, late;
+  the queue is this file from here on):
+  1. **v6 slice 2 — unpushed, and nothing more.** Beside `↑3 ↓2` against
+     master, one mark, `↑2 unpushed`, when the branch is ahead of its
+     upstream (`refs/remotes/origin/<branch>`), and the same on master
+     against `origin/master` when it applies. Exact from local refs, no
+     network. It drives two real acts: the harness refuses `claude rm`
+     on unpushed work, and a fast-forwarded master that was never pushed
+     is one air cannot see. Not in scope: the other direction
+     (meaningless without a fetch), a fetch loop, a push verb — git's
+     job in a terminal, not a roster's.
+  2. **Host picker** off `tailscale status --json` (MagicDNS names are
+     the ssh destinations; Bonjour never crosses the tailnet). With it,
+     the §4c question: whether a secondary viewer renders the shared grid
+     as-is instead of resizing it (last-resize-wins today). Needs air.
+  3. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to
+     its timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
+     nonblocking read before the host list grows.
+  4. **Small leftovers:** a sort by model; the Session menu's archive/pin
+     items (the context menu has them); `ccc window show` when another
+     app holds focus — measured 2026-09-02 with a Wine window in front:
+     `NSApp.activate()` is cooperative since macOS 14 and the window
+     stayed behind, while `open -a` brought it front, so the CLI side of
+     `show` should activate through `NSWorkspace`.
+  5. **Open measurements, on air:** the long sleep (`~/lidtest.py` left
+     running on air, appending to `~/lidtest.log`; `scp` it to studio
+     when air is up — it decides whether the eviction ever fires,
+     `ccc stats` → `evictions`), and the first real sleep for the
+     remote-pane reattach (`PaneController.reattachIfSleepKilledIt`).
+  6. **Housekeeping:** remote branches `hotfix-gridbuilder`,
+     `worktree-icon`, `worktree-v0`, `worktree-v1` are merged history;
+     delete when convenient.
+  Dropped 2026-09-02: a "forked from" mark on the row; permission mode,
+  effort and worktree as sheet fields (the command has them; nobody has
+  missed them in the sheet).
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.
