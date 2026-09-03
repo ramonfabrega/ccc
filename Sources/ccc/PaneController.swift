@@ -197,17 +197,33 @@ final class PaneController {
 
     /// Open in Terminal (v6 slice 4): exactly `ccc shell <ref>` — a login
     /// shell in the row's folder, the ssh hop included, in the pane under
-    /// the session. One shell at a time: a second ask focuses the one that
-    /// is open. Returns the sentence, and whether a pane was opened (false
-    /// when it was already there).
+    /// the session. One shell at a time, and it follows the click when it
+    /// is free: the same folder is focused; a different folder replaces a
+    /// shell sitting at its prompt, and focuses one that is running
+    /// something, saying so. Returns the sentence, and whether a pane was
+    /// opened (false when the open one was focused).
     @discardableResult
-    func openShell(_ ref: SessionRef, cols: Int? = nil, rows: Int? = nil) throws -> (said: String, opened: Bool) {
+    func openShell(_ ref: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> (said: String, opened: Bool) {
         guard onShellStarted != nil else { throw AttachError.badHost("no window for a shell pane (headless)") }
-        if let shell, shell.isRunning {
-            return ("the shell pane is already open, in \(hosts.shortCwd(shellCwd ?? "", host: shell.ref.host))", false)
-        }
         guard let row = poller.state.rows.first(where: { $0.ref == ref }) else {
             throw AttachError.badHost("no session '\(ref)' in the roster")
+        }
+        if let shell, shell.isRunning {
+            let where_ = hosts.shortCwd(shellCwd ?? "", host: shell.ref.host)
+            if shellCwd == row.session.cwd && shell.ref.host == ref.host {
+                return ("the shell pane is already open, in \(where_)", false)
+            }
+            guard shell.isAtPrompt else {
+                return ("the shell in \(where_) is running something; ⇧⌘T closes it", false)
+            }
+            // Free, so it follows the click: SIGHUP, wait for the exit so
+            // the window unmounts the old pane before mounting the new.
+            shell.terminate()
+            let deadline = ContinuousClock.now + .seconds(2)
+            while shell.isRunning, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            if shell.isRunning { throw AttachError.badHost("the shell in \(where_) did not exit; ⇧⌘T closes it") }
         }
         let cli = try cli(for: ref)
         try cli.prepareControlDirectory()
@@ -377,7 +393,7 @@ final class PaneController {
             return .ok(hookSink(event))
         case .shell(let ref):
             do {
-                return .ok(try openShell(ref).said)
+                return .ok(try await openShell(ref).said)
             } catch {
                 return .error("\(error)")
             }

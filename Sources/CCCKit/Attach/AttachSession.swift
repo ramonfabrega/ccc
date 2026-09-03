@@ -107,6 +107,14 @@ public final class AttachSession {
         if isRunning { pty.terminate() }
     }
 
+    /// The child itself holds the terminal's foreground: a shell sitting
+    /// at its prompt, with no job in front of it. What "idle" means for
+    /// a shell pane, from the kernel rather than a guess: a running
+    /// build or test is its own process group in the foreground.
+    public var isAtPrompt: Bool {
+        isRunning && tcgetpgrp(pty.masterFD) == pty.pid
+    }
+
     /// End the child outright (SIGHUP, the terminal-closed signal) — how a
     /// shell pane closes. Never for a `claude attach`: that one leaves by
     /// `detach()`'s Ctrl+Z, which the harness documents.

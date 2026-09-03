@@ -556,7 +556,18 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   height; `--close` again exited 1. Found by doing it: the divider set
   before the split had laid out landed on the session's minimum, and
   the shell took the rest. Not here: tabs, more than one shell.
-  236 tests.
+  **Same night, the user's question — "should opening one while one is
+  open replace it?"** Yes, when it is free: one shell follows the click.
+  The same folder is focused; a different folder replaces a shell
+  sitting at its prompt and focuses one that is running something,
+  saying so ("the shell in X is running something; ⇧⌘T closes it").
+  "At its prompt" is the kernel's word, not a guess: `tcgetpgrp` on the
+  PTY master equals the shell's pid when nothing is in front of it, and
+  is a job's own group otherwise (`AttachSession.isAtPrompt`, tested
+  with `/bin/sh -i` and a `sleep`). A shell per session — always on,
+  hide and show — was weighed and left: a PTY and a process per row, a
+  lifecycle tied to rows that come and go, and nothing described needs
+  it. 237 tests.
   **The banner goes — done 2026-09-02, late.** Noticed by the user on
   the first Fast-forward from the row: the banner sat in the window's
   vertical stack, so every sentence resized the pane, which resized the

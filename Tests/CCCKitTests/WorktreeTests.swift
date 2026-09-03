@@ -453,3 +453,25 @@ import Testing
         if case .shellClose = close {} else { Issue.record("not shellClose") }
     }
 }
+
+/// The shell pane's "free" reading: the foreground process group of the
+/// PTY, from the kernel. A shell at its prompt is replaceable; a shell
+/// with a job in front of it is not.
+@Suite struct ShellPromptTests {
+    @MainActor
+    @Test func atPromptFollowsTheForegroundJob() async throws {
+        let host = HeadlessHost(cols: 40, rows: 6)
+        let session = try AttachSession(ref: SessionRef(id: "t"), argv: ["/bin/sh", "-i"], host: host,
+                                        options: .init(cols: 40, rows: 6))
+        defer { session.terminate() }
+        // Give the shell a moment to come up and take the terminal.
+        for _ in 0..<50 where !session.isAtPrompt { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(session.isAtPrompt)
+        session.send(text: "sleep 5\n")
+        for _ in 0..<50 where session.isAtPrompt { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(!session.isAtPrompt, "a foreground job owns the terminal")
+        session.send(text: "\u{03}")   // Ctrl+C ends the job; the shell is back
+        for _ in 0..<50 where !session.isAtPrompt { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(session.isAtPrompt)
+    }
+}

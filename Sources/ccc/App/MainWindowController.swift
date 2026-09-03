@@ -383,15 +383,19 @@ final class MainWindowController: NSWindowController {
     /// selected row, or ⌘T for the attached session (else the selected
     /// row). An open shell is focused rather than doubled.
     func openShell(_ ref: SessionRef) {
-        do {
-            let result = try controller.openShell(ref, cols: gridSize().cols)
-            if result.opened {
-                showNotice(result.said)
-            } else if let view = controller.shell?.host.view {
-                window?.makeFirstResponder(view)
+        Task { @MainActor in
+            do {
+                let result = try await controller.openShell(ref, cols: gridSize().cols)
+                if result.opened {
+                    showNotice(result.said)
+                } else {
+                    if let view = controller.shell?.host.view { window?.makeFirstResponder(view) }
+                    // "already open" needs no sentence; "running something" does.
+                    if result.said.contains("running") { showNotice(result.said, kind: .problem) }
+                }
+            } catch {
+                showNotice("\(error)", kind: .problem)
             }
-        } catch {
-            showNotice("\(error)", kind: .problem)
         }
     }
 
