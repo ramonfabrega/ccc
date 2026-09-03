@@ -147,6 +147,10 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   fleet's key, both CDN keys, and its own live check (version 76,
   length 4509224 both sides). Studio runs it. The other half of §6a's
   proof — air's Sparkle installing this cut — is air's to show.
+  **v0.1.10, same night (build 85):** v5 slices 1 and 2 — `ccc spawn`,
+  the New Session sheet, the draft reading. Notarized first submission,
+  one item, live length 4623978 both sides; GitHub release v0.1.10;
+  studio on the cut.
 - **v3 — notifications.** From the poll first (`blocked` / `waitingFor`);
   the Notification hook on localhost only for what the roster cannot show;
   studio ↔ air derive from each other's roster, no forwarding.

@@ -39,6 +39,13 @@ the recent-folders menu have not been clicked; the host picker was seen
 with two hosts but not switched. Next slices: drafts *from* a session
 (`/fork`), worktree awareness in the sheet (the harness isolates before
 the first edit on its own, so this is display more than dispatch).
+**v0.1.10 (build 85) is cut and on the feed** (2026-09-02 night, through
+ota: notarized, one item, live length 4623978; GitHub release v0.1.10);
+studio runs it (`scripts/install --dist`), air takes it through Sparkle
+— that update is what puts ⌘N and the draft reading on air, and the
+hands-on list above is air's to do. Master wants
+`git merge --ff-only worktree-v2` again (the main checkout's, not this
+worktree's).
 
 ## v4, the roster ours (landed)
 
