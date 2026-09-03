@@ -93,8 +93,8 @@ final class MainWindowController: NSWindowController {
             self?.confirmDelete(ref)
         }, newSession: { [weak self] in
             self?.newSessionAction(nil)
-        }, fork: { [weak self] ref in
-            self?.presentNewSession(from: ref)
+        }, newSessionHere: { [weak self] ref in
+            self?.presentNewSession(here: ref)
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -242,28 +242,29 @@ final class MainWindowController: NSWindowController {
     /// not to). The sheet stays up over a harness error with the fields
     /// intact.
     @objc func newSessionAction(_ sender: Any?) {
-        presentNewSession(from: nil)
+        presentNewSession(here: nil)
     }
 
-    /// ⇧⌘N (slice 3): the sheet with its From row set to the attached
-    /// session — or, with nothing attached, open for the row to be picked.
-    /// The row's context menu and `f` name the row directly.
-    @objc func forkSessionAction(_ sender: Any?) {
-        presentNewSession(from: controller.poller.attachedRef)
+    /// ⇧⌘N (v5 slice 3): the sheet on the attached session's host and
+    /// folder — a fresh conversation where the work already is, which is
+    /// how new sessions actually get started here. With nothing attached
+    /// it is ⌘N. The row's context menu and `n` name the row directly.
+    @objc func newSessionHereAction(_ sender: Any?) {
+        presentNewSession(here: controller.poller.attachedRef)
     }
 
-    private func presentNewSession(from source: SessionRef?) {
+    private func presentNewSession(here ref: SessionRef?) {
         guard let window, newSessionSheet == nil else { return }
+        let row = ref.flatMap { ref in controller.poller.state.rows.first { $0.ref == ref } }
         let model = NewSessionModel(
             hosts: controller.hosts.hosts,
             recentFolders: { [weak self] host in self?.recentFolders(on: host) ?? [] },
-            sources: { [weak self] host in self?.spawnSources(on: host) ?? [] },
             shortCwd: { [weak self] cwd, host in self?.controller.hosts.shortCwd(cwd, host: host) ?? cwd },
             commandLine: { [weak self] host, request in
                 guard let self, let cli = try? self.controller.cli(for: SessionRef(host: host, id: "-")) else { return "" }
                 return cli.spawnCommandLine(request)
             },
-            from: source)
+            here: row.map { ($0.host, $0.session.cwd) })
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: NewSessionView(
             model: model,
             submit: { [weak self] in self?.submitNewSession(model) },
@@ -290,10 +291,10 @@ final class MainWindowController: NSWindowController {
                 dismissNewSession()
                 showNotice(result.description)
                 if model.attachAfter {
-                    // One pane: a fork is usually made from the session on
-                    // screen (⇧⌘N), and attach refuses while one is attached
-                    // — so leave it first. `detach()` returns once the child
-                    // has exited, which is what attach checks.
+                    // One pane: ⇧⌘N starts the new session beside the one on
+                    // screen, and attach refuses while one is attached — so
+                    // leave it first. `detach()` returns once the child has
+                    // exited, which is what attach checks.
                     await controller.detach()
                     attach(result.ref)
                 }
@@ -314,21 +315,6 @@ final class MainWindowController: NSWindowController {
             if out.count == 8 { break }
         }
         return out
-    }
-
-    /// What a fork can start from on a host (slice 3): every attachable
-    /// row with a session id, in the roster's activity order, archived
-    /// ones last — an old finished thread is a fine thing to continue.
-    private func spawnSources(on host: String) -> [SpawnSource] {
-        let rows = controller.poller.state.sorted.filter {
-            $0.host == host && $0.session.isAttachable && !($0.session.sessionId ?? "").isEmpty
-        }
-        return (rows.filter { !$0.archived } + rows.filter(\.archived)).map { row in
-            SpawnSource(ref: row.ref,
-                        label: "\(row.session.name ?? row.session.id) · \(row.session.id)\(row.archived ? " (archived)" : "")",
-                        sessionId: row.session.sessionId ?? "",
-                        cwd: row.session.cwd)
-        }
     }
 
     /// Archive / pin (v4): the controller does what `ccc archive <ref>`

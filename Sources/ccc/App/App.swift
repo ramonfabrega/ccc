@@ -184,9 +184,9 @@ enum App {
         // One window, so ⌘N is a new *session* (v5): the sheet, whose
         // Start is `ccc spawn`.
         session.addItem(withTitle: "New Session…", action: #selector(MainWindowController.newSessionAction(_:)), keyEquivalent: "n")
-        // ⇧⌘N forks the attached session (slice 3): the same sheet with its
-        // From row set, whose Start is `ccc spawn --from <ref>`.
-        session.addItem(withTitle: "Fork Session…", action: #selector(MainWindowController.forkSessionAction(_:)), keyEquivalent: "N")
+        // ⇧⌘N is the same sheet on the attached session's host and folder
+        // (v5 slice 3) — `ccc spawn --host … --cwd …` with those filled in.
+        session.addItem(withTitle: "New Session Here…", action: #selector(MainWindowController.newSessionHereAction(_:)), keyEquivalent: "N")
         session.addItem(.separator())
         session.addItem(withTitle: "Detach", action: #selector(MainWindowController.detachAction(_:)), keyEquivalent: "d")
         session.addItem(withTitle: "Refresh Roster", action: #selector(MainWindowController.refreshAction(_:)), keyEquivalent: "r")

@@ -26,8 +26,9 @@ struct RosterView: View {
     let delete: (SessionRef) -> Void
     /// The New Session sheet (v5) — ⌘N's twin in the header.
     let newSession: () -> Void
-    /// The same sheet with its From row set (slice 3): `ccc spawn --from`.
-    let fork: (SessionRef) -> Void
+    /// The same sheet on a row's host and folder (slice 3): `ccc spawn
+    /// --host <h> --cwd <dir>` with the row's answers filled in.
+    let newSessionHere: (SessionRef) -> Void
     @State private var selection: SessionRef?
     @AppStorage(RosterPrefs.archivedKey) private var showsArchived = false
     @AppStorage(RosterPrefs.groupKey) private var groupName = RosterGroup.none.rawValue
@@ -62,12 +63,13 @@ struct RosterView: View {
                 return .handled
             }
             // The agents view's keys, plus ours: ⌫ deletes (confirmed),
-            // `a` archives or unarchives, `p` pins or unpins, `f` forks.
+            // `a` archives or unarchives, `p` pins or unpins, `n` starts a
+            // new session in the row's folder.
             .onKeyPress(.delete) { press(delete) }
             .onKeyPress(.deleteForward) { press(delete) }
             .onKeyPress("a") { press { mark($0, marks($0)?.archived == true ? .unarchive : .archive) } }
             .onKeyPress("p") { press { mark($0, marks($0)?.pinned == true ? .unpin : .pin) } }
-            .onKeyPress("f") { press(fork) }
+            .onKeyPress("n") { press(newSessionHere) }
             footer
         }
         .frame(minWidth: 320)
@@ -105,9 +107,7 @@ struct RosterView: View {
     @ViewBuilder private func menu(for row: SessionRow) -> some View {
         Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
         if row.attached { Button("Detach") { detach() } }
-        // A new session that opens with this one's transcript (slice 3);
-        // the full session id is what the harness resumes by.
-        Button("Fork…") { fork(row.ref) }.disabled(!row.session.isAttachable || row.session.sessionId == nil)
+        Button("New Session Here…") { newSessionHere(row.ref) }
         Divider()
         Button(row.pinned ? "Unpin" : "Pin") { mark(row.ref, row.pinned ? .unpin : .pin) }
             .disabled(!row.session.isAttachable || !canMark(row))

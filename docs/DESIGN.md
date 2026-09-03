@@ -359,12 +359,14 @@ test bundle carries zero references to it while the app binary carries
 
 **What it costs.** A third earned dependency, and one that is ours — a
 version of ota that breaks ccc is a version we wrote. The mitigation is
-the same as `vendor/ghostty`'s: pinned to a revision, moved deliberately,
-never floating.
+the same as `vendor/ghostty`'s: pinned to an exact tag (v0.1.0 since
+2026-09-02; a revision before ota had one), moved deliberately, never
+floating.
 
 **The proof.** Not "it compiles": a cut of ccc through `ota release` that
-the Air's Sparkle actually installs, end to end from the published feed. Until
-that has happened once, the old lane is what ships.
+the Air's Sparkle actually installs, end to end from the published feed.
+**Done 2026-09-02:** v0.1.8 through v0.1.10 went through ota and air took
+each from the feed; the old lane is gone.
 
 ## 7. The human's screen is the oracle for presentation (2026-09-02)
 

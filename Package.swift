@@ -17,9 +17,11 @@ let package = Package(
         //
         // Sparkle now arrives THROUGH ota (§6 amendment, 2026-09-02): the
         // release flow ccc hand-copied from disk, plus the app-side half
-        // this repo wrote and ota extracted. Pinned to a revision until ota
-        // tags v0.1.0 — the same policy vendor/ghostty is held to.
-        .package(url: "https://github.com/ramonfabrega/ota", revision: "45f3a63c752622e7d9002324d2cc461f25711c58"),
+        // this repo wrote and ota extracted. Pinned to an exact tag, moved
+        // deliberately (2026-09-02: 45f3a63 → v0.1.0, which adds "refuse
+        // to release an installed app" — ccc releases from .build/dist, so
+        // nothing changes) — the same policy vendor/ghostty is held to.
+        .package(url: "https://github.com/ramonfabrega/ota", exact: "0.1.0"),
     ],
     targets: [
         // libghostty-vt, built from vendor/ghostty by scripts/build-vt (Zig is
