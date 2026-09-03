@@ -13,13 +13,15 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 ## The frontier
 
 **v8 — the pane, honestly.** Two complaints the user raised while using
-the app. The theme half of the first is shipped (item 8): the pane now
-wears the user's own iTerm palette, which turns "does it match" into a
-diff rather than a matter of taste. What is left of 8 is the residual —
-colour management — and the whole point of shipping the theme alone was
-that the residual is now attributable. It cannot be judged by eye, so
-item 10 is genuinely in front of it. Item 9, the blank pane on attach, is
-untouched, needs nothing from anyone, and is the daily annoyance.
+the app, both now shipped. The theme (item 8): the pane wears the user's
+own iTerm palette, which turns "does it match" into a diff rather than a
+matter of taste. The attach transition (item 9): the incoming session
+runs behind the outgoing one and the swap happens once it has drawn, so
+the pane never goes blank — and the ← guard, which was off for the whole
+of that blank, stays armed. What is left of 8 is the residual, colour
+management, which cannot be judged by eye: **item 10 is the frontier**,
+because nothing here can capture one window or read a colour out of a
+PNG, and 8b cannot be measured until it can.
 
 ## Open
 
@@ -99,28 +101,26 @@ reaches us, so the index has to cross the seam before we can add 8 to
 it), and the selection colours, which the theme carries and nothing
 draws.
 
-### 9. The attach transition blanks the pane
+### 9. The attach transition: two ends left
 
-Raised 2026-09-03, diagnosed. `PaneController.switchTo` does `await
-session.detach()` then `attach()`, which builds a brand-new host — a blank
-grid — and the window mounts it before the new `claude attach` has drawn.
-Experiment 3 measured the TUI taking up to 12 s to paint over ssh, and
-`waitUntilDrawn`'s timeout is 8 s, so the blank is not a flicker, it is
-the wait.
+Shipped — the incoming session runs behind the outgoing one and the swap
+is one `install` once it has drawn, which also closed the ← hole the
+blank pane was holding open (docs/EVIDENCE.md "the attach transition, and
+the hole in the ← guard"). What is left:
 
-The fix is available *because* experiment 2 answered that the daemon
-accepts concurrent attaches and mirrors one PTY to every viewer: start the
-new session **behind** the old one, reuse `waitUntilDrawn`, swap the view
-only once it has painted, then detach the old. No blank frame at all.
+- **It is proved locally only.** Over ssh it is the same code with a much
+  longer wait — the case the 8 s `waitUntilDrawn` timeout was written
+  for, and the case nothing has ever run. Blocked with item 3.
+- **"Drawn" is a shape, not a certainty.** `waitUntilDrawn` returns on
+  the first stable screen with more than one row on it. That is enough to
+  reject the attach client's one-line wake message, which is what it was
+  wrong about before; it is not proof the TUI finished. A session whose
+  render pauses over 250 ms mid-paint can still swap in early. No
+  forcing function — it has not been seen.
 
-Open question for the doing: which pane owns the keyboard during the
-overlap. Leaving it with the old pane until the swap is the obvious
-answer — nothing typed at an unpainted TUI means anything — but it is a
-taste call and has not been made.
+### 10. The oracle has no command twin — the frontier
 
-### 10. The oracle has no command twin
-
-Found by a cold read of these docs, 2026-09-03. CLAUDE.md makes a real
+Found by a cold read of these docs, 2026-09-03; item 8b waits on it. CLAUDE.md makes a real
 `screencapture` the oracle for presentation, and `docs/CHECKS.md` row 5
 was re-judged with one — but nothing in the repo can capture one specific
 window: `screencapture -l <CGWindowID>` needs an id nothing here produces,

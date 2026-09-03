@@ -198,6 +198,16 @@ final class MainWindowController: NSWindowController {
 
     private func mount(_ session: AttachSession) {
         guard let view = session.host.view else { return }
+        // The overlapped switch (`PaneController.swap`) mounts the incoming
+        // pane while the outgoing one is still on screen, drawn and holding
+        // the keyboard — so clearing the old view is this method's job, not
+        // `unmount`'s. Both happen inside one layout pass, which is what
+        // makes the change read as a swap rather than as a teardown and a
+        // build: there is no frame in between showing neither.
+        for old in paneContainer.subviews
+        where old !== placeholder && old !== hud && old !== view {
+            old.removeFromSuperview()
+        }
         placeholder.isHidden = true
         place(session, in: paneContainer)
         hud.keepOnTop()
@@ -279,12 +289,36 @@ final class MainWindowController: NSWindowController {
         }
         controller.defaultSize = gridSize()
         Task { @MainActor in
+            // The switch keeps the old session on screen until the new one
+            // has painted (`PaneController.swap`), so a slow attach looks
+            // like the click did nothing. Say what is happening — but only
+            // once it *is* slow. A local attach lands well inside this and
+            // stays silent, which is the whole point of the overlap: the
+            // fast path has no chrome at all.
+            let waking = "Waking \(self.name(of: ref))…"
+            let notice = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled else { return }
+                self?.showNotice(waking, for: .some(nil))
+            }
             do {
                 _ = try await controller.switchTo(ref: ref)
+                notice.cancel()
+                // Only if it is still the waking sentence on screen: the
+                // wait's own notice goes when the wait does, and never
+                // takes something else's place with it.
+                hud.dismiss(ifShowing: waking)
             } catch {
+                notice.cancel()
                 showNotice("\(error)", kind: .problem)
             }
         }
+    }
+
+    /// The row's name if the roster has one, else the id — what a sentence
+    /// about a session should call it.
+    private func name(of ref: SessionRef) -> String {
+        controller.poller.state.rows.first { $0.ref == ref }?.session.name ?? ref.id
     }
 
     @objc func detachAction(_ sender: Any?) {

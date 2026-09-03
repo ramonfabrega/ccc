@@ -18,10 +18,11 @@ final class PaneController {
     private var shellCwd: String?
     /// Called when the attached child exits (detach or crash).
     var onSessionEnded: ((Int32) -> Void)?
-    /// Called when ← on an empty prompt was taken instead of sent
-    /// (`LeaveGesture`, v7 slice 1): the window hands the keyboard to the
-    /// roster; headless says so on stderr. `leaveGestures` counts them for
-    /// the send reply and `ccc stats`.
+    /// Called when a ← was taken instead of sent (`LeaveGesture`, v7 slice
+    /// 1): on an empty prompt, or on a pane that has not painted yet (v8
+    /// slice 2). The window hands the keyboard to the roster; headless
+    /// says so on stderr. `leaveGestures` counts them for the send reply
+    /// and `ccc stats`.
     var onLeaveRequested: (() -> Void)?
     private(set) var leaveGestures = 0
     /// ⌘-click on a link, and its twin `ccc links --open` (v7 slice 2),
@@ -129,6 +130,17 @@ final class PaneController {
         if let session, session.isRunning {
             throw AttachError.busy(session.ref)
         }
+        install(try viewer(for: ref, cols: cols, rows: rows))
+    }
+
+    /// A viewer for `ref`: the child is running and its core is filling,
+    /// but it is not *the* pane — nothing above has been told it exists,
+    /// the roster carries no mark for it, and its exit is nobody's news.
+    ///
+    /// Split out of `attach` for the overlapped switch (`swap`), which
+    /// needs precisely this: something it can wait on before the pane on
+    /// screen has paid anything for it.
+    private func viewer(for ref: SessionRef, cols: Int?, rows: Int?) throws -> AttachSession {
         let cli = try cli(for: ref)
         // The master socket's directory must exist before ssh is exec'd:
         // the PTY child has no way to report a mkdir failure back to us.
@@ -145,6 +157,15 @@ final class PaneController {
             self.leaveGestures += 1
             self.onLeaveRequested?()
         }
+        return session
+    }
+
+    /// Make a viewer the pane: the exit wiring, the roster's mark, the
+    /// remembered ref, the mount. Everything here is what being on screen
+    /// means, which is why the overlapped switch does it last and all at
+    /// once — the swap *is* this call.
+    private func install(_ session: AttachSession) {
+        let ref = session.ref
         session.onExit = { [weak self] status in
             guard let self else { return }
             self.poller.attachedRef = nil
@@ -170,22 +191,87 @@ final class PaneController {
 
     /// The click's attach (v6, the same night as the shell pane): the
     /// pane follows the click. Nothing attached: attach. The same ref:
-    /// nothing to do. Another ref: leave it — Ctrl+Z, the harness's own
-    /// detach, which keeps the session and its draft — and attach the
-    /// new one. The "busy" refusal was v0's guard, and every gesture that
+    /// nothing to do. Another ref: `swap` — which since v8 slice 2 leaves
+    /// the old one only *after* the new one is on screen, rather than
+    /// before. The "busy" refusal was v0's guard, and every gesture that
     /// met it (⇧⌘N's attach-when-started, a second row's ⏎) had to work
     /// around it. Returns the sentence.
     func switchTo(ref: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> String {
-        if let session, session.isRunning {
-            if session.ref == ref { return "already attached to \(ref)" }
-            let previous = session.ref
-            await session.detach()
+        guard let outgoing = session, outgoing.isRunning else {
             try attach(ref: ref, cols: cols, rows: rows)
-            return "attached \(ref) (left \(previous))"
+            return "attached \(ref)"
         }
-        try attach(ref: ref, cols: cols, rows: rows)
-        return "attached \(ref)"
+        if outgoing.ref == ref { return "already attached to \(ref)" }
+        return try await swap(to: ref, from: outgoing, cols: cols, rows: rows)
     }
+
+    /// The overlapped switch (v8 slice 2). The old way — detach, then
+    /// attach — cost two things, and the second one was not cosmetic:
+    ///
+    /// 1. **A blank pane for seconds.** `attach` builds a brand-new host,
+    ///    so the window mounted an empty grid and sat on it until the new
+    ///    `claude attach` painted: up to 12 s over ssh (experiment 3), on
+    ///    an 8 s `waitUntilDrawn` timeout. Not a flicker, the wait.
+    /// 2. **A hole in the ← guard.** `LeaveGesture` is a read of the grid
+    ///    and its "no" means *send the key*, so across that blank window
+    ///    ← went to the child — which answers it by detaching the session
+    ///    and opening the agents view inside the attach client, starting
+    ///    with the workspace-trust dialog for whatever cwd the bundle
+    ///    inherited. Raised by the user 2026-09-03: the folder warning.
+    ///
+    /// Both go away by never showing the blank grid. Experiment 2 measured
+    /// that the daemon accepts concurrent attaches and mirrors one PTY to
+    /// every viewer, so the incoming session runs *behind* the outgoing
+    /// one — unmounted, parsing into its own core, costing the screen
+    /// nothing — and the swap happens in one `install` once it has drawn.
+    ///
+    /// Which pane owns the keyboard during the overlap is not the taste
+    /// call the queue called it: the old pane must keep it, because the
+    /// old pane's grid is the one still showing `❯ `, and that grid is
+    /// what makes the guard fire. Leaving the keyboard put is what closes
+    /// hole 2 across the whole overlap; `LeaveGesture.isUndrawn` closes
+    /// what is left, which is the first attach, with no pane to overlap.
+    private func swap(to ref: SessionRef, from outgoing: AttachSession,
+                      cols: Int?, rows: Int?) async throws -> String {
+        // The incoming grid is built at the size the outgoing one is
+        // *showing*, read back through the seam rather than re-estimated.
+        // A pane that paints at one size and is resized on mount reflows
+        // the TUI in the exact frame the change is meant to be invisible.
+        let showing = outgoing.host.snapshot()
+        let incoming = try viewer(for: ref,
+                                  cols: cols ?? showing.cols, rows: rows ?? showing.rows)
+        swapGeneration += 1
+        let mine = swapGeneration
+        await Self.waitUntilDrawn(incoming)
+        // A newer click during the wait wins: this viewer goes away
+        // without ever having been seen, and the pane never moved.
+        guard mine == swapGeneration else {
+            incoming.terminate()
+            return "superseded by a newer attach"
+        }
+        // It died instead of drawing (a bad ref, ssh refused, the session
+        // ended). Keep the pane that works and say what happened.
+        guard incoming.isRunning else {
+            throw AttachError.attachDied(ref, incoming.exitStatus ?? -1)
+        }
+        // The outgoing child's exit is ours to expect, not news: its
+        // `onExit` would tell the window a session ended and unmount the
+        // pane we are about to mount. Same for its gesture — the keyboard
+        // belongs to the incoming pane from here.
+        outgoing.onExit = nil
+        outgoing.onLeaveGesture = nil
+        let previous = outgoing.ref
+        install(incoming)
+        // Ctrl+Z, the harness's own detach, which keeps the session and
+        // its draft. After the mount, so nothing waits on it to see the
+        // new pane.
+        await outgoing.detach()
+        return "attached \(ref) (left \(previous))"
+    }
+
+    /// Bumped by every swap, so a wait that finishes after a newer click
+    /// knows it has been superseded.
+    private var swapGeneration = 0
 
     /// Spawn (v5): `claude --bg` on `hostName` with the request's words —
     /// what `ccc spawn --host <name>` runs — then a poll so the roster
@@ -297,7 +383,10 @@ final class PaneController {
     /// press Enter. The TUI queues a prompt typed while it is working, so
     /// a busy session is asked too — it reads it when it is done.
     func ask(_ ref: SessionRef, prompt: String) async throws -> String {
-        let wasOnScreen = session?.isRunning == true && session?.ref == ref
+        // A switch now waits for the incoming pane to draw before it
+        // becomes the pane (`swap`), so the only wait left here is the
+        // first attach — the one with no pane to overlap with.
+        let wasOnScreen = session?.isRunning == true
         _ = try await switchTo(ref: ref)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
         if !wasOnScreen { await Self.waitUntilDrawn(session) }
@@ -309,11 +398,19 @@ final class PaneController {
         return "asked \(ref): \(prompt)"
     }
 
-    /// The grid has something on it and has stopped changing — two reads
-    /// half a second apart agree — or eight seconds passed. A fresh
-    /// `claude attach` draws its TUI in well under that; over ssh, a
-    /// little later. Bytes typed before it is up would land in the
-    /// harness's attach client, not the prompt box.
+    /// The TUI is up and has stopped changing — two reads a quarter second
+    /// apart agree — or eight seconds passed. A fresh `claude attach`
+    /// draws in well under that; over ssh, a little later. Bytes typed
+    /// before it is up land in the harness's attach client, not the
+    /// prompt box, which is why anything that types waits on this.
+    ///
+    /// "Up" is `LeaveGesture.isUndrawn` inverted, and deliberately not
+    /// "the grid has something on it": the attach client prints a one-line
+    /// wake message first, and one line is both non-blank and perfectly
+    /// stable, so the old check returned on it. Harmless when all this did
+    /// was delay typing; not harmless now that `swap` mounts on it — the
+    /// swap would land on the wake message, which is the blank pane over
+    /// again with a word on it.
     private static func waitUntilDrawn(_ session: AttachSession, timeout: Duration = .seconds(8)) async {
         let clock = ContinuousClock()
         let deadline = clock.now + timeout
@@ -321,8 +418,7 @@ final class PaneController {
         while clock.now < deadline, session.isRunning {
             try? await Task.sleep(for: .milliseconds(250))
             let grid = session.host.snapshot()
-            let drawn = grid.lines.contains { !$0.allSatisfy(\.isWhitespace) }
-            if drawn, let previous, previous == grid { return }
+            if !LeaveGesture.isUndrawn(grid), let previous, previous == grid { return }
             previous = grid
         }
     }
@@ -439,6 +535,10 @@ final class PaneController {
         case nothingAttached
         case unknownHost(String, known: [String])
         case badHost(String)
+        /// The incoming half of an overlapped switch never drew: it exited
+        /// while the pane on screen still had the keyboard. Nothing moved,
+        /// which is what the sentence has to say.
+        case attachDied(SessionRef, Int32)
         var description: String {
             switch self {
             case .busy(let ref): return "already attached to \(ref); detach first"
@@ -446,6 +546,8 @@ final class PaneController {
             case .unknownHost(let name, let known):
                 return "unknown host '\(name)' (known: \(known.joined(separator: ", "))); add it with `ccc hosts add`"
             case .badHost(let problem): return problem
+            case .attachDied(let ref, let status):
+                return "\(ref) did not attach (exit \(status)); the pane did not move"
             }
         }
     }
@@ -499,7 +601,10 @@ final class PaneController {
             // The gesture's twin says what the window did instead of
             // sending: the reply is how a script learns the key went to
             // the roster, not the child.
-            if taken > 0 { return .ok("sent; ← on an empty prompt taken (the roster takes the keyboard, the key is not sent)") }
+            // Not "on an empty prompt" any more: the guard also takes the
+            // key on a pane that has not painted, where there is no prompt
+            // to be at (`LeaveGesture.isUndrawn`).
+            if taken > 0 { return .ok("sent; ← taken (the roster takes the keyboard, the key is not sent)") }
             if let wheel, wheel != 0 {
                 guard let pane = session.host as? GhosttyPane else { return .error("wheel needs the ghostty pane; this session is on the \(PaneController.selectedCore) core") }
                 pane.wheel(lines: wheel)

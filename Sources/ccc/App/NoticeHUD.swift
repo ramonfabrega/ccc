@@ -132,6 +132,14 @@ final class NoticeHUD: NSVisualEffectView {
         }
     }
 
+    /// Dismiss only if this exact sentence is the one still showing. How a
+    /// notice that explains a wait goes away when the wait ends, without
+    /// taking down whatever replaced it in the meantime.
+    func dismiss(ifShowing text: String) {
+        guard !isHidden, label.stringValue == text else { return }
+        dismiss()
+    }
+
     func dismiss() {
         hideTask?.cancel()
         hideTask = nil

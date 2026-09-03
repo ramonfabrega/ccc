@@ -982,3 +982,71 @@ a cell reaches the seam — `render.h`, `..._DATA_FG_COLOR`: "Bold color
 handling is not applied"), selection colours (carried by `Theme`, drawn
 by nothing — `FrameReader` always builds `selection: nil`), a light
 variant, and the `screencapture` comparison itself, which needs item 10.
+
+## v8 slice 2 — the attach transition, and the hole in the ← guard (2026-09-03)
+
+The user raised the blank pane, and then the thing it caused: *"there's a
+spot where pressing left arrow will make us show the agents view warning
+(the folder one)."* Two symptoms, one cause.
+
+**The cause.** `PaneController.switchTo` detached and then attached, and
+`attach` builds a brand-new host — a blank grid — which the window mounted
+before the new `claude attach` had drawn. That is item 9. But
+`LeaveGesture` is a *read of the grid*, and its `false` means **send the
+key**, so across the same window a ← went to the child, which answers it
+by detaching the session and opening the agents view inside the attach
+client, workspace-trust dialog first. The blank pane was not only ugly, it
+was the guard being off.
+
+**How long the pane was blank.** Sampled every 100 ms through a switch
+between two local sessions (`ad19c590` → `9f61204a`), counting rows with
+anything on them:
+
+    0.1.14 (detach, then attach)   24ms rows=0  190ms rows=0  358ms rows=0
+                                   521ms rows=0  689ms rows=34
+                                   4 of 5 ticks blank; settled 689 ms
+
+    overlapped swap                20ms rows=34  186ms rows=34  350ms rows=34
+                                   510ms rows=34 … 1163ms rows=34
+                                   0 of 8 ticks blank; content changed
+                                   between 350 ms and 510 ms
+
+Locally the blank is ~0.5 s; experiment 3 measured the TUI taking up to
+12 s to paint over ssh, against `waitUntilDrawn`'s 8 s timeout. The two
+`ccc peek`s taken 300 ms into the same switch are the picture: 0 painted
+rows before, 34 after — the outgoing session, still showing its `❯`.
+
+**The fix.** Experiment 2 measured that the daemon accepts concurrent
+attaches and mirrors one PTY to every viewer, so the incoming session runs
+*behind* the outgoing one — unmounted, parsing into its own core — and
+`install` swaps it in once it has drawn. `MainWindowController.mount`
+clears the outgoing view in the same layout pass, so there is no frame
+showing neither.
+
+**Which pane owns the keyboard is not a taste call.** The queue called it
+one. It is not: the old pane's grid is the one still showing `❯ `, and
+that grid is what makes the guard fire. Leaving the keyboard with the
+outgoing pane is what closes the hole across the whole overlap.
+
+**The first attach has no pane to overlap with**, so the guard needed a
+second half: `LeaveGesture.isUndrawn` takes a bare ← rather than sending
+it while the pane has not painted. Measured on the new build:
+
+    first attach, 0 painted rows   left -> sent; ← taken (the roster takes
+                                   the keyboard, the key is not sent)
+    mid-swap, 34 painted rows      left -> sent; ← taken (…)
+
+**`isUndrawn` counts rows, and the reason is a measurement.** `claude
+attach` prints its own one-line wake message — `Waking session ad19c590…`,
+peeked from a fresh attach — seconds before the session's screen arrives.
+One line is non-blank *and* perfectly stable, so "the grid has something
+on it" answered yes on the wrong screen. Both `waitUntilDrawn` (which
+would have mounted that) and the guard now read the same shape: at most
+one row carries anything **and** there are still empty rows under it.
+The second half keeps a small grid honest — a one-row pane is showing
+everything it has, and the prompt read decides it.
+
+**Not done.** The swap is proved locally only; over ssh it is the same
+code with a longer wait, and item 3 still has no real remote to run it on.
+`ccc send --key left`'s reply lost the words "on an empty prompt", which
+were no longer true of both cases. 285 tests.
