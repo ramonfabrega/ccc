@@ -36,14 +36,16 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
 
 ## Queue
 
-1. **Worktree awareness, slice 2 — the standing against origin** (the
-   user's ask 2026-09-02, late, "git status-esque in each tab",
-   incremental): beside `↑3 ↓2` against master, the branch against its
-   upstream and master against `origin/master`, read from the
-   last-fetched remote refs (`refs/remotes/origin/…`, no network — the
-   reading says "as of the last fetch"). Display only; pushing is not a
-   ccc verb. Slice 1 (the reading, the three strategies, `ccc merge`) is
-   in `docs/MILESTONES.md` v6.
+1. **Worktree awareness, slice 2 — unpushed, and nothing more** (the
+   user's ask 2026-09-02, late, "git status-esque"; narrowed the same
+   night): beside `↑3 ↓2` against master, one mark, `↑2 unpushed`, when
+   the branch is ahead of its upstream (`refs/remotes/origin/<branch>`),
+   and the same on master against `origin/master` when it applies. Exact
+   from local refs, no network. It drives two real acts: the harness
+   refuses `claude rm` on unpushed work, and a fast-forwarded master
+   that was never pushed is one air cannot see. Not in scope: the other
+   direction (meaningless without a fetch), a fetch loop, a push verb —
+   git's job in a terminal, not a roster's.
 2. **Host picker** off `tailscale status --json` (MagicDNS names are the
    ssh destinations; Bonjour never crosses the tailnet). With it, the §4c
    question: whether a secondary viewer renders the shared grid as-is
