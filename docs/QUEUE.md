@@ -13,19 +13,13 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 ## The frontier
 
 **v8 — the pane, honestly.** Two complaints the user raised while using
-the app, both diagnosed by reading the code, neither fixed, both local
-and unblocked: the colours are wrong (item 8) and the attach transition
-blanks the pane (item 9). Do 8 first, and **do its measurement before
-either fix** — the house rule is that the screen is the oracle, and the
-measurement is what says which of the two causes is doing the damage.
-Item 8 is blocked on one answer only a human has: *what should the
-colours be* — Ghostty's defaults, the user's iTerm profile, or a theme of
-our own — since the fix hardcodes 256 RGB values from somewhere. The
-measurement does not need that answer; the fix does.
-
-Before the measurement can be honest, item 10 has to exist: there is no
-way to capture one window from a command today, and no headless colour
-oracle at all. That is one small slice in front of item 8, not a detour.
+the app. The theme half of the first is shipped (item 8): the pane now
+wears the user's own iTerm palette, which turns "does it match" into a
+diff rather than a matter of taste. What is left of 8 is the residual —
+colour management — and the whole point of shipping the theme alone was
+that the residual is now attributable. It cannot be judged by eye, so
+item 10 is genuinely in front of it. Item 9, the blank pane on attach, is
+untouched, needs nothing from anyone, and is the daily annoyance.
 
 ## Open
 
@@ -76,37 +70,34 @@ Remote branches `hotfix-gridbuilder`, `worktree-icon`, `worktree-v0`,
 `git branch -a` first — this item has not been re-checked since it was
 written.
 
-### 8. The colours are off
+### 8. The colours: the theme is set, the residual is not
 
-Raised by the user 2026-09-03 ("feel off / opaque'd", not what iTerm
-shows). **Diagnosed, not fixed.** Two stacking causes, both confirmed by
-reading:
+Raised by the user 2026-09-03 ("feel off / opaque'd"). **Half shipped.**
+The pane set none of the core's four colour options, so it wore Ghostty's
+own defaults — `#000000` on `#FFFFFF` with the Tomorrow Night palette —
+against an iTerm that is `#15191F` on `#DCDCDC` with a much more
+saturated sixteen. Not a missing palette, a different one; the queue's
+old "black on black" reading was the sized-struct bug `FrameReader`
+already fixed. `Theme` now installs 16 + 6 at `GhosttyHost.init`, with
+`ccc theme` and `CCC_THEME` as the surfaces — docs/EVIDENCE.md "the pane
+wore Ghostty's theme".
 
-- `ghostty_terminal_set` is called with exactly three options — userdata,
-  write_pty, scrollback (`GhosttyHost.swift:39-57`) — so
-  `GHOSTTY_TERMINAL_OPT_COLOR_{FOREGROUND,BACKGROUND,CURSOR,PALETTE}` are
-  never set and every colour is the core's default. The four options do
-  exist at the pinned commit (11, 12, 13, 14, taking `GhosttyColorRgb*`
-  and `GhosttyColorRgb[256]*`), so this is actionable rather than a hope
-  about upstream. The codebase already knows: `MetalRenderer`'s
-  `readableForeground` logs "the palette is unset" and substitutes a
-  fallback, commented "the real repair belongs wherever the frame's
-  palette is filled in" — that repair is this item, and the fallback goes
-  with it.
-- `MetalPaneView` uses `.bgra8Unorm` with **no `colorspace` on the layer**
-  (line 49), so the pane is unmanaged while iTerm is colour-managed. On a
-  P3 display that alone moves every value.
+What is left is cause (b), still unmeasured: `MetalPaneView` sets no
+`colorspace` on its `.bgra8Unorm` layer, so the pane is unmanaged while
+iTerm is colour-managed. The old premise for it was wrong — studio's
+display answers `NSScreen.colorSpace` with its own EDID profile ("Mi
+monitor", scale 1.0, no EDR), neither sRGB nor P3 — and the conclusion
+survived being wrong, because an unmanaged layer against a non-sRGB
+panel moves every value just the same. **Now that the nominal values
+agree, the on-screen difference is the colour management**: same content
+in both, a real `screencapture` of each, compare the RGB of known cells.
+Needs item 10.
 
-**Do the measurement first** — the same content in both, a real
-`screencapture` of each, compare the RGB of known cells. It says which
-cause is doing the damage before either is touched. Needs item 10, and
-needs studio's actual display profile recorded, since cause (b)'s whole
-premise is "on a P3 display" and nothing states whether the monitor is P3
-or sRGB.
-
-**Open question for a human, before the fix and not before the
-measurement:** what should the colours *be*? Matching iTerm makes its
-current profile the spec and that profile is recorded nowhere.
+Two smaller gaps, both stated in `Theme`'s doc comment: bold-is-bright
+(iTerm has it on; the core resolves palette indices to RGB before a cell
+reaches us, so the index has to cross the seam before we can add 8 to
+it), and the selection colours, which the theme carries and nothing
+draws.
 
 ### 9. The attach transition blanks the pane
 
@@ -136,11 +127,12 @@ window: `screencapture -l <CGWindowID>` needs an id nothing here produces,
 and there is no script for it. Against this project's own rule that every
 gesture has a command twin, that is a finding, not a missing doc.
 
-Nothing reads RGB out of a PNG either, and there is no headless colour
-oracle at all: `snapshot --json` serialises a `Grid` and `GridBuilder`
-carries no colour, so the text grid cannot judge colour today — which is
-what makes item 8's screencapture the honest first move rather than a lazy
-one. Whether a replay golden could ever assert RGB is unanswered.
+Nothing reads RGB out of a PNG either. There is now a headless colour
+oracle of a kind — `ThemeTests` asserts a `Frame`'s resolved cell colours,
+which is how item 8's first half was proved — but no *command* twin:
+`snapshot --json` serialises a `Grid` and `GridBuilder` carries no colour,
+so nothing on the CLI can judge a colour. Whether a replay golden could
+ever assert RGB is unanswered.
 
 ### 11. A cold session cannot build this
 

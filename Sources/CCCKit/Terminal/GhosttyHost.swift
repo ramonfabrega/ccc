@@ -26,7 +26,13 @@ public final class GhosttyHost: TerminalHost {
     /// arrived; the render state's own dirty tracking is the fine grain.
     public private(set) var generation: UInt64 = 0
 
-    public init(cols: Int = 80, rows: Int = 24) {
+    /// The colours this terminal was built with. Read-only: the core copies
+    /// them at `init`, and changing them afterwards would have to redraw
+    /// every cached glyph batch as well.
+    public let theme: Theme
+
+    public init(cols: Int = 80, rows: Int = 24, theme: Theme = .active) {
+        self.theme = theme
         var t: GhosttyTerminal?
         guard ghostty_terminal_new(nil, &t, UInt16(clamping: cols), UInt16(clamping: rows)) == GHOSTTY_SUCCESS, let t else {
             lastError = "ghostty_terminal_new failed"
@@ -55,6 +61,45 @@ public final class GhosttyHost: TerminalHost {
         var lines: Int = GhosttyHost.scrollbackLines
         _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines)
         _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, nil)
+
+        install(theme, into: t)
+    }
+
+    /// Tell the core what our colours are.
+    ///
+    /// Without this the core answers with its *own* fallbacks — pure black,
+    /// pure white, and the Tomorrow Night palette it ships — because the
+    /// embeddable terminal expects its host to state a preference and ccc
+    /// stated none (measured 2026-09-03; see docs/EVIDENCE.md "the pane
+    /// wore Ghostty's theme"). These four options are the whole of what the
+    /// core owns; cursor-text and selection never reach it, because the
+    /// renderer draws those.
+    ///
+    /// Each option is set as a *default*, which is the distinction that
+    /// matters: `OSC 4/10/11/12` from the child still override it and keep
+    /// overriding it, so a program that themes itself is not fighting us.
+    /// Setting them is also what makes the *answers* right — `OSC 11` is
+    /// how a TUI asks whether it is on a dark background, and an unset
+    /// background is a question the core cannot answer.
+    private func install(_ theme: Theme, into t: GhosttyTerminal) {
+        func rgb(_ c: Frame.RGB) -> GhosttyColorRgb { GhosttyColorRgb(r: c.r, g: c.g, b: c.b) }
+
+        var background = rgb(theme.background)
+        var foreground = rgb(theme.foreground)
+        var cursor = rgb(theme.cursor)
+        _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &background)
+        _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &foreground)
+        _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cursor)
+
+        // Slots 16–255 are the xterm cube and grey ramp — arithmetic that
+        // applications hardcode, not a choice. Seeding from the core's own
+        // generator and overwriting only the named sixteen means our cube
+        // cannot drift from the core's, which a copied formula eventually
+        // would.
+        var palette = [GhosttyColorRgb](repeating: GhosttyColorRgb(), count: 256)
+        ghostty_color_palette_default(&palette)
+        for (index, colour) in theme.ansi.enumerated() { palette[index] = rgb(colour) }
+        _ = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, &palette)
     }
 
     /// Lines of scrollback kept per pane. A setting once the roster is ours.

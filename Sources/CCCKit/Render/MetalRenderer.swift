@@ -44,7 +44,15 @@ public final class MetalRenderer {
     private let inFlight = DispatchSemaphore(value: MetalRenderer.bufferCount)
 
     private var hasRendered = false
-    private var warnedAboutPalette = false
+    /// The colours the core was built with. The renderer needs its own copy
+    /// because two of them never travel in a `Frame`: the core has no
+    /// cursor-text or selection colour to hand us (`render.h` leaves
+    /// "rendering policy for selected cells" to the caller), so this is
+    /// where they live. Everything else in a frame — default fg/bg, cursor,
+    /// every resolved cell colour — already comes out of the same theme by
+    /// way of the core, and is read from the frame, not from here.
+    public var theme: Theme = .active
+
     private let log = Logger(subsystem: "app.cuanto.ccc", category: "MetalRenderer")
 
     // Instance layouts, matched field for field by the shader source below.
@@ -278,7 +286,7 @@ public final class MetalRenderer {
 
     private func build(frame: Frame, metrics: CellMetrics) -> Batch {
         let atlas = self.atlas(for: metrics)
-        let foreground = readableForeground(of: frame)
+        let foreground = frame.foreground
         var batch = Batch()
 
         let cellW = metrics.widthPixels
@@ -427,16 +435,19 @@ public final class MetalRenderer {
         case .block:
             batch.cursorSolids.append(SolidInstance(
                 rect: SIMD4<Float>(Float(x), Float(top), Float(width), Float(cellH)), color: solid))
-            // The cell's own glyph, redrawn in the background colour on top —
-            // that is the inversion, without a second pass over the grid.
-            let under = RunMerge.resolvedColors(cell, frame: frame.background, foreground: foreground)
-            let inverted = Self.color(under.bg ?? frame.background, alpha: 1)
+            // The cell's own glyph, redrawn on top in the theme's cursor-text
+            // colour. This used to be the cell's background — an inversion,
+            // which is what you do when you have no cursor-text colour to
+            // reach for. A theme has one, and iTerm draws that one flat
+            // rather than inverting, so a cursor over coloured text looks the
+            // same wherever it lands.
+            let textColor = Self.color(theme.cursorText, alpha: 1)
             if !cell.text.isEmpty, !cell.flags.contains(.invisible) {
                 appendGlyphs(
                     cell.text, columnForUTF16: Array(repeating: 0, count: cell.text.utf16.count),
                     bold: cell.flags.contains(.bold), italic: cell.flags.contains(.italic),
                     originX: x, baselineY: top + metrics.baselinePixels,
-                    cellWidth: cellW, scale: metrics.scale, color: inverted, atlas: atlas,
+                    cellWidth: cellW, scale: metrics.scale, color: textColor, atlas: atlas,
                     alpha: &batch.cursorAlphaGlyphs, colorGlyphs: &batch.cursorColorGlyphs
                 )
             }
@@ -458,33 +469,6 @@ public final class MetalRenderer {
                 color: solid))
         }
     }
-
-    /// The colour to draw cells that carry no explicit foreground.
-    ///
-    /// A frame whose default foreground equals its default background paints
-    /// every unstyled cell in the background colour — invisible text. That is
-    /// not a hypothetical: a `Frame` built from a render state whose colours
-    /// were never populated arrives as black-on-black, and the symptom is that
-    /// only *explicitly coloured* text shows up while everything using the
-    /// terminal default vanishes. The renderer refuses to draw an invisible
-    /// grid, says so once, and substitutes a legible default; the real repair
-    /// belongs wherever the frame's palette is filled in.
-    private func readableForeground(of frame: Frame) -> Frame.RGB {
-        guard frame.foreground == frame.background else { return frame.foreground }
-        if !warnedAboutPalette {
-            warnedAboutPalette = true
-            log.warning("""
-                frame default foreground equals its background \
-                (\(frame.foreground.r), \(frame.foreground.g), \(frame.foreground.b)); \
-                the palette is unset. Drawing default-coloured text in a fallback \
-                foreground so it is not invisible.
-                """)
-        }
-        return Self.fallbackForeground
-    }
-
-    /// Near-white, matching what a terminal reports for bright white.
-    static let fallbackForeground = Frame.RGB(234, 234, 234)
 
     private func atlas(for metrics: CellMetrics) -> GlyphAtlas {
         if let existing = glyphAtlas, let font = atlasFont,

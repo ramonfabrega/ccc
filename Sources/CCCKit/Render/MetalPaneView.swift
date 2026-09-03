@@ -31,7 +31,7 @@ public final class MetalPaneView: NSView {
     private var frameToDraw: Frame?
     private var lastReportedGrid: (cols: Int, rows: Int)?
 
-    public init(frame frameRect: NSRect, metrics: CellMetrics = CellMetrics()) {
+    public init(frame frameRect: NSRect, metrics: CellMetrics = CellMetrics(), theme: Theme = .active) {
         self.metrics = metrics
         super.init(frame: frameRect)
         // The layer comes from `makeBackingLayer()`, never from assigning
@@ -45,6 +45,7 @@ public final class MetalPaneView: NSView {
         layerContentsRedrawPolicy = .duringViewResize
 
         renderer = MetalRenderer()
+        renderer?.theme = theme
         metalLayer.device = renderer?.device ?? MTLCreateSystemDefaultDevice()
         metalLayer.pixelFormat = .bgra8Unorm
         // We never read back from the drawable (snapshots go through their own

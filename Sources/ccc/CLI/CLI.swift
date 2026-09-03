@@ -167,6 +167,8 @@ enum CLI {
                 return try request(.stats, json: json)
             case "peek":
                 return try peek(to: rest.first(where: { !$0.hasPrefix("--") }))
+            case "theme":
+                return theme(json: json)
             case "bench":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
@@ -982,6 +984,42 @@ enum CLI {
         return 0
     }
 
+    /// The pane's colours, as text or as the JSON `CCC_THEME` reads back.
+    ///
+    /// The command twin of a thing with no gesture yet: there is no colour
+    /// picker, so this is the only surface that answers "what are my
+    /// colours", and `--json` is the file to copy, edit and point
+    /// `CCC_THEME` at. Slots 16–255 are not printed because they are not a
+    /// choice — the xterm cube and grey ramp, seeded from the core.
+    static func theme(json: Bool) -> Int32 {
+        let theme = Theme.active
+        if json { printJSON(theme); return 0 }
+
+        let names = [
+            "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+            "bright black", "bright red", "bright green", "bright yellow",
+            "bright blue", "bright magenta", "bright cyan", "bright white",
+        ]
+        var out = "\(theme.name)\n\n"
+        for (index, colour) in theme.ansi.enumerated() {
+            // A swatch of the colour itself: the point of looking is to see it.
+            let swatch = "\u{1b}[48;2;\(colour.r);\(colour.g);\(colour.b)m  \u{1b}[0m"
+            out += String(format: "  %@  %3d  %@  %@\n", swatch, index, colour.hex, names[index])
+        }
+        out += "\n"
+        for (label, colour) in [
+            ("background", theme.background), ("foreground", theme.foreground),
+            ("cursor", theme.cursor), ("cursor text", theme.cursorText),
+            ("selection", theme.selectionBackground), ("selected text", theme.selectionForeground),
+        ] {
+            let swatch = "\u{1b}[48;2;\(colour.r);\(colour.g);\(colour.b)m  \u{1b}[0m"
+            out += String(format: "  %@       %@  %@\n", swatch, colour.hex, label)
+        }
+        out += "\n  selection is carried but not yet drawn (nothing reads Frame.Row.selection)\n"
+        print(out)
+        return 0
+    }
+
     /// Check 4 of docs/CHECKS.md: streaming throughput of a core. Feeds the
     /// recording `repeats` times as the PTY would (chunk by chunk) and times
     /// parse and snapshot separately. `--core` omitted runs both.
@@ -1284,6 +1322,7 @@ enum CLI {
                ccc resize <cols> <rows>
                ccc stats [--json]
                ccc peek [out.png]                 PNG of the app window (no screen permission)
+               ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
                ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
                ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput

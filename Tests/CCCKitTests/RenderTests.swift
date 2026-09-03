@@ -251,38 +251,16 @@ struct RenderTests {
         }
     }
 
-    /// The live finding's *actual* cause: a frame whose default foreground
-    /// equals its default background paints every cell that uses the terminal
-    /// default in the background colour. Explicitly coloured text still shows,
-    /// which is why the symptom looked like "only bold is missing" — the bold
-    /// runs happened to be the ones using the default foreground.
-    @Test(.enabled(if: hasMetalDevice))
-    func defaultForegroundEqualToBackgroundStillDrawsText() throws {
-        let renderer = try #require(MetalRenderer())
-        let metrics = CellMetrics(scale: 2)
-        let text = "Claude"
-        let cells = text.map { self.cell(String($0), fg: nil, flags: .bold) }
-        let frame = Frame(
-            cols: text.count, rows: [row(0, cells, cols: text.count)], cursor: nil,
-            // Both black: the palette was never populated.
-            background: Self.black, foreground: Self.black, dirty: .full
-        )
-        let width = Int(metrics.widthPixels) * frame.cols
-        let texture = try #require(renderer.makeOffscreenTexture(
-            width: width, height: Int(metrics.heightPixels)))
-        renderer.render(frame: frame, to: texture, metrics: metrics)
-        let bytes = renderer.readPixels(from: texture)
-
-        for col in 0..<text.count {
-            let ink = inkedPixels(bytes, width: width, metrics: metrics, col: col, row: 0, background: Self.black)
-            #expect(ink > 0, "column \(col) vanished into the background: the palette is unset")
-        }
-    }
-
-    @Test func aUsablePaletteIsLeftAlone() {
-        // The fallback must not hijack a frame that has real colours.
-        #expect(MetalRenderer.fallbackForeground != Frame.RGB(0, 0, 0))
-    }
+    // Two tests stood here — `defaultForegroundEqualToBackgroundStillDrawsText`
+    // and `aUsablePaletteIsLeftAlone` — guarding a fallback foreground the
+    // renderer substituted when a frame arrived black-on-black. Both are
+    // deleted with the fallback (2026-09-03). The condition they guarded had
+    // two causes and neither survives: the sized-struct bug in `FrameReader`
+    // (fixed) and an unstated palette (a `Theme` is now installed into the
+    // core at `init`, see `ThemeTests`). What remains is a theme whose own
+    // foreground equals its own background, which is a `CCC_THEME` file
+    // asking for exactly that and should be drawn as asked rather than
+    // second-guessed by the renderer.
 
     /// A bold face must always be *some* face: if the family has no bold, the
     /// regular one is drawn rather than nothing.

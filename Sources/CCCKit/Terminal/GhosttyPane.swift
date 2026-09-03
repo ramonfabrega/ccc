@@ -40,12 +40,18 @@ public final class GhosttyPane: TerminalHost {
         (metalView.presentedFrames, metalView.lastPresentedAt)
     }
 
-    public init(frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600), font: NSFont? = nil) {
+    public init(
+        frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600),
+        font: NSFont? = nil, theme: Theme = .active
+    ) {
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let metrics = CellMetrics(font: font ?? CellMetrics.defaultFont, scale: scale)
-        metalView = MetalPaneView(frame: CGRect(origin: .zero, size: frame.size), metrics: metrics)
+        // Both halves of the pane take the same theme: the core resolves
+        // every cell colour out of it, the renderer keeps the two it never
+        // sends us (cursor-text, selection).
+        metalView = MetalPaneView(frame: CGRect(origin: .zero, size: frame.size), metrics: metrics, theme: theme)
         let grid = metalView.gridSize()
-        core = GhosttyHost(cols: max(2, grid.cols), rows: max(1, grid.rows))
+        core = GhosttyHost(cols: max(2, grid.cols), rows: max(1, grid.rows), theme: theme)
         core.setCellSize(width: Int(metrics.widthPixels), height: Int(metrics.heightPixels))
         container = PaneInputView(frame: frame)
         container.addSubview(metalView)

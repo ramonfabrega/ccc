@@ -910,3 +910,75 @@ answered "no link 9; the grid has 1", exit 1. Eleven tests. 267 tests.
 Not done: no ⌘-hover affordance (the pane installs no tracking area, so
 `mouseMoved` never fires), and SwiftTerm's pane does not have the
 gesture — the twin covers both, since it reads `snapshot()`.
+
+## v8 slice 1 — the pane wore Ghostty's theme (2026-09-03)
+
+The complaint was "the colours feel off / opaque'd, not what iTerm
+shows". The cause was not a missing palette but an unstated one: ccc
+called `ghostty_terminal_set` with three options and never
+`GHOSTTY_TERMINAL_OPT_COLOR_{FOREGROUND,BACKGROUND,CURSOR,PALETTE}`, so
+every colour was the embeddable core's own fallback, which is not even
+what Ghostty the application looks like.
+
+**What the core hands back when the host states nothing.** A probe
+(`GhosttyHost` + SGR, read the `Frame`) answered:
+
+    DEFAULT background: #000000        render.zig:132, the render state's own fallback
+    DEFAULT foreground: #FFFFFF        render.zig:133
+    fg == bg? false
+    row 1: X:#1D1F21 X:#CC6666 X:#B5BD68 …    color.zig:438, Tomorrow Night
+    row 3: X:#000000 X:#878700 X:#FF00D7 X:#BCBCBC   palette 16, 100, 200, 250
+
+So the palette was fully populated and foreground never equalled
+background. `MetalRenderer.readableForeground` — the "the palette is
+unset" fallback, and its two tests — was dead code left from the
+sized-struct bug `FrameReader.swift:62` already fixed; deleted here.
+Ghostty *the application* ships `#282C34` (`Config.zig:607`); the core
+ships black because it expects its host to say.
+
+**The other side of the comparison.** From
+`~/Library/Preferences/com.googlecode.iterm2.plist`, profile "Default",
+`Use Separate Colors for Light and Dark Mode: True`, system appearance
+Dark: background `#15191F`, foreground `#DCDCDC`, cursor `#FFFFFF` on
+`#000000` text, selection `#B3D7FF` on `#000000`, `Use Bright Bold: True`,
+`Minimum Contrast: 0.0`, font MesloLGS-NF-Regular 13. The sixteen are
+identical between the light and dark variants; only the specials differ.
+The palette is markedly more saturated than Tomorrow Night — `#00C200`
+against `#B5BD68` for green, `#2744C7` against `#81A2BE` for blue — which
+is the whole of "opaque'd".
+
+**A theme is 22 values, not 256.** Slots 16–255 are the xterm cube
+(`n*40+55` per axis) and grey ramp (`(n-232)*10+8`); applications
+hardcode them. `GhosttyHost.install` seeds all 256 from the core's own
+`ghostty_color_palette_default` and overwrites the first sixteen, so our
+cube cannot drift from the core's. Verified live: 16 → `#000000`, 100 →
+`#878700`, 200 → `#FF00D7`, 231 → `#FFFFFF`, 250 → `#BCBCBC`.
+
+**Installed as defaults, not overrides.** `terminal.zig:1352` sets
+`colors.foreground.default`, and `.color_palette` calls `changeDefault`,
+which preserves entries the child changed. Proved by test: after
+`OSC 4;1;rgb:00/ff/00`, `SGR 31` resolves to `#00FF00`, not the theme's
+red. A program that themes itself is not fighting us.
+
+**The surfaces.** `ccc theme` prints the 16 + 6 with a truecolor swatch
+per row; `ccc theme --json` is the file `CCC_THEME` reads back. Verified
+end to end: a copy with `#00C200` edited to `#FF00FF` and pointed at by
+`CCC_THEME` printed `knob-check … #FF00FF green`; `{"name":"bad"}` fell
+back to `iterm-default-dark` with the reason on stderr, because a broken
+theme must not be a terminal that will not open.
+
+**Studio's display, for the residual.** `NSScreen.colorSpace` answers
+`"Mi monitor"` — the panel's own EDID-derived ICC profile — at
+`backingScaleFactor 1.0` with `maximumExtendedDynamicRangeColorComponentValue
+1.0`. Neither sRGB nor P3, which retires the queue's "on a P3 display"
+premise without retiring the conclusion: iTerm declares its colours sRGB
+and is converted into that profile, `MetalPaneView`'s `.bgra8Unorm` layer
+sets no `colorspace` and is not. That difference is now the *only*
+nominal difference left, which is what makes it measurable.
+
+Nine tests (`ThemeTests`), two deleted with the fallback. 279 tests.
+Not done: bold-is-bright (the core resolves palette indices to RGB before
+a cell reaches the seam — `render.h`, `..._DATA_FG_COLOR`: "Bold color
+handling is not applied"), selection colours (carried by `Theme`, drawn
+by nothing — `FrameReader` always builds `selection: nil`), a light
+variant, and the `screencapture` comparison itself, which needs item 10.

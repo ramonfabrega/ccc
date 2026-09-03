@@ -26,7 +26,7 @@ pane is libghostty-vt + our Metal renderer, which took all six checks
 
 ```
 git submodule update --init         # vendor/ghostty, pinned to one commit; scripts/fetch-zig gets the Zig it needs
-swift build && swift test           # 272 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer, docs guard
+swift build && swift test           # 279 tests: roster, hosts/refs, model probe, PTY, replay goldens, keys/mouse, renderer, theme, docs guard
 scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH (symlink into the bundle)
                                     # run it UNSANDBOXED: sandboxed it quits the app, half-copies the
                                     # bundle and leaves it dead
@@ -42,6 +42,8 @@ ccc send "text" | --key ctrl-z      # type; named keys go through the core's key
 ccc send --paste <text>|- | --wheel N  # paste framed as the child negotiated (- reads stdin); scroll
 ccc detach | resize <c> <r> | stats # detach; resize (headless); memory / poll + model-join cost / PTY B/s
 ccc peek [out.png]                  # PNG of the window from our view hierarchy (no screen permission)
+ccc theme [--json]                  # the pane's colours: 16 ANSI + 6 specials, with a swatch per row
+                                    # --json is the shape CCC_THEME reads; 16-255 are the xterm cube, not a choice
 ccc window show|hide|close|resize <c> <r>
 ccc replay <bytes> [--bytes N] [--core X]  # render a recording headlessly (the golden-test oracle)
 ccc bench <bytes> [--repeat N]      # throughput, snapshot cost, footprint delta, grid digest
@@ -62,6 +64,7 @@ runner, PaneController, the AppKit/SwiftUI window), `Tests/CCCKitTests`
 (+ fixtures). Environment: `CCC_CLAUDE` (path to `claude`),
 `CCC_CONTROL_SOCKET`, `CCC_HOSTS` (the host list, default
 `~/Library/Application Support/ccc/hosts.json`), `CCC_SSH_CONTROL_DIR` (where
-the per-host ssh master sockets live), `CCC_CORE=ghostty|swiftterm` (the pane's core;
+the per-host ssh master sockets live), `CCC_THEME` (a JSON theme file in `ccc theme --json`'s shape; unset, or unparseable,
+means the built-in read from the user's iTerm profile), `CCC_CORE=ghostty|swiftterm` (the pane's core;
 ghostty is the default), `CCC_METAL=1` (SwiftTerm's own Metal renderer, only
 under the escape hatch; ~250 MB, see DESIGN.md).
