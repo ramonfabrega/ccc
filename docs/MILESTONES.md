@@ -145,8 +145,11 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   and `ota release` — did the whole lane in one run: signed inside-out,
   notarized first submission, stapled, single-item appcast on the
   fleet's key, both CDN keys, and its own live check (version 76,
-  length 4509224 both sides). Studio runs it. The other half of §6a's
-  proof — air's Sparkle installing this cut — is air's to show.
+  length 4509224 both sides). Studio runs it. **Closed 2026-09-03:** the
+  other half of §6a — air's Sparkle installing a cut — is not an open
+  thread and has not been since. The user drives from air and keeps it
+  current, updating as they go; assume air is on the latest cut rather
+  than treating its update state as something to prove or ask about.
   **v0.1.10, same night (build 85):** v5 slices 1 and 2 — `ccc spawn`,
   the New Session sheet, the draft reading. Notarized first submission,
   one item, live length 4623978 both sides; GitHub release v0.1.10;
