@@ -35,6 +35,9 @@ struct RosterView: View {
     let push: (SessionRef, PushTarget) -> Void
     /// The submenu's Update item (v6 slice 6): `ccc update <ref>`.
     let update: (SessionRef) -> Void
+    /// The submenu's Fetch and Pull items (v6 slice 7): `ccc fetch|pull <ref>`.
+    let fetch: (SessionRef) -> Void
+    let pull: (SessionRef) -> Void
     /// Open in Terminal (v6 slice 4): `ccc shell <ref>`.
     let openShell: (SessionRef, _ atRepo: Bool) -> Void
     /// The window keeps the selection for ⌘T when nothing is attached.
@@ -185,6 +188,14 @@ struct RosterView: View {
                         .disabled((wt.unpushed ?? 0) == 0)
                     Button("Push \(wt.base)" + ((wt.baseUnpushed ?? 0) > 0 ? " ⇡\(wt.baseUnpushed!)" : "")) { push(row.ref, .base) }
                         .disabled((wt.baseUnpushed ?? 0) == 0)
+                    // Fetch and Pull master (slice 7): the other direction.
+                    // Fetch is the one network call and is always on offer;
+                    // Pull is fast-forward only and live while origin/master
+                    // holds commits master lacks, as of the last fetch.
+                    Divider()
+                    Button("Fetch origin") { fetch(row.ref) }
+                    Button("Pull \(wt.base)" + ((wt.baseUnpulled ?? 0) > 0 ? " ⇣\(wt.baseUnpulled!)" : "")) { pull(row.ref) }
+                        .disabled(!wt.canPull)
                 }
                 Divider()
                 Text(standing(wt))
@@ -233,8 +244,12 @@ extension WorktreeInfo {
             if ahead == 0 { parts.append("nothing to merge") }
         }
         if let up = unpushed, up > 0 { parts.append("\(up) unpushed") }
+        if let down = unpulled, down > 0 { parts.append("\(down) unpulled") }
         var text = parts.joined(separator: ", ")
-        if let up = baseUnpushed, up > 0 { text += "; \(base) has \(up) unpushed" }
+        var theirs: [String] = []
+        if let up = baseUnpushed, up > 0 { theirs.append("\(up) unpushed") }
+        if let down = baseUnpulled, down > 0 { theirs.append("\(down) unpulled") }
+        if !theirs.isEmpty { text += "; \(base) has " + theirs.joined(separator: ", ") }
         return text
     }
 }
@@ -410,6 +425,10 @@ struct RosterRow: View {
                             // ⇡ what origin does not have (slice 2): the
                             // harness keeps such a worktree on delete.
                             if let up = wt.unpushed, up > 0 { Text("⇡\(up)").foregroundStyle(.secondary) }
+                            // ⇣ what origin has that this branch does not
+                            // (slice 7): another Mac pushed to it. As of
+                            // the last fetch; the act is a terminal's.
+                            if let down = wt.unpulled, down > 0 { Text("⇣\(down)").foregroundStyle(.secondary) }
                         }
                         .font(.caption.monospaced())
                         .lineLimit(1)

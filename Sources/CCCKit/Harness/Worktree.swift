@@ -31,9 +31,20 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     /// see, even though every commit is on origin under the branch's
     /// name. Nil when origin has no such branch.
     public var baseUnpushed: Int?
+    /// The mirror of `unpushed` (slice 7): commits on `origin/<branch>`
+    /// that the branch lacks — another Mac pushed to it. As of the last
+    /// fetch, never a network call. Nil when origin has no such branch.
+    /// Informative only: pulling into the worktree branch is rebase's
+    /// problem by another name and stays a terminal's.
+    public var unpulled: Int?
+    /// `origin/<base>` ahead of `base`: what Pull master brings, and what
+    /// makes Push master a non-fast-forward. Nil when origin has no such
+    /// branch.
+    public var baseUnpulled: Int?
 
     public init(branch: String, base: String, ahead: Int, behind: Int, repo: String,
-                unpushed: Int? = nil, baseUnpushed: Int? = nil) {
+                unpushed: Int? = nil, baseUnpushed: Int? = nil,
+                unpulled: Int? = nil, baseUnpulled: Int? = nil) {
         self.branch = branch
         self.base = base
         self.ahead = ahead
@@ -41,6 +52,8 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
         self.repo = repo
         self.unpushed = unpushed
         self.baseUnpushed = baseUnpushed
+        self.unpulled = unpulled
+        self.baseUnpulled = baseUnpulled
     }
 
     /// Lenient on what slice 2 added: a slice-1 ccc on the far side sends
@@ -54,6 +67,8 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
         repo = try c.decode(String.self, forKey: .repo)
         unpushed = try c.decodeIfPresent(Int.self, forKey: .unpushed)
         baseUnpushed = try c.decodeIfPresent(Int.self, forKey: .baseUnpushed)
+        unpulled = try c.decodeIfPresent(Int.self, forKey: .unpulled)
+        baseUnpulled = try c.decodeIfPresent(Int.self, forKey: .baseUnpulled)
     }
 
     /// `base` can take `branch` without a merge commit.
@@ -63,23 +78,46 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     /// `base` holds commits the branch lacks — what "Update from master"
     /// brings in (slice 6), and what blocks a fast-forward the other way.
     public var canUpdate: Bool { behind > 0 }
+    /// `origin/<base>` holds commits `base` lacks, as of the last fetch —
+    /// what Pull master brings (slice 7).
+    public var canPull: Bool { (baseUnpulled ?? 0) > 0 }
 
-    /// "worktree-v2 ↑3", "worktree-v2 ↑3 ↓2 ⇡1", "worktree-v2 level". ↑↓
-    /// are against master; ⇡ is what is not on origin (starship's glyph
-    /// for the same thing).
+    /// "worktree-v2 ↑3", "worktree-v2 ↑3 ↓2 ⇡1 ⇣1", "worktree-v2 level".
+    /// ↑↓ are against master; ⇡ is what is not on origin, ⇣ what origin
+    /// has that this does not (starship's glyphs for the same things).
     public var summary: String {
         var out = branch
         if ahead > 0 { out += " ↑\(ahead)" }
         if behind > 0 { out += " ↓\(behind)" }
         if ahead == 0 && behind == 0 { out += " level" }
         if let unpushed, unpushed > 0 { out += " ⇡\(unpushed)" }
+        if let unpulled, unpulled > 0 { out += " ⇣\(unpulled)" }
         return out
     }
 
-    /// "⇡2" after the repository when master itself is unpushed.
+    /// Against origin, in words: "worktree-t 1 unpushed, 2 unpulled;
+    /// master has 1 unpulled", or "level with origin". What a fetch
+    /// answers with.
+    public var originStanding: String {
+        var mine: [String] = []
+        if let unpushed, unpushed > 0 { mine.append("\(unpushed) unpushed") }
+        if let unpulled, unpulled > 0 { mine.append("\(unpulled) unpulled") }
+        var theirs: [String] = []
+        if let baseUnpushed, baseUnpushed > 0 { theirs.append("\(baseUnpushed) unpushed") }
+        if let baseUnpulled, baseUnpulled > 0 { theirs.append("\(baseUnpulled) unpulled") }
+        var parts: [String] = []
+        if !mine.isEmpty { parts.append("\(branch) " + mine.joined(separator: ", ")) }
+        if !theirs.isEmpty { parts.append("\(base) has " + theirs.joined(separator: ", ")) }
+        return parts.isEmpty ? "level with origin" : parts.joined(separator: "; ")
+    }
+
+    /// "⇡2", "⇣1", "⇡2 ⇣1" after the repository when master itself is
+    /// unpushed or behind origin.
     public var baseMark: String? {
-        guard let baseUnpushed, baseUnpushed > 0 else { return nil }
-        return "⇡\(baseUnpushed)"
+        var parts: [String] = []
+        if let baseUnpushed, baseUnpushed > 0 { parts.append("⇡\(baseUnpushed)") }
+        if let baseUnpulled, baseUnpulled > 0 { parts.append("⇣\(baseUnpulled)") }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 }
 
@@ -101,9 +139,10 @@ public final class WorktreeProbe: @unchecked Sendable {
     private var cache: [String: Entry] = [:]
     /// Per repository: the default branch, found once.
     private var bases: [String: String] = [:]
-    /// Per repository: master's own unpushed count, keyed like `cache`,
-    /// so twenty rows on one repo cost one count.
-    private var baseUnpushed: [String: (key: String, count: Int)] = [:]
+    /// Per repository: master's own standing against origin (unpulled,
+    /// unpushed), keyed like `cache`, so twenty rows on one repo cost one
+    /// count.
+    private var baseStanding: [String: (key: String, unpulled: Int, unpushed: Int)] = [:]
     public private(set) var spawns = 0
     public let git: String
 
@@ -239,16 +278,23 @@ public final class WorktreeProbe: @unchecked Sendable {
         var info = WorktreeInfo(branch: branch, base: base, ahead: ahead, behind: behind, repo: layout.repo)
         if origin {
             info.unpushed = unpushedCount(of: branch, in: layout.repo)
+            // ⇣ on the branch only once origin has it (slice 7): before the
+            // first push there is nothing to be behind.
+            if originBranch != "-" {
+                info.unpulled = originStanding(of: branch, in: layout.repo)?.unpulled
+            }
             let baseKey = "\(baseSHA)/\(originBase)"
             lock.lock()
-            let known = baseUnpushed[layout.repo]
+            let known = baseStanding[layout.repo]
             lock.unlock()
             if let known, known.key == baseKey {
-                info.baseUnpushed = known.count
-            } else if let n = behindOriginCount(of: base, in: layout.repo) {
-                info.baseUnpushed = n
+                info.baseUnpushed = known.unpushed
+                info.baseUnpulled = known.unpulled
+            } else if let standing = originStanding(of: base, in: layout.repo) {
+                info.baseUnpushed = standing.unpushed
+                info.baseUnpulled = standing.unpulled
                 lock.lock()
-                baseUnpushed[layout.repo] = (baseKey, n)
+                baseStanding[layout.repo] = (baseKey, standing.unpulled, standing.unpushed)
                 lock.unlock()
             }
         }
@@ -258,15 +304,19 @@ public final class WorktreeProbe: @unchecked Sendable {
         return info
     }
 
-    /// Master against `origin/master` by name: after a fast-forward to a
-    /// pushed branch every commit *is* on origin, under the branch's
-    /// name, and the question is still whether the other Mac's master
-    /// has them. Nil when origin has no such branch.
-    private func behindOriginCount(of branch: String, in repo: String) -> Int? {
+    /// A branch against `origin/<branch>` by name, both ways in one
+    /// process: `rev-list --left-right --count origin/b...b` → (unpulled,
+    /// unpushed). For master, "unpushed by name" is the reading that
+    /// survives a fast-forward to a pushed branch — every commit *is* on
+    /// origin, under the branch's name, and the question is still whether
+    /// the other Mac's master has them. Nil when origin has no such branch.
+    private func originStanding(of branch: String, in repo: String) -> (unpulled: Int, unpushed: Int)? {
         lock.lock(); spawns += 1; lock.unlock()
-        guard let out = try? Git.run(git, ["-C", repo, "rev-list", "--count",
-                                          "refs/remotes/origin/\(branch)..refs/heads/\(branch)"]).stdout else { return nil }
-        return Int(out.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let out = try? Git.run(git, ["-C", repo, "rev-list", "--left-right", "--count",
+                                          "refs/remotes/origin/\(branch)...refs/heads/\(branch)"]).stdout else { return nil }
+        let parts = out.trimmingCharacters(in: .whitespacesAndNewlines).split(whereSeparator: \.isWhitespace)
+        guard parts.count == 2, let unpulled = Int(parts[0]), let unpushed = Int(parts[1]) else { return nil }
+        return (unpulled, unpushed)
     }
 
     /// `git rev-list --count <branch> --not --remotes=origin`: commits on
@@ -283,7 +333,7 @@ public final class WorktreeProbe: @unchecked Sendable {
     public func fresh(forCwd cwd: String) -> WorktreeInfo? {
         lock.lock()
         cache[cwd] = nil
-        baseUnpushed = [:]
+        baseStanding = [:]
         lock.unlock()
         return info(forCwd: cwd)
     }
@@ -520,6 +570,70 @@ public enum GitPush {
     }
 }
 
+/// Fetch (v6 slice 7): the one network call the roster ever makes, and
+/// only when asked — the submenu's Fetch, `ccc fetch <ref>`, once on
+/// launch and once on wake. Everything the rows read stays "as of the
+/// last fetch"; this is what moves that instant. `git fetch origin` in
+/// the main checkout: refs only, nothing merged, nothing pruned.
+public enum GitFetch {
+    public static func perform(repo: String, git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
+        let started = ContinuousClock.now
+        do {
+            _ = try Git.run(git, ["-C", repo, "fetch", "--quiet", "origin"])
+            let ms = (ContinuousClock.now - started).ms
+            return MergeOutcome(merged: true, said: "fetched origin (\(ms) ms)")
+        } catch {
+            return MergeOutcome(merged: false, said: "fetch origin failed: \("\(error)".trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+    }
+}
+
+/// Pull master (v6 slice 7): the mirror of Push master, fast-forward
+/// only. `git merge --ff-only origin/<base>` in the main checkout, with
+/// the merge verb's guards (on the base branch, clean). A master that
+/// diverged from origin is refused with the way out named — push first,
+/// or merge in a terminal — never a merge commit on master by a menu.
+/// Into the worktree branch is not offered: that is rebase's problem by
+/// another name.
+public enum GitPull {
+    public static func perform(on info: WorktreeInfo, git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
+        let repo = info.repo, base = info.base
+        func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", repo] + args) }
+        guard let count = info.baseUnpulled else {
+            return MergeOutcome(merged: false, said: "\(repo) has no origin/\(base) to pull from")
+        }
+        guard count > 0 else {
+            return MergeOutcome(merged: false, said: "nothing to pull: \(base) already has every commit of origin/\(base), as of the last fetch")
+        }
+        guard let head = try? g(["symbolic-ref", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return MergeOutcome(merged: false, said: "\(repo) is not on a branch; refusing to pull")
+        }
+        guard head == base else {
+            return MergeOutcome(merged: false, said: "\(repo) is on \(head), not \(base); refusing to pull")
+        }
+        if let status = try? g(["status", "--porcelain", "--untracked-files=no"]).stdout, !status.isEmpty {
+            let n = status.split(separator: "\n").count
+            return MergeOutcome(merged: false, said: "\(repo) has \(n) uncommitted change\(n == 1 ? "" : "s"); refusing to pull")
+        }
+        let plural = "\(count) commit\(count == 1 ? "" : "s")"
+        if let unpushed = info.baseUnpushed, unpushed > 0 {
+            return MergeOutcome(merged: false, said: "\(base) has \(unpushed) commit\(unpushed == 1 ? "" : "s") origin/\(base) lacks; a fast-forward is not possible — push \(base) first, or merge in a terminal")
+        }
+        do {
+            _ = try g(["merge", "--ff-only", "refs/remotes/origin/\(base)"])
+            let sha = (try? g(["rev-parse", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
+            return MergeOutcome(merged: true, said: "pulled origin/\(base) → \(base) (\(plural), now \(sha))")
+        } catch {
+            return MergeOutcome(merged: false, said: "pull \(base) refused: \("\(error)".trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+    }
+}
+
+extension Duration {
+    /// Whole milliseconds, for a sentence.
+    public var ms: Int { Int(self / .milliseconds(1)) }
+}
+
 /// `git` as a subprocess: stdout and stderr to EOF, a non-zero exit as an
 /// error carrying stderr. Synchronous; every caller is already off the
 /// main actor or is the CLI.
@@ -661,6 +775,58 @@ extension ClaudeCLI {
         }
         let said = (text + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
         return MergeOutcome(merged: result.status == 0, said: said)
+    }
+
+    /// The row and its worktree reading for a local ref: one roster read,
+    /// a fresh count. What every worktree verb starts from.
+    func localWorktree(id: String, probe: WorktreeProbe) async throws -> (cwd: String, info: WorktreeInfo) {
+        let roster = RosterDecoder.decode(try await agentsJSON())
+        guard let row = roster.sessions.first(where: { $0.id == id }) else {
+            throw MergeError.noSuchSession(id)
+        }
+        guard let info = probe.fresh(forCwd: row.cwd) else {
+            throw MergeError.notAWorktree(id, row.cwd)
+        }
+        return (row.cwd, info)
+    }
+
+    /// `ccc fetch|pull <id>` on a remote host: the far side's own ccc,
+    /// where the repository and its credentials are.
+    public func remoteVerbArgv(_ verb: String, id: String) -> [String]? {
+        guard let ccc = host.ccc, let destination = host.ssh else { return nil }
+        return sshPrefix(tty: false, destination: destination) + [ccc, verb, id]
+    }
+
+    private func remoteVerb(_ verb: String, id: String) async throws -> MergeOutcome {
+        guard let argv = remoteVerbArgv(verb, id: id) else { throw MergeError.noRemoteCCC(host.name) }
+        try prepareControlDirectory()
+        let result = try await run(argv, accepting: [0, 1], program: "ccc")
+        let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+        return MergeOutcome(merged: result.status == 0, said: said)
+    }
+
+    /// Fetch the session's repository from origin (slice 7), then say
+    /// where things stand now: "fetched origin (312 ms); master has 2
+    /// unpulled". The far side's own verb for a remote ref.
+    public func fetch(id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
+        guard host.isLocal else { return try await remoteVerb("fetch", id: id) }
+        let (cwd, info) = try await localWorktree(id: id, probe: probe)
+        guard info.unpushed != nil else {
+            return MergeOutcome(merged: false, said: "\(info.repo) has no origin; nothing to fetch from")
+        }
+        let repo = info.repo
+        var outcome = await Task.detached(priority: .userInitiated) { GitFetch.perform(repo: repo, git: probe.git) }.value
+        if outcome.merged, let after = probe.fresh(forCwd: cwd) {
+            outcome.said += "; " + after.originStanding
+        }
+        return outcome
+    }
+
+    /// Pull the repository's default branch, fast-forward only (slice 7).
+    public func pull(id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
+        guard host.isLocal else { return try await remoteVerb("pull", id: id) }
+        let (_, info) = try await localWorktree(id: id, probe: probe)
+        return await Task.detached(priority: .userInitiated) { GitPull.perform(on: info, git: probe.git) }.value
     }
 
     public enum MergeError: Error, CustomStringConvertible {

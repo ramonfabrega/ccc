@@ -104,6 +104,10 @@ final class MainWindowController: NSWindowController {
             self?.push(ref, target)
         }, update: { [weak self] ref in
             self?.update(ref)
+        }, fetch: { [weak self] ref in
+            self?.fetch(ref)
+        }, pull: { [weak self] ref in
+            self?.pull(ref)
         }, openShell: { [weak self] ref, atRepo in
             self?.openShell(ref, atRepo: atRepo)
         }, selectionChanged: { [weak self] ref in
@@ -456,6 +460,30 @@ final class MainWindowController: NSWindowController {
         Task { @MainActor in
             do {
                 showNotice(try await controller.ask(ref, prompt: prompt))
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    /// Fetch and Pull master (v6 slice 7): the same sentence shape as
+    /// push — what happened, or why not — as the notice.
+    func fetch(_ ref: SessionRef) {
+        Task { @MainActor in
+            do {
+                let outcome = try await controller.fetch(ref)
+                showNotice(outcome.said, kind: outcome.merged ? .answer : .problem)
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    func pull(_ ref: SessionRef) {
+        Task { @MainActor in
+            do {
+                let outcome = try await controller.pull(ref)
+                showNotice(outcome.said, kind: outcome.merged ? .answer : .problem)
             } catch {
                 showNotice("\(error)", kind: .problem)
             }

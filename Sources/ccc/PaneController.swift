@@ -224,6 +224,53 @@ final class PaneController {
         return outcome
     }
 
+    /// Fetch (v6 slice 7): exactly `ccc fetch <ref>`, then a poll so the
+    /// ⇣ marks move now.
+    func fetch(_ ref: SessionRef) async throws -> MergeOutcome {
+        let outcome = try await cli(for: ref).fetch(id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return outcome
+    }
+
+    /// Pull master (v6 slice 7): exactly `ccc pull <ref>`, then a poll.
+    func pull(_ ref: SessionRef) async throws -> MergeOutcome {
+        let outcome = try await cli(for: ref).pull(id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return outcome
+    }
+
+    /// The fetch the app runs on its own (slice 7): once after the first
+    /// poll and once on wake — every distinct repository among the local
+    /// worktree rows, concurrently, off the main actor. Remote hosts fetch
+    /// on their own launch and wake. No timer: `ccc stats` measures these
+    /// two first, and a timer has to earn its place against the number.
+    private(set) var fetchStats = FetchStats(rounds: 0, repos: 0, failed: 0)
+    private var lastFetchAt: Date?
+
+    func fetchAll(reason: String) async {
+        let repos = Set(poller.state.rows.filter { $0.host == Host.localName }.compactMap { $0.worktree?.repo })
+        guard !repos.isEmpty else {
+            fetchStats = FetchStats(rounds: fetchStats.rounds + 1, repos: 0, failed: 0, lastMs: 0, last: "\(reason): no local worktree rows")
+            lastFetchAt = Date()
+            return
+        }
+        let started = ContinuousClock.now
+        let results = await withTaskGroup(of: (String, MergeOutcome).self) { group in
+            for repo in repos {
+                group.addTask { (repo, GitFetch.perform(repo: repo)) }
+            }
+            var out: [(String, MergeOutcome)] = []
+            for await result in group { out.append(result) }
+            return out.sorted { $0.0 < $1.0 }
+        }
+        let ms = Double((ContinuousClock.now - started).ms)
+        let failed = results.filter { !$0.1.merged }.count
+        let summary = results.map { "\(URL(filePath: $0.0).lastPathComponent): \($0.1.said)" }.joined(separator: "; ")
+        fetchStats = FetchStats(rounds: fetchStats.rounds + 1, repos: results.count, failed: failed, lastMs: ms, last: "\(reason): \(summary)")
+        lastFetchAt = Date()
+        await poller.poller(for: Host.localName)?.tick()
+    }
+
     /// "Ask the session" (v6 slice 6): a prompt through the pane. Attach
     /// (the pane follows the click, so a session on screen is left), wait
     /// for the TUI to draw when the attach was fresh, type the prompt,
@@ -442,6 +489,9 @@ final class PaneController {
                                   ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 0)
             }
             stats.notifications = notificationStats?()
+            var fetch = fetchStats
+            fetch.lastSecondsAgo = lastFetchAt.map { Date().timeIntervalSince($0) }
+            stats.fetch = fetch
             return .stats(stats)
         case .reconnect(let host):
             if let host, poller.poller(for: host) == nil {

@@ -124,6 +124,17 @@ enum CLI {
                     return 2
                 }
                 return try await update(ref: ref, ask: rest.contains("--ask"), json: json)
+            case "fetch", "pull":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                for flag in rest.filter({ $0.hasPrefix("--") }) where flag != "--json" {
+                    stderr("ccc: unknown flag '\(flag)'")
+                    return 2
+                }
+                return try await originVerb(verb, ref: ref, json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -334,6 +345,30 @@ enum CLI {
         } else {
             print(outcome.said)
             if let asked { print(asked) }
+        }
+        return outcome.merged ? 0 : 1
+    }
+
+    /// `ccc fetch <ref>` and `ccc pull <ref>` (v6 slice 7): the
+    /// repository's one network call, and master's fast-forward from
+    /// origin. Exit 0 when it did, 1 when it refused (the sentence says
+    /// why); the far side's own verb for a remote ref.
+    static func originVerb(_ verb: String, ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let outcome = verb == "fetch" ? try await cli.fetch(id: ref.id) : try await cli.pull(id: ref.id)
+        if json {
+            printJSON(["ref": ref.description, verb == "fetch" ? "fetched" : "pulled": outcome.merged ? "true" : "false", "said": outcome.said])
+        } else {
+            print(outcome.said)
         }
         return outcome.merged ? 0 : 1
     }
@@ -1128,6 +1163,14 @@ enum CLI {
                 print("hook events    \(hooks)\(dropped)\(last)")
             }
         }
+        if let f = s.fetch {
+            // The launch-and-wake fetch (v6 slice 7), measured: a timer
+            // has to earn its place against these numbers.
+            let ago = f.lastSecondsAgo.map { String(format: "%.0f s ago", $0) } ?? "never"
+            let failed = f.failed > 0 ? "  failed \(f.failed)" : ""
+            let last = f.last.map { "  last \"\($0)\"" } ?? ""
+            print("fetch   rounds \(f.rounds)  repos \(f.repos)\(failed)  last \(ms(f.lastMs)) \(ago)\(last)")
+        }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames
         // presented means the human sees nothing while snapshots look fine.
@@ -1204,6 +1247,11 @@ enum CLI {
                                                   in the worktree (GitHub's "Update branch"); refuses uncommitted
                                                   changes and backs out of a conflict (exit 1); --ask then hands the
                                                   session the merge as a prompt through the pane (needs the app)
+               ccc fetch <ref> [--json]           `git fetch origin` in the session's repository — the one network call;
+                                                  every ⇡⇣ mark reads "as of the last fetch" (the app fetches once at
+                                                  launch and once on wake; `ccc stats` measures those)
+               ccc pull <ref> [--json]            fast-forward the repo's default branch to origin's, never a merge
+                                                  commit; a diverged master is refused with the way out named
                ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
                                                   default branch — to origin, never forced; git's own refusal is the
                                                   answer (exit 1; nothing changes anywhere)

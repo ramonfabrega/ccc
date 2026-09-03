@@ -69,14 +69,22 @@ enum App {
         Task { @MainActor [weak controller] in
             await controller?.poller.tick()
             controller?.reattachAfterRelaunch()
+            // The launch fetch (v6 slice 7): every local worktree row's
+            // repository, once, so the ⇣ marks are as of now rather than
+            // as of whenever a shell last fetched. Measured in `ccc stats`.
+            await controller?.fetchAll(reason: "launch")
         }
         // What sleeps is this Mac (docs/DESIGN.md §4b): on wake, drop every
         // remote ssh master and poll at once rather than let a 2 s tick
         // discover a stale socket the slow way. Same gesture as
-        // `ccc hosts reconnect`.
+        // `ccc hosts reconnect`. Then the wake fetch: a night's worth of
+        // the other Mac's pushes, read once.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
                                                           queue: .main) { [weak controller] _ in
-            Task { @MainActor in await controller?.reconnect() }
+            Task { @MainActor in
+                await controller?.reconnect()
+                await controller?.fetchAll(reason: "wake")
+            }
         }
     }
 

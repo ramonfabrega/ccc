@@ -538,6 +538,126 @@ import Testing
     }
 }
 
+/// Slice 7: fetch and pull, against a bare origin and a second clone that
+/// stands in for the other Mac. The reading never fetches; the verb does,
+/// once, and the marks move with it.
+@Suite(.serialized) struct FetchPullTests {
+    private func withOrigin(_ body: (URL, URL, URL, (String, URL) throws -> String) throws -> Void) throws {
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-fetch-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let origin = dir.appending(path: "origin.git"), root = dir.appending(path: "repo"), other = dir.appending(path: "other")
+        func git(_ line: String, _ at: URL) throws -> String {
+            try Git.run(WorktreeProbe.defaultGit, ["-C", at.path] + line.split(separator: " ").map(String.init)).stdout
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "--bare", "-b", "master", origin.path])
+        _ = try Git.run(WorktreeProbe.defaultGit, ["init", "-q", "-b", "master", root.path])
+        _ = try git("config user.email t@example.com", root)
+        _ = try git("config user.name t", root)
+        try "one\n".write(to: root.appending(path: "a.txt"), atomically: true, encoding: .utf8)
+        _ = try git("add a.txt", root)
+        _ = try git("commit -q --no-verify -m first", root)
+        _ = try git("remote add origin \(origin.path)", root)
+        _ = try git("push -q -u origin master", root)
+        try FileManager.default.createDirectory(at: root.appending(path: ".claude"), withIntermediateDirectories: true)
+        let wt = root.appending(path: ".claude/worktrees/t")
+        _ = try git("worktree add -q -b worktree-t \(wt.path) master", root)
+        _ = try Git.run(WorktreeProbe.defaultGit, ["clone", "-q", origin.path, other.path])
+        _ = try git("config user.email o@example.com", other)
+        _ = try git("config user.name o", other)
+        try body(root, wt, other, git)
+    }
+
+    private func commit(_ name: String, in dir: URL, _ git: (String, URL) throws -> String) throws {
+        try "x\n".write(to: dir.appending(path: name), atomically: true, encoding: .utf8)
+        _ = try git("add \(name)", dir)
+        _ = try git("commit -q --no-verify -m \(name)", dir)
+    }
+
+    @Test func fetchReadsTheOtherMacsPushAndPullFastForwards() throws {
+        try withOrigin { root, wt, other, git in
+            try commit("theirs.txt", in: other, git)
+            try commit("theirs2.txt", in: other, git)
+            _ = try git("push -q origin master", other)
+            let probe = WorktreeProbe()
+            // As of the last fetch — which was the push at setup — nothing.
+            let stale = try #require(probe.fresh(forCwd: wt.path))
+            #expect(stale.baseUnpulled == 0 && !stale.canPull && stale.baseMark == nil)
+            #expect(GitPull.perform(on: stale).said.hasPrefix("nothing to pull"))
+            let fetched = GitFetch.perform(repo: root.path)
+            #expect(fetched.merged && fetched.said.hasPrefix("fetched origin ("), "\(fetched.said)")
+            let fresh = try #require(probe.fresh(forCwd: wt.path))
+            #expect(fresh.baseUnpulled == 2 && fresh.canPull && fresh.baseMark == "⇣2")
+            #expect(fresh.originStanding == "master has 2 unpulled")
+            let pulled = GitPull.perform(on: fresh)
+            #expect(pulled.merged && pulled.said.hasPrefix("pulled origin/master → master (2 commits, now "), "\(pulled.said)")
+            #expect(try git("rev-parse master", root) == git("rev-parse origin/master", root))
+            let level = try #require(probe.fresh(forCwd: wt.path))
+            #expect(level.baseUnpulled == 0 && level.behind == 2, "the worktree is now behind the moved master")
+            #expect(level.originStanding == "level with origin")
+        }
+    }
+
+    @Test func pullRefusesADivergedMasterAndNamesTheWayOut() throws {
+        try withOrigin { root, wt, other, git in
+            try commit("theirs.txt", in: other, git)
+            _ = try git("push -q origin master", other)
+            try commit("ours.txt", in: root, git)
+            _ = GitFetch.perform(repo: root.path)
+            let info = try #require(WorktreeProbe().fresh(forCwd: wt.path))
+            #expect(info.baseUnpulled == 1 && info.baseUnpushed == 1 && info.baseMark == "⇡1 ⇣1")
+            let before = try git("rev-parse master", root)
+            let outcome = GitPull.perform(on: info)
+            #expect(!outcome.merged && outcome.said.contains("push master first"), "\(outcome.said)")
+            #expect(try git("rev-parse master", root) == before)
+            // And a dirty checkout is refused before anything else is tried.
+            try "dirty\n".write(to: root.appending(path: "a.txt"), atomically: true, encoding: .utf8)
+            #expect(GitPull.perform(on: info).said.contains("uncommitted"))
+        }
+    }
+
+    @Test func theBranchReadsUnpulledOnceOriginHasIt() throws {
+        try withOrigin { root, wt, other, git in
+            let probe = WorktreeProbe()
+            try commit("b.txt", in: wt, git)
+            let unpushed = try #require(probe.fresh(forCwd: wt.path))
+            #expect(unpushed.unpulled == nil, "origin has no such branch yet")
+            _ = try git("push -q -u origin worktree-t", wt)
+            _ = try git("fetch -q origin", other)
+            _ = try git("checkout -q worktree-t", other)
+            try commit("c.txt", in: other, git)
+            _ = try git("push -q origin worktree-t", other)
+            let stale = try #require(probe.fresh(forCwd: wt.path))
+            #expect(stale.unpulled == 0)
+            _ = GitFetch.perform(repo: root.path)
+            let fresh = try #require(probe.fresh(forCwd: wt.path))
+            #expect(fresh.unpulled == 1 && fresh.unpushed == 0)
+            #expect(fresh.summary == "worktree-t ↑1 ⇣1")
+            #expect(fresh.originStanding == "worktree-t 1 unpulled")
+        }
+    }
+
+    @Test func noOriginIsSaidNotTried() {
+        let info = WorktreeInfo(branch: "worktree-x", base: "master", ahead: 1, behind: 0, repo: "/nowhere")
+        #expect(GitPull.perform(on: info).said.contains("no origin/master"))
+        #expect(!GitFetch.perform(repo: "/nowhere").merged)
+    }
+
+    @Test func theRowCarriesTheMarksAcrossTheWire() throws {
+        let info = WorktreeInfo(branch: "worktree-v2", base: "master", ahead: 3, behind: 0, repo: "/x/ccc",
+                                unpushed: 1, baseUnpushed: 0, unpulled: 2, baseUnpulled: 1)
+        let data = try JSONEncoder().encode(info)
+        #expect(try JSONDecoder().decode(WorktreeInfo.self, from: data) == info)
+        // A slice-6 ccc on the far side sends neither key.
+        var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["unpulled"] = nil
+        object["baseUnpulled"] = nil
+        let older = try JSONDecoder().decode(WorktreeInfo.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(older.unpulled == nil && older.baseUnpulled == nil && older.unpushed == 1)
+    }
+}
+
 /// The shell pane's "free" reading: the foreground process group of the
 /// PTY, from the kernel. A shell at its prompt is replaceable; a shell
 /// with a job in front of it is not.

@@ -302,6 +302,11 @@ public struct StatsInfo: Codable, Sendable {
     public var build: BuildInfo?
     /// The window face's notifier; `nil` headless or from an older server.
     public var notifications: NotificationStats?
+    /// The launch-and-wake fetch (v6 slice 7): how many rounds ran, what
+    /// the last one cost, what it said — the measurement a fetch timer
+    /// would have to earn its place against. `nil` headless or from an
+    /// older server.
+    public var fetch: FetchStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
@@ -324,6 +329,32 @@ public struct StatsInfo: Codable, Sendable {
         self.ptyBytesIn = ptyBytesIn
         self.ptyBytesPerSecond = ptyBytesPerSecond
         self.uptimeSeconds = uptimeSeconds
+    }
+}
+
+/// One line of `ccc stats` (v6 slice 7): the fetch rounds the app ran on
+/// its own — at launch and on wake, every distinct repository among the
+/// local worktree rows — so "does a timer earn its place" is answered by
+/// a number rather than a feeling.
+public struct FetchStats: Codable, Sendable, Equatable {
+    /// Rounds run (launch, wake), not repositories.
+    public var rounds: Int
+    /// Repositories fetched in the last round, and how many failed.
+    public var repos: Int
+    public var failed: Int
+    /// The last round's wall time.
+    public var lastMs: Double?
+    /// The last round's reason and answers, one sentence.
+    public var last: String?
+    public var lastSecondsAgo: Double?
+
+    public init(rounds: Int, repos: Int, failed: Int, lastMs: Double? = nil, last: String? = nil, lastSecondsAgo: Double? = nil) {
+        self.rounds = rounds
+        self.repos = repos
+        self.failed = failed
+        self.lastMs = lastMs
+        self.last = last
+        self.lastSecondsAgo = lastSecondsAgo
     }
 }
 

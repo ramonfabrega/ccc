@@ -668,6 +668,49 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   sandbox quits the app and then cannot write the bundle — run it
   unsandboxed; and fixture sessions should be spawned `--model haiku`
   (the user's ask; these two were served by Opus 5). 242 tests.
+  **Slice 7 — done 2026-09-03: fetch, and Pull master.** The other
+  direction, from the last-fetched remote refs and never a network call
+  of its own: `⇣N` beside the branch when `origin/<branch>` holds
+  commits the branch lacks (another Mac pushed to it; informative, the
+  act is a terminal's — into the worktree branch is rebase's problem by
+  another name), and `⇣N` in orange after the repository when
+  `origin/master` is ahead of master, since that is what makes Push
+  master a non-fast-forward. Both mirror ⇡ exactly and ride the far
+  side's rows the same way (nil off a slice-6 ccc; pinned). One process
+  now reads master's standing both ways (`rev-list --left-right --count
+  origin/master...master`), so the second mark costs nothing over the
+  first; the branch's costs one more per branch sha, and only once
+  origin has the branch. The verbs: **Fetch origin** on the submenu,
+  `ccc fetch <ref>` its twin — `git fetch origin` in the main checkout,
+  refs only, answering with the standing as of now ("fetched origin (101
+  ms); worktree-t 1 unpushed; master has 1 unpulled"); and **Pull master
+  ⇣N**, `ccc pull <ref>`, the mirror of Push master: `merge --ff-only
+  origin/master` with the merge verb's guards, a diverged master refused
+  with the way out named ("push master first, or merge in a terminal"),
+  never a merge commit on master by a menu. **The app fetches on its
+  own twice:** once after the first poll and once on wake, every
+  distinct repository among the local worktree rows, concurrently off
+  the main actor (remote hosts fetch on their own launch and wake), and
+  `ccc stats` grew a `fetch` line — rounds, repos, failures, the last
+  round's wall time and answers — so a timer has to earn its place
+  against a number. **Measured on studio at launch (build 104):** three
+  real repositories, 1.3–1.8 s each over the network, **1.8 s wall**
+  concurrent; one on-demand fetch of the ccc repository 1.5 s. A timer
+  is not earned by that: at 2 s a fetch is the poll's whole budget, and
+  what it would find is the other Mac's push, which the wake round
+  already catches. **Proved live** against `scripts/worktree-fixture
+  --other` (a bare origin and a second clone that pushed to master after
+  this repo's last fetch): a haiku draft in the fixture read `⎇
+  worktree-t ↑1 ↓2 ⇡1` and no ⇣ — stale by construction — `ccc fetch`
+  answered in 101 ms and the row gained `⇣1` after the repository a
+  tick later; `ccc pull` → `pulled origin/master → master (1 commit, now
+  f5421e1)`, exit 0, the row `↓3`; a second pull "nothing to pull …, as
+  of the last fetch", exit 1; `--bogus` exit 2; on this repository,
+  `ccc fetch b3919c35` → "fetched origin (1515 ms); level with origin"
+  and `ccc pull` refused with nothing to pull. The wake round has not
+  been through a real sleep; it is the launch round's code behind
+  `didWakeNotification`, after the reconnect. Five tests against a bare
+  origin and a second clone. 247 tests.
 - **next** (what plan.md carried when it was retired 2026-09-02, late;
   the queue is this file from here on). The sequence agreed the same
   night, one confirmed before the next, comes first:
@@ -681,7 +724,8 @@ Each milestone is comparable against `claude agents` on its own. Experiments
      a menu cannot and a session can: **Ask the session to merge
      master**, which sends "merge master into this branch and resolve
      the conflicts" as a prompt through the pane (`ccc send`'s road).
-  2. **Fetch, and Pull master** (v6 slice 7): `⇣N` marks from the
+  2. **Fetch, and Pull master** (v6 slice 7) — **done 2026-09-03,
+     above.** As agreed: `⇣N` marks from the
      last-fetched remote refs; Fetch on demand from the submenu, once on
      launch and on wake (a timer only after those are measured), twin
      `ccc fetch <ref>`; Pull master fast-forward only, the mirror of

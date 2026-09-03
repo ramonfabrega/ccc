@@ -5,17 +5,21 @@
 #   scripts/worktree-fixture <dir>              # master 2 ahead of the worktree, worktree 1 ahead of master
 #   scripts/worktree-fixture <dir> --conflict   # the same, plus a.txt edited on both sides
 #   scripts/worktree-fixture <dir> --origin     # plus a bare origin the repo is cloned from
+#   scripts/worktree-fixture <dir> --other      # --origin, plus a second clone that pushed to master after
+#                                               # this repo's last fetch (the other Mac)
 #
-# Prints the worktree's path. Pair with `ccc spawn --cwd <that path>` for a
-# roster row to point the verbs at; `ccc rm` the row and `rm -rf <dir>` after.
+# Prints the worktree's path. Pair with `ccc spawn --model haiku --cwd <that
+# path>` for a roster row to point the verbs at; `ccc rm` the row and
+# `rm -rf <dir>` after.
 set -e
-DIR="${1:?usage: worktree-fixture <dir> [--conflict] [--origin]}"
+DIR="${1:?usage: worktree-fixture <dir> [--conflict] [--origin] [--other]}"
 shift
-CONFLICT=0; ORIGIN=0
+CONFLICT=0; ORIGIN=0; OTHER=0
 for flag in "$@"; do
   case "$flag" in
     --conflict) CONFLICT=1 ;;
     --origin) ORIGIN=1 ;;
+    --other) ORIGIN=1; OTHER=1 ;;
     *) echo "unknown flag $flag" >&2; exit 2 ;;
   esac
 done
@@ -41,4 +45,13 @@ cd ../../..
 echo three > c.txt && g add c.txt && g commit -q -m "master one"
 echo four > d.txt && g add d.txt && g commit -q -m "master two"
 if [ $CONFLICT = 1 ]; then echo ours > a.txt && g add a.txt && g commit -q -m "master edit"; fi
+if [ $OTHER = 1 ]; then
+  # The other Mac: a clone that pushes one commit to origin/master after
+  # this repo's last fetch, so `ccc fetch` has something to find and
+  # `ccc pull` something to bring. (Implies --origin; master here is
+  # pushed first, so the pull is a fast-forward.)
+  g push -q origin master
+  g clone -q "$DIR/origin.git" "$DIR/other"
+  ( cd "$DIR/other" && echo five > e.txt && g add e.txt && g commit -q -m "other Mac" && g push -q origin master )
+fi
 echo "$PWD/.claude/worktrees/t"
