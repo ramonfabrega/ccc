@@ -93,6 +93,8 @@ final class MainWindowController: NSWindowController {
             self?.confirmDelete(ref)
         }, newSession: { [weak self] in
             self?.newSessionAction(nil)
+        }, fork: { [weak self] ref in
+            self?.presentNewSession(from: ref)
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -240,15 +242,28 @@ final class MainWindowController: NSWindowController {
     /// not to). The sheet stays up over a harness error with the fields
     /// intact.
     @objc func newSessionAction(_ sender: Any?) {
+        presentNewSession(from: nil)
+    }
+
+    /// ⇧⌘N (slice 3): the sheet with its From row set to the attached
+    /// session — or, with nothing attached, open for the row to be picked.
+    /// The row's context menu and `f` name the row directly.
+    @objc func forkSessionAction(_ sender: Any?) {
+        presentNewSession(from: controller.poller.attachedRef)
+    }
+
+    private func presentNewSession(from source: SessionRef?) {
         guard let window, newSessionSheet == nil else { return }
         let model = NewSessionModel(
             hosts: controller.hosts.hosts,
             recentFolders: { [weak self] host in self?.recentFolders(on: host) ?? [] },
+            sources: { [weak self] host in self?.spawnSources(on: host) ?? [] },
             shortCwd: { [weak self] cwd, host in self?.controller.hosts.shortCwd(cwd, host: host) ?? cwd },
             commandLine: { [weak self] host, request in
                 guard let self, let cli = try? self.controller.cli(for: SessionRef(host: host, id: "-")) else { return "" }
                 return cli.spawnCommandLine(request)
-            })
+            },
+            from: source)
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: NewSessionView(
             model: model,
             submit: { [weak self] in self?.submitNewSession(model) },
@@ -274,7 +289,14 @@ final class MainWindowController: NSWindowController {
                 model.remember()
                 dismissNewSession()
                 showNotice(result.description)
-                if model.attachAfter { attach(result.ref) }
+                if model.attachAfter {
+                    // One pane: a fork is usually made from the session on
+                    // screen (⇧⌘N), and attach refuses while one is attached
+                    // — so leave it first. `detach()` returns once the child
+                    // has exited, which is what attach checks.
+                    await controller.detach()
+                    attach(result.ref)
+                }
             } catch {
                 model.error = "\(error)"
             }
@@ -292,6 +314,21 @@ final class MainWindowController: NSWindowController {
             if out.count == 8 { break }
         }
         return out
+    }
+
+    /// What a fork can start from on a host (slice 3): every attachable
+    /// row with a session id, in the roster's activity order, archived
+    /// ones last — an old finished thread is a fine thing to continue.
+    private func spawnSources(on host: String) -> [SpawnSource] {
+        let rows = controller.poller.state.sorted.filter {
+            $0.host == host && $0.session.isAttachable && !($0.session.sessionId ?? "").isEmpty
+        }
+        return (rows.filter { !$0.archived } + rows.filter(\.archived)).map { row in
+            SpawnSource(ref: row.ref,
+                        label: "\(row.session.name ?? row.session.id) · \(row.session.id)\(row.archived ? " (archived)" : "")",
+                        sessionId: row.session.sessionId ?? "",
+                        cwd: row.session.cwd)
+        }
     }
 
     /// Archive / pin (v4): the controller does what `ccc archive <ref>`

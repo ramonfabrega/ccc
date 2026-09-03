@@ -26,6 +26,41 @@ import Testing
         #expect(!local.spawnArgv(request).contains("/Users/x/code/app"))
     }
 
+    // MARK: fork (slice 3)
+
+    @Test func aForkResumesTheFullSessionIdAndForks() {
+        let sid = "1e7c5066-32da-4862-acef-0fc6b39f1bf9"
+        let request = SpawnRequest(cwd: "/Users/x/cc-test", prompt: "carry on", name: "twin", from: sid)
+        #expect(request.isFork)
+        #expect(request.claudeArguments == ["--bg", "--resume", sid, "--fork-session", "--name", "twin", "carry on"])
+        // A forked draft: the transcript, no prompt (measured: it restores on the first one).
+        let draft = SpawnRequest(from: sid)
+        #expect(draft.isDraft && draft.isFork)
+        #expect(draft.claudeArguments == ["--bg", "--resume", sid, "--fork-session"])
+        // An empty `from` is no fork at all.
+        #expect(!SpawnRequest(from: "").isFork)
+        #expect(SpawnRequest(from: "").claudeArguments == ["--bg"])
+    }
+
+    @Test func aRemoteForkKeepsTheIdBareAcrossTheHop() {
+        let sid = "1e7c5066-32da-4862-acef-0fc6b39f1bf9"
+        let argv = remote.spawnArgv(SpawnRequest(cwd: "/Users/rf-studio/cc-test", prompt: "carry on", from: sid))
+        let tail = Array(argv.drop { $0 != "studio" }.dropFirst())
+        #expect(tail == ["cd", "/Users/rf-studio/cc-test", "&&", "~/.local/bin/claude", "--bg", "--resume", sid, "--fork-session", "'carry on'"])
+    }
+
+    @Test func theAnswerNamesTheLineage() {
+        let ref = SessionRef(host: Host.localName, id: "092ff6ad")
+        let sid = "1e7c5066-32da-4862-acef-0fc6b39f1bf9"
+        #expect(SpawnResult(ref: ref, draft: false, cwd: nil, said: "", from: sid).description == "spawned 092ff6ad from 1e7c5066")
+        #expect(SpawnResult(ref: ref, draft: true, cwd: nil, said: "", from: sid).description
+                == "drafted 092ff6ad from 1e7c5066 (idle — attach and send a prompt)")
+        #expect(SpawnResult(ref: ref, draft: false, cwd: nil, said: "").description == "spawned 092ff6ad")
+        // Off the wire from an older ccc the field is simply absent.
+        let decoded = try? JSONDecoder().decode(SpawnResult.self, from: Data(#"{"ref":"092ff6ad","draft":false,"said":""}"#.utf8))
+        #expect(decoded?.from == nil)
+    }
+
     @Test func aDraftHasNoPromptWord() {
         let request = SpawnRequest(prompt: "  \n", name: "later")
         #expect(request.isDraft)

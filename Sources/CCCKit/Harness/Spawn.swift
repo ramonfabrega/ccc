@@ -24,10 +24,19 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
     /// `--worktree`: `nil` for none, `""` to let the harness name it, else
     /// the name.
     public var worktree: String?
+    /// Fork (slice 3): the session this one continues from, as
+    /// `--resume <id> --fork-session` — a new session that opens with the
+    /// source's transcript, the source untouched. Measured 2026-09-02
+    /// (docs/HARNESS.md): this must be the **full session id** (the
+    /// roster's `sessionId`); the eight-character job id opens the
+    /// harness's "Resume session" picker instead, and a name resolves but
+    /// the daemon records `restoresTranscript: false` for it. With no
+    /// prompt it is a draft that already knows the conversation.
+    public var from: String?
 
     public init(cwd: String? = nil, prompt: String? = nil, name: String? = nil, model: String? = nil,
                 agent: String? = nil, permissionMode: String? = nil, effort: String? = nil,
-                worktree: String? = nil) {
+                worktree: String? = nil, from: String? = nil) {
         self.cwd = cwd
         self.prompt = prompt
         self.name = name
@@ -36,13 +45,16 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         self.permissionMode = permissionMode
         self.effort = effort
         self.worktree = worktree
+        self.from = from
     }
 
     public var isDraft: Bool { (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    public var isFork: Bool { !(from ?? "").isEmpty }
 
     /// The harness's words after `claude`. The prompt is one argument, last.
     public var claudeArguments: [String] {
         var out = ["--bg"]
+        if let from, !from.isEmpty { out += ["--resume", from, "--fork-session"] }
         if let name, !name.isEmpty { out += ["--name", name] }
         if let model, !model.isEmpty { out += ["--model", model] }
         if let agent, !agent.isEmpty { out += ["--agent", agent] }
@@ -67,16 +79,22 @@ public struct SpawnResult: Codable, Sendable, Equatable {
     public var cwd: String?
     /// The harness's text, ANSI stripped.
     public var said: String
+    /// The session this one was forked from, when it was — the request's
+    /// `from` as given (a full session id), so the answer names its
+    /// lineage. Absent off an older ccc.
+    public var from: String?
 
-    public init(ref: SessionRef, draft: Bool, cwd: String?, said: String) {
+    public init(ref: SessionRef, draft: Bool, cwd: String?, said: String, from: String? = nil) {
         self.ref = ref
         self.draft = draft
         self.cwd = cwd
         self.said = said
+        self.from = from
     }
 
     public var description: String {
-        draft ? "drafted \(ref) (idle — attach and send a prompt)" : "spawned \(ref)"
+        let lineage = from.map { " from \($0.prefix(8))" } ?? ""
+        return draft ? "drafted \(ref)\(lineage) (idle — attach and send a prompt)" : "spawned \(ref)\(lineage)"
     }
 }
 
@@ -146,7 +164,8 @@ extension ClaudeCLI {
         }
         let cwd = request.cwd.flatMap { $0.isEmpty ? nil : $0 }
             ?? (host.isLocal ? FileManager.default.currentDirectoryPath : host.home)
-        return SpawnResult(ref: SessionRef(host: host.name, id: parsed.id), draft: parsed.draft, cwd: cwd, said: said)
+        return SpawnResult(ref: SessionRef(host: host.name, id: parsed.id), draft: parsed.draft, cwd: cwd, said: said,
+                           from: request.isFork ? request.from : nil)
     }
 
     /// The id and the draft mark out of the harness's answer, ANSI

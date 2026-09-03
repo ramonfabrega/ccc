@@ -370,7 +370,46 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   idle`; `ccc watch` stayed silent through a `ccc spawn` draft and rang
   for a prompted spawn's `done`; the window (build 83) showed the indigo
   row and the status item stopped counting it. 208 tests.
-  Next: `/fork`-style drafts *from* a session; worktree awareness in the
-  sheet.
+  **Slice 3 — done 2026-09-02: a session from a session.** The TUI's
+  `/fork`, from the command line: `claude --bg --resume <session id>
+  --fork-session [prompt]` (docs/HARNESS.md, measured with
+  `scripts/spawn-probe -- --resume=… --fork-session`, which now passes
+  `--flag=value` words to the harness) is a new background session that
+  opens with the source's transcript, the source untouched; with no
+  prompt it is a forked draft that already knows the conversation. Found
+  by doing it: the eight-character job id is accepted and leaves the new
+  session at the harness's "Resume session" picker for good, so the fork
+  is by the roster row's full `sessionId`. One definition:
+  `SpawnRequest.from` (the full id) is `--resume <id> --fork-session`
+  before the other words; `SpawnResult.from` carries the lineage and the
+  answer reads `spawned <ref> from <src>` / `drafted <ref> from <src>
+  (…)`. Command: `ccc spawn --from <ref> [prompt…]` — the fork runs where
+  its source lives (`--host` may only agree; a disagreement exits 2), in
+  the source's folder unless `--cwd` says otherwise, and resolves the id
+  through one roster poll of that host (an unknown ref exits 1). Window:
+  the same sheet with a **From** row (a picker of that host's attachable
+  rows, activity first, archived last; picking one fills the folder), the
+  title "Fork Session", the button "Fork" / "Fork as Draft", and the
+  preview carrying the resume words; entered by ⇧⌘N (Session → Fork
+  Session…, the attached session preselected), the row's context menu
+  "Fork…", or `f` on the selected row. A fork is usually made from the
+  session on screen, so "Attach when started" now leaves that one first
+  — attach refused with "busy" until it did. **Proved live** on studio:
+  `ccc spawn --from 1e7c5066 --json` → `spawned 1d35e897` with
+  `"from": "1e7c5066-…"` and cwd `~/cc-test` inherited, the fork answered
+  from the source's conversation, `roster.json` showed `fork: true,
+  restoresTranscript: true`; `ccc spawn --from 1e7c5066` (no prompt) →
+  `drafted da160378 from 1e7c5066`, reading `draft` in the roster; the
+  `--host loop` disagreement, an unknown ref and a malformed ref refused
+  as designed; in the window (dev build 88, attached to the source) a
+  real ⇧⌘N opened "Fork Session" with the source preselected, its folder
+  filled and the resume words in the preview, and ⌘↩ forked a draft —
+  which the pane then refused to attach ("busy": the source was on
+  screen), the fix above; on the rebuilt bundle the same ⇧⌘N, ⌘↩ left
+  the source and the window's title named the fork. 211 tests. Left for a hand: typing a prompt into the fork sheet (System
+  Events would not focus the prompt field — the command face is the
+  proof, the sheet is yours to try). Next: worktree awareness in the
+  sheet; a "forked from" mark on the row, which `roster.json`'s
+  `dispatch.launch` can answer.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.

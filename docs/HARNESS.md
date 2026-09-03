@@ -124,6 +124,24 @@ session creates a new background session. **Measured 2026-09-02 (2.1.259,
 - The row is in `claude agents --json --all` by the time `--bg` has exited
   (the probe never had to wait), so `claude attach <id>` straight after is
   safe — that is what "Attach when started" does.
+- **A fork from the command line is `claude --bg --resume <session id>
+  --fork-session [prompt]`** (measured 2026-09-02, `scripts/spawn-probe --
+  --resume=… --fork-session`, the facts v5 slice 3 is built on): a new
+  background session that opens with the source's transcript, the source
+  untouched, same one-line answer, exit 0 in 0.65 s. The daemon records
+  the lineage in `roster.json` — `dispatch.launch{mode: "resume",
+  sessionId: <what was passed>, fork: true, restoresTranscript}` — which
+  is how these were checked. **The id must be the full session id** (the
+  roster row's `sessionId`): the eight-character job id is accepted, exits
+  0, and the new session then sits at the TUI's "Resume session" picker
+  reading `No sessions match "1e7c5066"` (`state: working, detail:
+  "starting…"` forever); a `--name` resolves and the transcript shows, but
+  the daemon writes `restoresTranscript: false` for it, so ccc passes the
+  uuid. **With no prompt it is a forked draft** — `(idle — send a prompt
+  to start)`, `needs` the same phrase, so the draft reading holds — and
+  the transcript is restored when the first prompt lands (a forked draft
+  showed 37k of context and answered from the source's conversation). A
+  fork with no `--name` inherits the source's name.
 `claude agents --model/--effort/--agent/...` set fleet-wide dispatch
 defaults for the TUI, not per-call overrides.
 

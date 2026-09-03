@@ -8,7 +8,7 @@ import Foundation
 ///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
-///   ccc spawn [--host <name>] [--cwd <dir>] [<prompt>… | -]   `claude --bg` on a host (v5) — the New Session sheet's twin
+///   ccc spawn [--host <name>] [--cwd <dir>] [--from <ref>] [<prompt>… | -]   `claude --bg` on a host (v5) — the New Session sheet's twin
 ///
 /// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
 ///   ccc snapshot [--json]             the pane's grid as text
@@ -237,9 +237,10 @@ enum CLI {
     /// is how an agent hands over a prompt with its newlines intact. No
     /// prompt is the draft: the session registers and waits for one.
     static func spawn(_ args: [String], json: Bool) async throws -> Int32 {
-        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort"]
+        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort", "--from"]
         var spec = SpawnRequest()
-        var hostName = Host.localName
+        var hostFlag: String?
+        var from: SessionRef?
         var attach = false
         var words: [String] = []
         var i = 0
@@ -252,12 +253,18 @@ enum CLI {
                 }
                 let value = args[i + 1]
                 switch arg {
-                case "--host": hostName = value
+                case "--host": hostFlag = value
                 case "--cwd": spec.cwd = value
                 case "--name": spec.name = value
                 case "--model": spec.model = value
                 case "--agent": spec.agent = value
                 case "--permission-mode": spec.permissionMode = value
+                case "--from":
+                    guard let ref = SessionRef.parse(value) else {
+                        stderr("ccc: '\(value)' is not a session ref (id, or host:id)")
+                        return 2
+                    }
+                    from = ref
                 default: spec.effort = value
                 }
                 i += 2
@@ -281,14 +288,24 @@ enum CLI {
         } else if !words.isEmpty {
             spec.prompt = words.joined(separator: " ")
         }
+        // A fork (slice 3) runs where its source lives — the transcript is
+        // there — so `--from host:id` names the host, and `--host` may only
+        // agree with it.
+        if let from, let hostFlag, hostFlag != from.host {
+            stderr("ccc: \(from) lives on '\(from.host)', not '\(hostFlag)' — a fork runs where its transcript is")
+            return 2
+        }
+        let hostName = from?.host ?? hostFlag ?? Host.localName
         // A cwd given as `~/…` or relative is this shell's to resolve for
         // a local spawn; a remote one keeps `~` for the far side's shell.
+        // No cwd is this shell's directory — or, for a fork, the source's
+        // (resolved below with its session id).
         if hostName == Host.localName, let cwd = spec.cwd {
             spec.cwd = (cwd as NSString).expandingTildeInPath
             if !spec.cwd!.hasPrefix("/") {
                 spec.cwd = FileManager.default.currentDirectoryPath + "/" + spec.cwd!
             }
-        } else if hostName == Host.localName {
+        } else if hostName == Host.localName, from == nil {
             spec.cwd = FileManager.default.currentDirectoryPath
         }
 
@@ -301,6 +318,27 @@ enum CLI {
         guard let cli = ClaudeCLI.of(host) else {
             stderr("ccc: \(host.validate() ?? "claude not found for host '\(hostName)'")")
             return 1
+        }
+        // The source's row: `--resume` needs the full session id (the
+        // short one opens the harness's picker — docs/HARNESS.md), and the
+        // row is where that id and the source's folder are.
+        if let from {
+            let poller = RosterPoller(cli: cli)
+            await poller.tick()
+            if let failed = poller.state.failures.first {
+                stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")")
+                return 1
+            }
+            guard let row = poller.state.rows.first(where: { $0.ref == from }) else {
+                stderr("ccc: no session \(from) in the roster of \(host.name)")
+                return 1
+            }
+            guard let sessionId = row.session.sessionId, !sessionId.isEmpty else {
+                stderr("ccc: \(from) carries no session id to resume from")
+                return 1
+            }
+            spec.from = sessionId
+            if spec.cwd == nil { spec.cwd = row.session.cwd }
         }
         let result: SpawnResult
         do {
@@ -1011,10 +1049,12 @@ enum CLI {
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach
                ccc spawn [--host <name>] [--cwd <dir>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
-                         [--effort <e>] [--worktree[=<name>]] [--attach] [--json] [<prompt>... | -]
+                         [--effort <e>] [--worktree[=<name>]] [--from <ref>] [--attach] [--json] [<prompt>... | -]
                                                   `claude --bg` on a host (cwd: here, or the far side's home); the
                                                   prompt is the remaining words, or stdin for `-`; none makes a
-                                                  draft that waits for one; --attach opens it in the app
+                                                  draft that waits for one; --from forks a new session off <ref>'s
+                                                  transcript, on its host and in its folder unless told otherwise
+                                                  (`--resume <session id> --fork-session`); --attach opens it in the app
                ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
                ccc resize <cols> <rows>
                ccc stats [--json]

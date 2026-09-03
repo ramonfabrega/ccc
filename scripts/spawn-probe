@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """spawn-probe — what `claude --bg` prints and what the roster then shows.
 
-usage: scripts/spawn-probe [--cwd DIR] [--name NAME] [--rm] [prompt...]
+usage: scripts/spawn-probe [--cwd DIR] [--name NAME] [--rm] [-- <claude flags>...] [prompt...]
 
 Runs `claude --bg [--name NAME] [prompt]` in DIR (default ~/cc-test) with
 CLAUDE* stripped from the child's environment (docs/HARNESS.md experiment
@@ -23,8 +23,16 @@ def main(argv):
     name = None
     remove = False
     prompt = []
+    raw = []
     it = iter(argv)
     for a in it:
+        if a == "--":
+            for b in it:
+                if b.startswith("--"):
+                    raw.append(b)
+                else:
+                    prompt.append(b)
+            break
         if a == "--cwd":
             cwd = os.path.expanduser(next(it))
         elif a == "--name":
@@ -40,6 +48,7 @@ def main(argv):
     cmd = ["claude", "--bg"]
     if name:
         cmd += ["--name", name]
+    cmd += raw
     if prompt:
         cmd.append(" ".join(prompt))
     print("$", " ".join(cmd), f"(cwd {cwd})")
