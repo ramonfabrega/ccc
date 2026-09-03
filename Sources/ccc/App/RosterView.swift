@@ -113,6 +113,15 @@ struct RosterView: View {
             NSPasteboard.general.setString(attachCommandLine(row.ref), forType: .string)
         }
         Divider()
+        // Per host, not per row (v3, slice 2): the same mark the View menu
+        // and `ccc hosts mute <name>` set. Read from the file when the menu
+        // opens, so a shell's `ccc hosts mute` is reflected here.
+        let muted = HostConfig.load().config.isMuted(row.host)
+        let where_ = row.host == Host.localName ? "this Mac" : row.host
+        Button(muted ? "Unmute notifications from \(where_)" : "Mute notifications from \(where_)") {
+            try? AppDelegate.setMuted(row.host, !muted)
+        }
+        Divider()
         Button("Delete…") { delete(row.ref) }.disabled(!row.session.isAttachable)
     }
 

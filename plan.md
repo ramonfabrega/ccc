@@ -44,10 +44,17 @@ Slice 2 landed the same day: group (none/host/repo/state) and sort
 later slice: the main menu's Session items for archive/pin (the context
 menu has them); a sort by model.
 
-v3 slice 2 candidates, none started: a session stopped by your own hand
-still banners ("stopped") — decided 2026-09-02 to leave it until it annoys,
-then judge; a per-host mute; the Notification hook for what the roster
-cannot show.
+v3 slice 2 landed 2026-09-02 (docs/MILESTONES.md v3): the per-host mute
+(`ccc hosts mute|unmute`, `"mute": true` in hosts.json, View menu → Mute
+Notifications From, the row's context menu) and `ccc hook`, the
+Notification hook's receiver (`ccc hook --settings` prints the
+settings.json entry; ccc never writes that file). 187 tests. Proved on
+studio's CLI face and one real screencapture; the cut (0.1.8/76) went
+back on studio afterwards. **Owed by a hand:** paste the `--settings`
+entry into `~/.claude/settings.json` (or the dotfiles' copy of it) and
+see the first real hook fire; click the View menu's submenu once. Left
+as decided: a session stopped by your own hand still banners, until it
+annoys. Next cut carries both; air gets them through Sparkle.
 
 Polish parked until the pane is the subject again: the banner draws under
 the title bar (fix when touching the window controller for click-to-attach)

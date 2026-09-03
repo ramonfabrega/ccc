@@ -37,16 +37,26 @@ public struct Host: Codable, Sendable, Equatable, Identifiable {
     /// do. `nil` until learned; a cwd is then shown in full, which is
     /// honest, rather than guessed.
     public var home: String?
+    /// No banners for this host's sessions (v3, slice 2). The roster row,
+    /// the status item's count and `ccc watch --all` still show them — a
+    /// mute is about the interruption, not the information. `nil` and
+    /// `false` are the same so an older file (which has no such key)
+    /// reads as it always did; `ccc hosts mute|unmute` are the twins of
+    /// the View menu's item, and this key is the hand-edit.
+    public var mute: Bool?
 
     public var id: String { name }
     public var isLocal: Bool { ssh == nil }
+    public var isMuted: Bool { mute == true }
 
-    public init(name: String, ssh: String? = nil, claude: String? = nil, ccc: String? = nil, home: String? = nil) {
+    public init(name: String, ssh: String? = nil, claude: String? = nil, ccc: String? = nil, home: String? = nil,
+                mute: Bool? = nil) {
         self.name = name
         self.ssh = ssh
         self.claude = claude
         self.ccc = ccc
         self.home = home
+        self.mute = mute
     }
 
     /// `cwd` with this host's home shortened to `~`. Local uses this
@@ -164,5 +174,37 @@ public struct HostConfig: Codable, Sendable, Equatable {
     /// in full.
     public func shortCwd(_ cwd: String, host name: String) -> String {
         (host(named: name) ?? (name == Host.localName ? .local : nil))?.shortCwd(cwd) ?? cwd
+    }
+
+    // MARK: mute (v3, slice 2)
+
+    /// The hosts whose events say nothing on this Mac. One definition for
+    /// the notifier, `ccc watch`, `ccc stats` and the menu's checkmarks.
+    public var mutedHosts: [String] { hosts.filter(\.isMuted).map(\.name) }
+
+    public func isMuted(_ name: String) -> Bool {
+        host(named: name)?.isMuted ?? false
+    }
+
+    /// Set the mark. `local` is always a host (`load` inserts it), so it
+    /// can be muted like any other and the file then carries it. Unknown
+    /// hosts are left alone: the caller reports that, with the known names.
+    @discardableResult
+    public mutating func setMuted(_ name: String, _ muted: Bool) -> Bool {
+        guard let i = hosts.firstIndex(where: { $0.name == name }) else { return false }
+        hosts[i].mute = muted ? true : nil
+        return true
+    }
+
+    /// The events a listener on this Mac should hear: every event from a
+    /// host that is not muted. The detector itself never consults the
+    /// mute — what happened is one thing, what to say is another.
+    public func unmuted(_ events: [SessionEvent]) -> [SessionEvent] {
+        let muted = Set(mutedHosts)
+        return muted.isEmpty ? events : events.filter { !muted.contains($0.ref.host) }
+    }
+
+    public static func modificationDate(path: String = defaultPath) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
     }
 }

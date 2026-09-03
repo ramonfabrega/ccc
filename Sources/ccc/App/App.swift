@@ -52,11 +52,13 @@ enum App {
         // click to attach. Same detector as `ccc watch`.
         let notifier = Notifier(poller: controller.poller) { [weak window] ref in
             window?.showWindow(nil)
-            window?.attach(ref)
+            if let ref { window?.attach(ref) }
         }
         notifier.start()
         self.notifier = notifier
         controller.notificationStats = { [weak notifier] in notifier?.stats() }
+        // `ccc hook` → the same notifier, for what the roster cannot show.
+        controller.hookSink = { [weak notifier] event in notifier?.receive(event) ?? "notifier gone" }
         installStatusItem()
         window.showWindow(nil)
         NSApp.activate()
@@ -217,6 +219,11 @@ enum App {
         view.addItem(.separator())
         let archived = view.addItem(withTitle: "Show Archived", action: #selector(toggleArchived(_:)), keyEquivalent: "A")
         archived.target = self
+        view.addItem(.separator())
+        // Per-host mute (v3, slice 2): filled in when the menu opens, from
+        // hosts.json, so a host added or muted from a shell is here too.
+        let muteItem = view.addItem(withTitle: Self.muteMenuTitle, action: nil, keyEquivalent: "")
+        muteItem.submenu = NSMenu(title: Self.muteMenuTitle)
         let viewItem = NSMenuItem()
         viewItem.submenu = view
         main.addItem(viewItem)
@@ -248,6 +255,25 @@ enum App {
     @objc private func toggleArchived(_ sender: NSMenuItem) {
         UserDefaults.standard.set(!UserDefaults.standard.bool(forKey: RosterPrefs.archivedKey), forKey: RosterPrefs.archivedKey)
     }
+
+    static let muteMenuTitle = "Mute Notifications From"
+
+    /// The twin of `ccc hosts mute|unmute <name>`: flips the mark in
+    /// hosts.json. The notifier re-reads the file on its next tick.
+    @objc private func toggleMute(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        do {
+            try AppDelegate.setMuted(name, sender.state != .on)
+        } catch {
+            window?.showNotice("could not write \(HostConfig.defaultPath): \(error)")
+        }
+    }
+
+    static func setMuted(_ name: String, _ muted: Bool) throws {
+        var config = HostConfig.load().config
+        guard config.setMuted(name, muted) else { return }
+        try config.save()
+    }
 }
 
 /// The roster's persisted view choices: keys shared by the View menu (which
@@ -267,6 +293,19 @@ extension AppDelegate: NSMenuDelegate {
         let sort = defaults.string(forKey: RosterPrefs.sortKey) ?? RosterSort.activity.rawValue
         for item in menu.items {
             if item.title == "Show Archived" { item.state = defaults.bool(forKey: RosterPrefs.archivedKey) ? .on : .off }
+            if item.title == AppDelegate.muteMenuTitle, let sub = item.submenu {
+                // Rebuilt from the file each time: one row per host, a
+                // checkmark on the muted ones (`ccc hosts list` says the same).
+                sub.removeAllItems()
+                for host in HostConfig.load().config.hosts {
+                    let row = sub.addItem(withTitle: host.isLocal ? "This Mac" : host.name,
+                                          action: #selector(toggleMute(_:)), keyEquivalent: "")
+                    row.target = self
+                    row.representedObject = host.name
+                    row.state = host.isMuted ? .on : .off
+                }
+                continue
+            }
             for sub in item.submenu?.items ?? [] {
                 let chosen = item.title == "Group By" ? group : sort
                 sub.state = (sub.representedObject as? String) == chosen ? .on : .off

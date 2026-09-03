@@ -65,8 +65,10 @@ it should break while being awesome.**
   changed" banner — never an empty list, never a crash.
 - **The poll is the first notifier.** `claude agents --json --all` carries
   `state: blocked` and `waitingFor`; a 2 s poll on every host is
-  "it's your turn" on every Mac with no hook. The Notification hook (dotfiles
-  #49, banked) supplements only what the roster cannot show.
+  "it's your turn" on every Mac with no hook. The Notification hook reaches
+  the app through `ccc hook` (v3 slice 2; `--settings` prints the entry, ccc
+  never writes settings.json) and supplements only what the roster cannot
+  show. A host can be muted (`ccc hosts mute`); the detector never is.
 - **Every viewer attaches; the daemon mirrors.** Amended 2026-09-02 from
   "single attach, refused": measured (docs/DESIGN.md §4c), a second
   `claude attach` is accepted, output is broadcast to every viewer and input

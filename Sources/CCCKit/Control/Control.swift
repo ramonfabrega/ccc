@@ -46,6 +46,10 @@ public enum ControlRequest: Codable, Sendable {
     /// The app does this itself on `NSWorkspace.didWakeNotification`; this
     /// is how a hand or a script does the same.
     case reconnect(host: String?)
+    /// The harness's `Notification` hook, relayed by `ccc hook` (v3, slice
+    /// 2): the app looks the session up in its roster and posts what the
+    /// roster could not show. Headless servers have no notifier and say so.
+    case hook(event: HookEvent)
 }
 
 public enum ControlResponse: Codable, Sendable {
@@ -201,11 +205,26 @@ public struct NotificationStats: Codable, Sendable, Equatable {
     /// Events handed to the notification center since launch.
     public var posted: Int
     public var lastEvent: String?
+    /// Hosts whose events are not posted (v3, slice 2), so a quiet Mac can
+    /// be told apart from a broken one. Optional: an older server sends no
+    /// such key.
+    public var muted: [String]?
+    /// Hook events received over the socket, how many were dropped for a
+    /// muted host, and the last one's headline. Optional for the same wire
+    /// reason.
+    public var hooks: Int?
+    public var hooksMuted: Int?
+    public var lastHook: String?
 
-    public init(authorization: String, posted: Int, lastEvent: String?) {
+    public init(authorization: String, posted: Int, lastEvent: String?,
+                muted: [String]? = nil, hooks: Int? = nil, hooksMuted: Int? = nil, lastHook: String? = nil) {
         self.authorization = authorization
         self.posted = posted
         self.lastEvent = lastEvent
+        self.muted = muted
+        self.hooks = hooks
+        self.hooksMuted = hooksMuted
+        self.lastHook = lastHook
     }
 }
 

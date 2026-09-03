@@ -53,7 +53,10 @@ enum CLI {
                 return try await list(host: stringFlag("--host", rest), archived: rest.contains("--archived"),
                                       group: group, sort: sort, json: json)
             case "watch":
-                return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2, json: json)
+                return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2,
+                                       all: rest.contains("--all"), json: json)
+            case "hook":
+                return hook(settings: rest.contains("--settings"), json: json)
             case "hosts":
                 return try await hosts(rest, json: json)
             case "attach":
@@ -229,7 +232,7 @@ enum CLI {
     /// Needs no running app, like `list`. The first poll is the baseline
     /// and prints what is already blocked to stderr, so a reader knows the
     /// standing state without it counting as news.
-    static func watch(host name: String?, interval: Int, json: Bool) async throws -> Int32 {
+    static func watch(host name: String?, interval: Int, all: Bool, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
         let config: HostConfig
@@ -242,6 +245,10 @@ enum CLI {
         } else {
             config = loaded.config
         }
+        // The notification's twin honours the notification's mute; `--all`
+        // is the ear that hears every host (and a muted host named with
+        // `--host` is what was asked for).
+        let filter = (all || name != nil) ? HostConfig(hosts: []) : config
         let poller = RosterPoller(hosts: config, interval: .seconds(interval))
         var detector = TransitionDetector()
         await poller.tick()
@@ -250,8 +257,10 @@ enum CLI {
         guard state.anyHostAnswered else { return 1 }
         _ = detector.observe(state)
         let blocked = state.rows.filter { $0.session.state == .blocked }
+        let muted = filter.mutedHosts
         stderr("ccc: watching \(config.hosts.count) host\(config.hosts.count == 1 ? "" : "s"), \(state.rows.count) sessions, \(blocked.count) blocked"
-               + (blocked.isEmpty ? "" : ": " + blocked.map { "\($0.session.name ?? $0.ref.description)" }.joined(separator: ", ")))
+               + (blocked.isEmpty ? "" : ": " + blocked.map { "\($0.session.name ?? $0.ref.description)" }.joined(separator: ", "))
+               + (muted.isEmpty ? "" : "; muted: \(muted.joined(separator: ", ")) (--all hears them)"))
         let clock = DateFormatter()
         clock.dateFormat = "HH:mm:ss"
         var reported = Set<String>()
@@ -264,7 +273,7 @@ enum CLI {
                 stderr("ccc: \(failed.host): \(failed.error ?? "unreachable") (rows kept; silent until it answers)")
             }
             for host in state.hosts where host.error == nil { reported.remove(host.host) }
-            for event in detector.observe(state) {
+            for event in filter.unmuted(detector.observe(state)) {
                 if json {
                     printJSON(event)
                 } else {
@@ -274,6 +283,41 @@ enum CLI {
                 fflush(stdout)
             }
         }
+    }
+
+    /// The harness's `Notification` hook, as a command (v3, slice 2). The
+    /// hook JSON arrives on stdin and goes to the app over the control
+    /// socket; the app posts what the roster could not show. Exit 0 in
+    /// every case — no app, an older app that does not know the verb, an
+    /// unreadable payload — because a hook's failure is printed inside the
+    /// session it fired from, and that session is the user's. What went
+    /// wrong is one line on stderr, where the harness's verbose mode finds
+    /// it. `--settings` prints the settings.json entry that routes the
+    /// hook here; ccc never writes that file.
+    static func hook(settings: Bool, json: Bool) -> Int32 {
+        if settings {
+            let command = CLIInstall.ccc.status().path ?? "ccc"
+            print(HookSettings.snippet(command: command))
+            return 0
+        }
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        guard let event = HookEvent.decode(data) else {
+            stderr("ccc hook: stdin was not a JSON object (\(data.count) bytes); nothing posted")
+            return 0
+        }
+        do {
+            switch try ControlClient().send(.hook(event: event)) {
+            case .ok(let message):
+                if json { printJSON(["ok": message]) } else { stderr("ccc hook: \(message)") }
+            case .error(let message):
+                stderr("ccc hook: \(message)")
+            default:
+                stderr("ccc hook: unexpected response")
+            }
+        } catch {
+            stderr("ccc hook: \(error) — nothing posted")
+        }
+        return 0
     }
 
     /// The machines ccc can reach, and the gestures on that list. `check`
@@ -294,7 +338,8 @@ enum CLI {
                 let name = host.name.padding(toLength: width, withPad: " ", startingAt: 0)
                 let reader = host.isLocal ? "" : "  roster via \(host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)")"
                 let home = host.isLocal ? "" : "  home \(host.home ?? "(unknown; `ccc hosts check` learns it)")"
-                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")\(reader)\(home)")
+                let muted = host.isMuted ? "  (muted)" : ""
+                print("\(name)  \(host.ssh.map { "ssh \($0)" } ?? "(this Mac)")  \(host.claude ?? "")\(reader)\(home)\(muted)")
             }
             print("\n\(HostConfig.defaultPath)")
             return loaded.issues.isEmpty ? 0 : 3
@@ -390,6 +435,23 @@ enum CLI {
             loaded.config.hosts.removeAll { $0.name == name }
             try loaded.config.save()
             print("removed \(name)")
+            return 0
+
+        case "mute", "unmute":
+            // The notifier's per-host mute (v3, slice 2): a mark in this
+            // file, read by the app on its next tick and by `ccc watch`.
+            guard let name = rest.dropFirst().first else {
+                stderr("ccc: usage: ccc hosts \(action) <name>")
+                return 2
+            }
+            guard loaded.config.setMuted(name, action == "mute") else {
+                stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+                return 1
+            }
+            try loaded.config.save()
+            let muted = loaded.config.mutedHosts
+            print("\(action == "mute" ? "muted" : "unmuted") \(name)"
+                  + (muted.isEmpty ? "; nothing is muted" : "; muted: \(muted.joined(separator: ", "))"))
             return 0
 
         case "check":
@@ -502,7 +564,7 @@ enum CLI {
             return results.allSatisfy(\.ok) ? 0 : 1
 
         default:
-            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check|reconnect)")
+            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check|reconnect|mute|unmute)")
             return 2
         }
     }
@@ -791,7 +853,13 @@ enum CLI {
             let warn = n.posted > 0 && n.authorization != "authorized" && n.authorization != "provisional"
                 ? "  ⚠ events were posted but notifications are \(n.authorization) — none reached the screen" : ""
             let last = n.lastEvent.map { "  last \"\($0)\"" } ?? ""
-            print("notifications  \(n.authorization)  posted \(n.posted)\(last)\(warn)")
+            let muted = (n.muted ?? []).isEmpty ? "" : "  muted \(n.muted!.joined(separator: ","))"
+            print("notifications  \(n.authorization)  posted \(n.posted)\(last)\(muted)\(warn)")
+            if let hooks = n.hooks, hooks > 0 {
+                let dropped = (n.hooksMuted ?? 0) > 0 ? "  muted \(n.hooksMuted!)" : ""
+                let last = n.lastHook.map { "  last \"\($0)\"" } ?? ""
+                print("hook events    \(hooks)\(dropped)\(last)")
+            }
         }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames
@@ -832,12 +900,17 @@ enum CLI {
                ccc hosts add <name> [--ssh <dest>] [--claude <path>] [--ccc <path>|--no-ccc] | remove <name>
                                                   (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
+               ccc hosts mute|unmute <name>        no banners for that host's sessions (rows and counts stay)
                ccc list [--host <name>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--json]
                                                   every host's roster; --host narrows to one, --archived shows the
                                                   folded rows (--json always has every row, sorted, never grouped)
                ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host
                                                   (archived rows fold away unless blocked; pinned sort first)
-               ccc watch [--host <name>] [--interval S] [--json]   one line per transition (blocked, done, failed, stopped)
+               ccc watch [--host <name>] [--interval S] [--all] [--json]
+                                                  one line per transition (blocked, done, failed, stopped);
+                                                  muted hosts are skipped unless --all or named with --host
+               ccc hook [--settings]              the harness's Notification hook: JSON on stdin → a banner from the app
+                                                  for what the roster cannot show; --settings prints the settings.json entry
                ccc attach <ref> [--headless [--cols N --rows N]]
                                                   <ref> is `id` (this Mac) or `host:id`
                ccc snapshot [--json]

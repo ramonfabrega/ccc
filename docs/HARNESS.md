@@ -111,7 +111,12 @@ fields (`session_id`, `prompt_id`, `transcript_path`, `cwd`,
 optional `permission_suggestions[]`; **decision via a `decision` object**
 (`behavior: allow|deny`, `updatedInput`, `updatedPermissions`, `message`,
 `interrupt`) — exit code 2 is not honored. RC-free approvals are a documented
-surface; not v0.
+surface; not v0. **`ccc hook` is the Notification receiver (v3 slice 2):**
+the payload on stdin, decoded leniently (`HookEvent.decode` — every field
+optional, wrong types dropped), relayed to the app over the control socket;
+`ccc hook --settings` prints the settings.json entry. Proved with fabricated
+payloads only so far — the real hook has not fired into it yet, so the
+`message` texts above are the docs' words, not captured ones.
 
 **Remote Control.** Outbound-only HTTPS from the session to Anthropic; the
 phone push is native and undocumented; no third-party channel. `Channels`

@@ -37,6 +37,9 @@ final class PaneController {
     var windowAction: (@MainActor (String) -> Bool)?
     /// The notifier's state, when there is one (the window face).
     var notificationStats: (@MainActor () -> NotificationStats?)?
+    /// The window face's notifier taking a hook event (v3, slice 2);
+    /// answers with what it did. `nil` headless.
+    var hookSink: (@MainActor (HookEvent) -> String)?
 
     /// The hosts ccc knows about, and why any were dropped. Loaded once at
     /// start: a host list that changes under a running attach would change
@@ -291,6 +294,9 @@ final class PaneController {
                 return poll.error.map { "\(poll.host) FAILED \(ms): \($0)" } ?? "\(poll.host) ok \(ms), \(poll.rows.count) sessions\(evicted)"
             }
             return .ok("reconnected: " + report.joined(separator: "; "))
+        case .hook(let event):
+            guard let hookSink else { return .error("no notifier (headless)") }
+            return .ok(hookSink(event))
         }
     }
 }

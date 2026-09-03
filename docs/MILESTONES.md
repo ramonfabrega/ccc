@@ -169,8 +169,56 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   reached the screen 7 s after the spawn, and pressing it attached the
   window to that session (`ccc snapshot` showed its TUI). Found by doing
   it (docs/HARNESS.md): a blocked row does not always carry `waitingFor`.
-  Open for slice 2: whether a session *you* just stopped by hand deserves
-  a banner; a per-host mute; the hook for what the roster cannot show.
+  **Slice 2 — done 2026-09-02: a per-host mute, and the hook.** The mute
+  is a mark in `hosts.json` (`"mute": true` on a host entry; `local` is a
+  host too): `ccc hosts mute|unmute <name>` and the View menu's "Mute
+  Notifications From" submenu (checkmarks read off the file each time it
+  opens; the row's context menu has the same item per host) are the
+  twins, `ccc hosts list` says `(muted)`, and the notifier re-reads the
+  file when its mtime moves, so a shell's verb takes on the next tick.
+  The detector never consults it — what happened is one thing, what to
+  say is another (`HostConfig.unmuted`) — so the roster row and the
+  status item's ⏸ count are unchanged, `ccc watch` skips a muted host's
+  events and says so in its preamble, and `--all` (or `--host <muted>`)
+  hears them. `ccc stats` lists the muted hosts so a quiet Mac can be
+  told from a broken one. **The hook** is `ccc hook`: the harness's
+  `Notification` payload on stdin, one `hook` request over the control
+  socket, and the app looks the `session_id` up in the roster it already
+  polls (`HookEvent.notice(in:)`, pure and tested). For what the roster
+  cannot show — an interactive session's permission prompt, a background
+  session the roster has not met — it is a fresh banner with a sound,
+  named by the roster's name else the cwd's last component; for a
+  background session the roster already shows blocked it *replaces* the
+  poll's banner under the same request id, quietly, adding the harness's
+  sentence ("Claude is waiting for your input") that a `waitingFor`-less
+  AskUserQuestion row could never carry. Localhost only, by the slice-1
+  decision; exit 0 in every case (no app, an older app, junk on stdin —
+  one stderr line) because a failing hook is noise inside the user's own
+  session; `ccc hook --settings` prints the settings.json entry with the
+  absolute command path and the matcher
+  `permission_prompt|idle_prompt|elicitation_.*`, and **ccc never writes
+  settings.json** — that file is the user's and their dotfiles'. **Proved
+  live** on studio with the dev bundle (build 78; the cut went back after):
+  `ccc hook` against the running v0.1.8 app said `malformed request` and
+  exited 0 (the older-server case, as designed); against build 78 a
+  fabricated `permission_prompt` for an unknown session answered
+  `posted: proof needs permission`; an `idle_prompt` for the real blocked
+  `linear cuanto bill project` row (`status: idle`, no `waitingFor`)
+  answered `updated: … is waiting`; a fresh-id `idle_prompt` put
+  "second-proof is waiting — Claude is waiting for your input" on a real
+  `screencapture` one second later; `ccc hosts mute local` then a hook
+  answered `muted: …`, `ccc stats` read `notifications authorized posted 5
+  muted local` / `hook events 6 muted 1`, and `unmute` dropped the key
+  from the file; `ccc watch` with local muted opened with `muted: local
+  (--all hears them)` and `--all` opened without it. **Not yet seen:** three posts under one request id
+  (`hook:nope`) before that showed in no capture at 0.1 s or 1.5 s while
+  the fresh id showed at once — either the first landed during the
+  relaunch's activation or macOS does not re-present a replaced request;
+  the numbers said posted either way, which is §7's point. The real hook
+  has not fired into `ccc hook` yet (the settings entry is pasted by
+  hand), and the View menu's submenu has not been clicked. Left as
+  decided: a session stopped by your own hand still banners, until it
+  annoys.
 - **v4 — the roster, ours.** Archive, pin, group, sort in an overlay keyed by
   session id under Application Support; done vs stopped vs archived.
   **Delete is not ours — done 2026-09-02:** `ccc rm <ref>` is the
