@@ -12,10 +12,18 @@ final class PaneController {
     let poller: RosterPoller
     private(set) var server: ControlServer?
     private(set) var session: AttachSession?
+    /// The shell pane (v6 slice 4): a login shell in a session's folder,
+    /// under the session pane. Same object as a session, different argv.
+    private(set) var shell: AttachSession?
+    private var shellCwd: String?
     /// Called when the attached child exits (detach or crash).
     var onSessionEnded: ((Int32) -> Void)?
     /// Called when a session is attached; the window mounts `host.view`.
     var onSessionStarted: ((AttachSession) -> Void)?
+    /// The shell pane's mount and unmount; nil headless, which is how
+    /// `openShell` knows there is no second pane to open.
+    var onShellStarted: ((AttachSession) -> Void)?
+    var onShellEnded: (() -> Void)?
     /// The host factory: off-screen for headless, in-window for the app.
     /// The v1 pane (libghostty-vt + our Metal renderer) is the default since
     /// it won the six checks (docs/CHECKS.md, 2026-09-02); `CCC_CORE=swiftterm`
@@ -187,6 +195,48 @@ final class PaneController {
         return outcome
     }
 
+    /// Open in Terminal (v6 slice 4): exactly `ccc shell <ref>` — a login
+    /// shell in the row's folder, the ssh hop included, in the pane under
+    /// the session. One shell at a time: a second ask focuses the one that
+    /// is open. Returns the sentence, and whether a pane was opened (false
+    /// when it was already there).
+    @discardableResult
+    func openShell(_ ref: SessionRef, cols: Int? = nil, rows: Int? = nil) throws -> (said: String, opened: Bool) {
+        guard onShellStarted != nil else { throw AttachError.badHost("no window for a shell pane (headless)") }
+        if let shell, shell.isRunning {
+            return ("the shell pane is already open, in \(hosts.shortCwd(shellCwd ?? "", host: shell.ref.host))", false)
+        }
+        guard let row = poller.state.rows.first(where: { $0.ref == ref }) else {
+            throw AttachError.badHost("no session '\(ref)' in the roster")
+        }
+        let cli = try cli(for: ref)
+        try cli.prepareControlDirectory()
+        let size = (cols ?? defaultSize.cols, rows ?? min(defaultSize.rows, 14))
+        let host = makeHost(size.0, size.1)
+        // Local: the shell's cwd is the PTY's. Remote: the `cd` is in the
+        // words, and the PTY's own cwd means nothing to ssh.
+        let cwd = ref.isLocal ? row.session.cwd : nil
+        let shell = try AttachSession(ref: ref, argv: cli.shellArgv(cwd: row.session.cwd), host: host,
+                                      options: .init(cols: size.0, rows: size.1, cwd: cwd))
+        shell.onExit = { [weak self] _ in
+            guard let self else { return }
+            self.shell = nil
+            self.shellCwd = nil
+            self.onShellEnded?()
+        }
+        self.shell = shell
+        self.shellCwd = row.session.cwd
+        onShellStarted?(shell)
+        return ("shell in \(hosts.shortCwd(row.session.cwd, host: ref.host))" + (ref.isLocal ? "" : " on \(ref.host)"), true)
+    }
+
+    /// ⇧⌘T's twin: SIGHUP to the shell; `onExit` unmounts the pane.
+    func closeShell() -> Bool {
+        guard let shell, shell.isRunning else { return false }
+        shell.terminate()
+        return true
+    }
+
     /// Push (v6 slice 3): exactly `ccc push <ref> [--base]`, then a poll
     /// so the ⇡ mark clears now.
     func push(_ ref: SessionRef, _ target: PushTarget) async throws -> MergeOutcome {
@@ -325,6 +375,14 @@ final class PaneController {
         case .hook(let event):
             guard let hookSink else { return .error("no notifier (headless)") }
             return .ok(hookSink(event))
+        case .shell(let ref):
+            do {
+                return .ok(try openShell(ref).said)
+            } catch {
+                return .error("\(error)")
+            }
+        case .shellClose:
+            return closeShell() ? .ok("shell closed") : .error("no shell pane is open")
         }
     }
 }

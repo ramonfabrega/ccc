@@ -189,6 +189,10 @@ enum App {
         session.addItem(withTitle: "New Session Here…", action: #selector(MainWindowController.newSessionHereAction(_:)), keyEquivalent: "N")
         session.addItem(.separator())
         session.addItem(withTitle: "Detach", action: #selector(MainWindowController.detachAction(_:)), keyEquivalent: "d")
+        // ⌘T opens a shell pane under the session, in its folder (v6
+        // slice 4); ⇧⌘T closes it. `ccc shell <ref>` / `--close` are the twins.
+        session.addItem(withTitle: "Open in Terminal", action: #selector(MainWindowController.openShellAction(_:)), keyEquivalent: "t")
+        session.addItem(withTitle: "Close Terminal", action: #selector(MainWindowController.closeShellAction(_:)), keyEquivalent: "T")
         session.addItem(withTitle: "Refresh Roster", action: #selector(MainWindowController.refreshAction(_:)), keyEquivalent: "r")
         let sessionItem = NSMenuItem()
         sessionItem.submenu = session

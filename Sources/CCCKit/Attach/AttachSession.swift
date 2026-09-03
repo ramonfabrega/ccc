@@ -107,6 +107,14 @@ public final class AttachSession {
         if isRunning { pty.terminate() }
     }
 
+    /// End the child outright (SIGHUP, the terminal-closed signal) — how a
+    /// shell pane closes. Never for a `claude attach`: that one leaves by
+    /// `detach()`'s Ctrl+Z, which the harness documents.
+    public func terminate() {
+        guard isRunning else { return }
+        pty.terminate()
+    }
+
     public func stats(pollState: RosterPoller.State?) -> StatsInfo {
         let me = getpid()
         return StatsInfo(

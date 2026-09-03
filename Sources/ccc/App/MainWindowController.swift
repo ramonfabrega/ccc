@@ -14,7 +14,11 @@ import SwiftUI
 final class MainWindowController: NSWindowController {
     let controller: PaneController
     private let split = NSSplitView()
+    /// The right side: the session pane, and under it — when one is open
+    /// (v6 slice 4) — the shell pane, on a divider of their own.
+    private let paneSplit = NSSplitView()
     private let paneContainer = NSView()
+    private let shellContainer = NSView()
     private let placeholder = NSTextField(wrappingLabelWithString: "")
     private let hud = NoticeHUD()
     /// The pane's empty state carries the one condition about this window.
@@ -42,6 +46,8 @@ final class MainWindowController: NSWindowController {
         }
         controller.onSessionStarted = { [weak self] session in self?.mount(session) }
         controller.onSessionEnded = { [weak self] _ in self?.unmount() }
+        controller.onShellStarted = { [weak self] shell in self?.mountShell(shell) }
+        controller.onShellEnded = { [weak self] in self?.unmountShell() }
         controller.defaultSize = gridSize()
     }
 
@@ -96,6 +102,10 @@ final class MainWindowController: NSWindowController {
             self?.merge(ref, strategy)
         }, push: { [weak self] ref, target in
             self?.push(ref, target)
+        }, openShell: { [weak self] ref in
+            self?.openShell(ref)
+        }, selectionChanged: { [weak self] ref in
+            self?.currentSelection = ref
         }))
         // No intrinsic size from SwiftUI: the split view and the window
         // decide the roster's size, not the other way around.
@@ -120,11 +130,22 @@ final class MainWindowController: NSWindowController {
             placeholder.widthAnchor.constraint(lessThanOrEqualTo: paneContainer.widthAnchor, multiplier: 0.7),
         ])
         hud.install(in: paneContainer)
-        split.addArrangedSubview(paneContainer)
+        // The session pane over the shell pane; the shell's box stays
+        // hidden (collapsed by the split view) until a shell opens.
+        paneSplit.isVertical = false
+        paneSplit.dividerStyle = .thin
+        shellContainer.wantsLayer = true
+        shellContainer.layer?.backgroundColor = NSColor.black.cgColor
+        shellContainer.isHidden = true
+        paneSplit.addArrangedSubview(paneContainer)
+        paneSplit.addArrangedSubview(shellContainer)
+        paneContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        shellContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+        split.addArrangedSubview(paneSplit)
         root.addArrangedSubview(split)
         split.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         roster.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
-        paneContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
+        paneSplit.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
         DispatchQueue.main.async { [split] in split.setPosition(420, ofDividerAt: 0) }
     }
 
@@ -164,14 +185,50 @@ final class MainWindowController: NSWindowController {
     private func mount(_ session: AttachSession) {
         guard let view = session.host.view else { return }
         placeholder.isHidden = true
-        // Inset once; the autoresizing mask keeps the gutter as the window
-        // resizes. The pane knows nothing of it — its view is its bounds —
-        // so `peek`'s composite and the mouse's cell math stay right.
-        view.frame = Self.paneFrame(in: paneContainer.bounds)
-        view.autoresizingMask = [.width, .height]
-        paneContainer.addSubview(view)
+        place(session, in: paneContainer)
         hud.keepOnTop()
         window?.makeFirstResponder(view)
+        window?.title = "\(BuildInfo.current.appTitle) — \(session.ref)"
+    }
+
+    /// The shell pane (v6 slice 4): the same mounting under the session,
+    /// at the height the last drag left, and the keyboard.
+    private func mountShell(_ shell: AttachSession) {
+        guard let view = shell.host.view else { return }
+        // Unhide, lay out, *then* place the divider: set before the split
+        // has laid out it lands on the session's minimum and the shell
+        // takes the rest (seen on the first open, 2026-09-02). The session
+        // holds less than the shell, so a window resize flexes the session.
+        shellContainer.isHidden = false
+        paneSplit.setHoldingPriority(NSLayoutConstraint.Priority(250), forSubviewAt: 0)
+        paneSplit.setHoldingPriority(NSLayoutConstraint.Priority(260), forSubviewAt: 1)
+        paneSplit.layoutSubtreeIfNeeded()
+        let total = paneSplit.bounds.height
+        paneSplit.setPosition(max(120, total - shellHeight - paneSplit.dividerThickness), ofDividerAt: 0)
+        paneSplit.layoutSubtreeIfNeeded()
+        place(shell, in: shellContainer)
+        window?.makeFirstResponder(view)
+    }
+
+    private var shellHeight: CGFloat = 260
+
+    private func unmountShell() {
+        if !shellContainer.isHidden { shellHeight = max(80, shellContainer.bounds.height) }
+        for view in shellContainer.subviews { view.removeFromSuperview() }
+        shellContainer.isHidden = true
+        // The keyboard goes back to the session, if one is on screen.
+        if let view = controller.session?.host.view, view.superview != nil { window?.makeFirstResponder(view) }
+    }
+
+    /// Inset once; the autoresizing mask keeps the gutter as the window
+    /// resizes. The pane knows nothing of it — its view is its bounds —
+    /// so `peek`'s composite and the mouse's cell math stay right. Then
+    /// make the child hear the size the view actually got.
+    private func place(_ session: AttachSession, in container: NSView) {
+        guard let view = session.host.view else { return }
+        view.frame = Self.paneFrame(in: container.bounds)
+        view.autoresizingMask = [.width, .height]
+        container.addSubview(view)
         if let host = session.host as? SwiftTermHost {
             host.onSizeChanged = { [weak session] cols, rows in session?.viewResized(cols: cols, rows: rows) }
             // The view just took the container's frame; make sure the child
@@ -184,7 +241,6 @@ final class MainWindowController: NSWindowController {
             pane.resize(cols: dims.cols, rows: dims.rows)
             session.viewResized(cols: dims.cols, rows: dims.rows)
         }
-        window?.title = "\(BuildInfo.current.appTitle) — \(session.ref)"
     }
 
     private static func paneFrame(in bounds: NSRect) -> NSRect {
@@ -323,6 +379,37 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// Open in Terminal (v6 slice 4): from the row's menu, `t` on the
+    /// selected row, or ⌘T for the attached session (else the selected
+    /// row). An open shell is focused rather than doubled.
+    func openShell(_ ref: SessionRef) {
+        do {
+            let result = try controller.openShell(ref, cols: gridSize().cols)
+            if result.opened {
+                showNotice(result.said)
+            } else if let view = controller.shell?.host.view {
+                window?.makeFirstResponder(view)
+            }
+        } catch {
+            showNotice("\(error)", kind: .problem)
+        }
+    }
+
+    @objc func openShellAction(_ sender: Any?) {
+        guard let ref = controller.poller.attachedRef ?? currentSelection else {
+            showNotice("select or attach a session first", kind: .problem)
+            return
+        }
+        openShell(ref)
+    }
+
+    @objc func closeShellAction(_ sender: Any?) {
+        if !controller.closeShell() { showNotice("no shell pane is open", kind: .problem) }
+    }
+
+    /// The roster's selection, for ⌘T when nothing is attached.
+    private var currentSelection: SessionRef?
+
     /// The submenu's Push items (v6 slice 3): the same sentence shape as
     /// merge — pushed, or why not — as the notice.
     func push(_ ref: SessionRef, _ target: PushTarget) {
@@ -402,8 +489,9 @@ final class MainWindowController: NSWindowController {
         content.cacheDisplay(in: content.bounds, to: rep)
         // A Metal layer is invisible to cacheDisplay; composite the pane's
         // own offscreen render into its place so peek shows the v1 pane too.
-        if let pane = controller.session?.host as? GhosttyPane, let view = pane.view, let image = pane.snapshotImage(),
-           let context = NSGraphicsContext(bitmapImageRep: rep) {
+        for live in [controller.session, controller.shell].compactMap({ $0 }) {
+            guard let pane = live.host as? GhosttyPane, let view = pane.view, view.window != nil,
+                  let image = pane.snapshotImage(), let context = NSGraphicsContext(bitmapImageRep: rep) else { continue }
             let frameInContent = view.convert(view.bounds, to: content)
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context

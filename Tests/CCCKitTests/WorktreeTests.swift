@@ -420,3 +420,36 @@ import Testing
         #expect(cli.pushArgv(.base, id: "a1b2")?.suffix(4) == ["/opt/homebrew/bin/ccc", "push", "a1b2", "--base"])
     }
 }
+
+/// Slice 4: the shell pane's words. Local is the login shell with the
+/// PTY's cwd; remote is the attach prefix and a remote `cd`, `$SHELL`
+/// left for the far side.
+@Suite struct ShellArgvTests {
+    @Test func localIsTheLoginShell() {
+        let cli = ClaudeCLI(executable: "/x/claude")
+        #expect(cli.shellArgv(cwd: "/Users/x/code", environment: ["SHELL": "/bin/zsh"]) == ["/bin/zsh", "-l"])
+        // A SHELL that is not there falls back to zsh rather than failing the exec.
+        #expect(cli.shellArgv(cwd: "/Users/x/code", environment: ["SHELL": "/nope/fish"]) == ["/bin/zsh", "-l"])
+        #expect(cli.shellArgv(cwd: "/Users/x/code", environment: [:]) == ["/bin/zsh", "-l"])
+    }
+
+    @Test func remoteIsTheAttachPrefixAndACd() {
+        let host = Host(name: "studio", ssh: "rf-studio@studio", claude: "~/.local/bin/claude")
+        let cli = ClaudeCLI(executable: "~/.local/bin/claude", host: host)
+        let argv = cli.shellArgv(cwd: "/Users/rf-studio/code/fun/ccc/.claude/worktrees/v2")
+        #expect(argv.first == "/usr/bin/ssh" && argv.contains("-t"))
+        #expect(argv.dropLast().last == "rf-studio@studio")
+        #expect(argv.last == "cd /Users/rf-studio/code/fun/ccc/.claude/worktrees/v2 && exec $SHELL -l")
+        // A folder with a space is quoted for the remote shell, once.
+        let odd = cli.shellArgv(cwd: "/Users/rf-studio/my code/it's")
+        #expect(odd.last == "cd '/Users/rf-studio/my code/it'\\''s' && exec $SHELL -l")
+    }
+
+    @Test func theWireCarriesShell() throws {
+        let data = try JSONEncoder().encode(ControlRequest.shell(id: SessionRef(host: "studio", id: "a1b2")))
+        let back = try JSONDecoder().decode(ControlRequest.self, from: data)
+        if case .shell(let ref) = back { #expect(ref == SessionRef(host: "studio", id: "a1b2")) } else { Issue.record("not shell") }
+        let close = try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(ControlRequest.shellClose))
+        if case .shellClose = close {} else { Issue.record("not shellClose") }
+    }
+}

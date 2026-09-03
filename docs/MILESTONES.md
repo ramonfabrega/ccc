@@ -530,6 +530,33 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   credentials are. Not here, and not coming: fetch, pull, force,
   rebase. Four tests against a bare origin, including a second clone
   that moves origin/master under ours. 233 tests.
+  **Slice 4 — done 2026-09-02, late: the shell pane.** From the feat2
+  conversation: the one thing a menu cannot do is what a shell can, and
+  the user's picture was a pane of our own window, not a handoff to
+  iTerm2 (drafted, measured as the wrong half, deleted). One shell at a
+  time, under the session pane on a divider of its own: **Open in
+  Terminal** on any row, `t` on the selected row, ⌘T for the attached
+  session (else the selection), ⇧⌘T to close; `ccc shell <ref>` and
+  `ccc shell --close` are the twins, through the socket like attach.
+  The same `AttachSession` as a session with a different argv
+  (`ClaudeCLI.shellArgv`): the login shell (`$SHELL` as launchd hands
+  it to the app, else zsh) with the PTY's cwd set to the folder; for a
+  remote row the attach pane's own `ssh -t` prefix — the warm master —
+  and `cd '<dir>' && exec $SHELL -l` as one remote word, `$SHELL` the far
+  side's to expand. It stays as your shell while you attach elsewhere;
+  a second ask focuses it instead of doubling; it closes when its shell
+  exits or on ⇧⌘T (SIGHUP — never Ctrl+Z, which is the harness's detach
+  and would only stop a foreground job). Click either pane to type into
+  it. `ccc peek` composites both; `ccc snapshot` and `ccc send` still
+  address the session pane, so an agent's view of a session is
+  unchanged. Proved on the dev bundle: lore attached, `ccc shell
+  b3919c35` → a shell under it whose `pwd` read the ccc worktree and
+  whose `git branch --show-current` read `worktree-v2`; a second ask
+  answered "already open"; `--close` returned the session to full
+  height; `--close` again exited 1. Found by doing it: the divider set
+  before the split had laid out landed on the session's minimum, and
+  the shell took the rest. Not here: tabs, more than one shell.
+  236 tests.
   **The banner goes — done 2026-09-02, late.** Noticed by the user on
   the first Fast-forward from the row: the banner sat in the window's
   vertical stack, so every sentence resized the pane, which resized the

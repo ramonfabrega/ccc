@@ -50,6 +50,13 @@ public enum ControlRequest: Codable, Sendable {
     /// 2): the app looks the session up in its roster and posts what the
     /// roster could not show. Headless servers have no notifier and say so.
     case hook(event: HookEvent)
+    /// A shell pane under the session pane (v6 slice 4), in the folder of
+    /// the session `id` names — the user's login shell, over `ssh -t` when
+    /// the session is remote. One at a time; asking again focuses it.
+    /// Headless servers have no second pane and say so.
+    case shell(id: SessionRef)
+    /// Close the shell pane (SIGHUP to its shell), if one is open.
+    case shellClose
 }
 
 public enum ControlResponse: Codable, Sendable {

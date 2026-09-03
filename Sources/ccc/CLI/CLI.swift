@@ -94,6 +94,14 @@ enum CLI {
                     strategy = s
                 }
                 return try await merge(strategy, ref: ref, json: json)
+            case "shell":
+                if rest.contains("--close") { return try request(.shellClose, json: json) }
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try request(.shell(id: ref), json: json)
             case "push":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -1138,6 +1146,8 @@ enum CLI {
                                                   where the repo is; --ff-only (default) refuses when master moved;
                                                   every strategy refuses a dirty or wrong-branch checkout and backs
                                                   out of a conflict (exit 1 with the reason; nothing is ever lost)
+               ccc shell <ref> | --close          a shell pane under the session pane, in <ref>'s folder (over ssh -t
+                                                  when remote) — ⌘T's twin; --close is ⇧⌘T
                ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
                                                   default branch — to origin, never forced; git's own refusal is the
                                                   answer (exit 1; nothing changes anywhere)
