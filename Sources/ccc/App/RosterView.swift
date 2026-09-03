@@ -30,6 +30,13 @@ struct RosterView: View {
     /// --host <h> --cwd <dir>` with the row's answers filled in.
     let newSessionHere: (SessionRef) -> Void
     @State private var selection: SessionRef?
+    /// Keyboard focus on the list, set by the same click that selects a
+    /// row. Measured 2026-09-02 on the shipped build: a click highlighted
+    /// the row and then ⏎, `a`, `p`, `n` all went nowhere, because the
+    /// row's tap gesture takes the mouse before the table can become first
+    /// responder. The click is what makes the roster the keyboard's
+    /// target; a click in the pane hands it back.
+    @FocusState private var focused: Bool
     @AppStorage(RosterPrefs.archivedKey) private var showsArchived = false
     @AppStorage(RosterPrefs.groupKey) private var groupName = RosterGroup.none.rawValue
     @AppStorage(RosterPrefs.sortKey) private var sortName = RosterSort.activity.rawValue
@@ -57,6 +64,7 @@ struct RosterView: View {
                 }
             }
             .listStyle(.inset)
+            .focused($focused)
             .onKeyPress(.return) {
                 guard let row = selectedRow, row.session.isAttachable else { return .ignored }
                 attach(row.ref)
@@ -81,7 +89,14 @@ struct RosterView: View {
                   stale: poller.state.host(row.host)?.isStale ?? false)
             .tag(row.ref)
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) { attach(row.ref) }
+            // Simultaneous, never exclusive: a plain `onTapGesture(count: 2)`
+            // on a List row claims the first click while it waits for a
+            // second, and the table's own selection then lands late or not
+            // at all — the "iffy to click" of 2026-09-02. The single tap
+            // selects outright, so a click on the dot or the gutter is a
+            // click on the row, and the double tap rides beside it.
+            .simultaneousGesture(TapGesture(count: 1).onEnded { selection = row.ref; focused = true })
+            .simultaneousGesture(TapGesture(count: 2).onEnded { attach(row.ref) })
             .contextMenu { menu(for: row) }
     }
 

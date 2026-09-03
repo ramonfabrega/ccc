@@ -46,15 +46,28 @@ final class MainWindowController: NSWindowController {
 
     // MARK: layout
 
+    /// Points between the pane's edges and the grid, the way every terminal
+    /// leaves a gutter (Ghostty's `window-padding-x/y`): without it the
+    /// first column touched the split divider and the cursor's left edge
+    /// was the window's. The container paints the gutter black.
+    private static let paneInset = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+
     private func build() {
-        guard let content = window?.contentView else { return }
+        guard let window, let content = window.contentView else { return }
         let root = NSStackView()
         root.orientation = .vertical
         root.spacing = 0
         root.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(root)
+        // The window is `.fullSizeContentView`, so `content` reaches under
+        // the title bar. SwiftUI's roster knew — `NSHostingView` applies the
+        // safe area on its own — while the AppKit banner and the pane did
+        // not: the banner drew under the traffic lights and the terminal's
+        // first row sat behind the title. The content layout guide is the
+        // part of the window below the title bar; everything hangs from it.
+        let below = (window.contentLayoutGuide as? NSLayoutGuide)?.topAnchor ?? content.topAnchor
         NSLayoutConstraint.activate([
-            root.topAnchor.constraint(equalTo: content.topAnchor),
+            root.topAnchor.constraint(equalTo: below),
             root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
@@ -186,7 +199,7 @@ final class MainWindowController: NSWindowController {
 
     /// Cells that fit the pane at SwiftTerm's default font.
     private func gridSize() -> (cols: Int, rows: Int) {
-        let bounds = paneContainer.bounds
+        let bounds = Self.paneFrame(in: paneContainer.bounds)
         guard bounds.width > 0, bounds.height > 0 else { return (120, 40) }
         let cell = SwiftTermHost.estimatedCellSize()
         return (max(20, Int(bounds.width / cell.width)), max(5, Int(bounds.height / cell.height)))
@@ -195,7 +208,10 @@ final class MainWindowController: NSWindowController {
     private func mount(_ session: AttachSession) {
         guard let view = session.host.view else { return }
         placeholder.isHidden = true
-        view.frame = paneContainer.bounds
+        // Inset once; the autoresizing mask keeps the gutter as the window
+        // resizes. The pane knows nothing of it — its view is its bounds —
+        // so `peek`'s composite and the mouse's cell math stay right.
+        view.frame = Self.paneFrame(in: paneContainer.bounds)
         view.autoresizingMask = [.width, .height]
         paneContainer.addSubview(view)
         window?.makeFirstResponder(view)
@@ -212,6 +228,13 @@ final class MainWindowController: NSWindowController {
             session.viewResized(cols: dims.cols, rows: dims.rows)
         }
         window?.title = "\(BuildInfo.current.appTitle) — \(session.ref)"
+    }
+
+    private static func paneFrame(in bounds: NSRect) -> NSRect {
+        let i = paneInset
+        return NSRect(x: bounds.minX + i.left, y: bounds.minY + i.bottom,
+                      width: max(0, bounds.width - i.left - i.right),
+                      height: max(0, bounds.height - i.top - i.bottom))
     }
 
     private func unmount() {

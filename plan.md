@@ -1,12 +1,14 @@
 # plan.md — ephemeral handoff
 
 **Status 2026-09-02, late.** Everything landed is in `docs/MILESTONES.md`
-(v0 through v5 slice 3). **v0.1.11 (build 90) is cut and on the feed**
-(through ota, live length 4627875; GitHub release v0.1.11); studio runs
-it (`--dist`), air takes it through Sparkle when it wakes. Master wants
-`git merge --ff-only worktree-v2`. This file carries only what is *not*
-settled: the queue, trimmed to what has a measured reason, and what is
-owed.
+(v0 through v5 slice 3, plus the UI pass). **v0.1.11 (build 90) is cut
+and on the feed** (through ota, live length 4627875; GitHub release
+v0.1.11); air takes it through Sparkle when it wakes. **Studio runs the
+dev bundle (`ccc·dev`, the UI pass) — `scripts/install --dist` puts the
+cut back**, or cut v0.1.12 once a hand has clicked the roster. Master
+wants `git merge --ff-only worktree-v2`. This file carries only what is
+*not* settled: the queue, trimmed to what has a measured reason, and
+what is owed.
 
 Worktree `.claude/worktrees/v2`, branch `worktree-v2`. `master`
 fast-forwards to it; merge master back after any master-side commit or
@@ -25,23 +27,20 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
   queue below is what is left and a cut carries the same build to every
   Mac.
 
-## Owed a hand (studio, after the cut)
+## Owed a hand (studio)
 
-- **New Session Here…** has not been clicked by a hand: ⇧⌘N over an
-  attached session should open the sheet on its folder, and "Attach when
-  started" should leave the attached session for the new one (attach
-  refused with "busy" until this was fixed; the fix was seen once by a
-  script, not a hand). `n` on a selected row and the context menu item
-  likewise.
-- **The roster's left column** feels iffy to click at times (noted by the
-  user 2026-09-02). For the UI pass, with the banner drawing under the
-  title bar and the terminal clipping a little at its bounds.
+- **The UI pass, by a hand.** Landed and proved by script
+  (docs/MILESTONES.md, v5): the banner and the pane below the title bar,
+  a gutter around the grid, and a click on a row that gives the list
+  keyboard focus — ⏎, `a`, `p`, `n` after a click all went nowhere on
+  v0.1.11, which is what "iffy to click" was. New Session Here… ran end
+  to end (⇧⌘N → sheet on the attached row's folder → ⌘↩ → the pane on
+  the draft). A script cannot feel a click; the dev bundle is on studio
+  for the hand. Then cut v0.1.12.
 
 ## Queue
 
-1. **UI pass** — the three items above, together, when the pane is the
-   subject again.
-2. **Worktree awareness, with one verb** (decided 2026-09-02, late, from
+1. **Worktree awareness, with one verb** (decided 2026-09-02, late, from
    the nightly `git merge --ff-only worktree-v2` on master): a row that
    lives in a worktree says so and shows its branch and how far ahead of
    the repo's default branch it is (`state.json` carries `worktreePath`;
@@ -53,15 +52,20 @@ RELEASES.md, through `ota` (pinned to its tag v0.1.0).
    click is the user's: the harness's guard keeps an agent from reaching
    across worktrees for a reason, and the command exists for parity, not
    for an agent to press unasked.
-3. **Host picker** off `tailscale status --json` (MagicDNS names are the
+2. **Host picker** off `tailscale status --json` (MagicDNS names are the
    ssh destinations; Bonjour never crosses the tailnet). With it, the §4c
    question: whether a secondary viewer renders the shared grid as-is
    instead of resizing it (last-resize-wins today).
-4. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to its
+3. **Debt:** `ClaudeCLI.run` blocks a pool thread per host for up to its
    timeout (`readDataToEndOfFile`). Fine at two or three hosts; a
    nonblocking read before the host list grows.
-5. **Small leftovers:** a sort by model; the Session menu's archive/pin
-   items (the context menu has them).
+4. **Small leftovers:** a sort by model; the Session menu's archive/pin
+   items (the context menu has them); `ccc window show` when another app
+   holds focus — measured 2026-09-02 with a Wine window in front:
+   `NSApp.activate()` is cooperative since macOS 14 and the window stayed
+   behind, while `open -a` brought it front, so the CLI side of `show`
+   should activate through `NSWorkspace` (the app cannot activate
+   itself).
 
 Dropped 2026-09-02: a "forked from" mark on the row; permission mode,
 effort and worktree as sheet fields (the command has them; nobody has

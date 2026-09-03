@@ -411,5 +411,35 @@ Each milestone is comparable against `claude agents` on its own. Experiments
   the attached session first, since attach refused with "busy" while one
   was on screen — found by the fork, true of ⇧⌘N either way. Next:
   worktree awareness in the sheet, display only.
+  **UI pass — done 2026-09-02, late: the three things a hand noticed.**
+  Measured with a real `screencapture` of the shipped build (v0.1.11)
+  and synthetic clicks and keys. (1) *The banner under the title bar and
+  the terminal clipped at its top:* one cause. The window is
+  `.fullSizeContentView`, so the content view reaches under the title
+  bar; SwiftUI's roster applied the safe area on its own, while the
+  AppKit banner and the pane container did not — the notice drew under
+  the traffic lights and the grid's first row sat behind the title. The
+  root stack now hangs from the window's content layout guide, and the
+  mounted pane is inset (8 pt sides, 6 pt top and bottom, the gutter
+  every terminal leaves) so the first column no longer touches the split
+  divider. The pane knows nothing of the inset: its view is its bounds,
+  so `peek`'s composite and the mouse's cell math are unchanged. (2)
+  *The roster "iffy to click":* a click highlighted the row and then ⏎,
+  `a`, `p`, `n` all went nowhere, on the shipped build too — the row's
+  tap gesture takes the mouse before the table can become first
+  responder, so the list never had keyboard focus after a click. The
+  double-click is now a simultaneous gesture beside a single tap that
+  selects the row and sets a `@FocusState` on the list; the click is
+  what makes the roster the keyboard's target. Proved on the dev bundle:
+  a click on the row's dot, `p` → the "pinned a18a763f" banner below the
+  title bar, `p` → unpinned; ⏎ attached; a double-click on the dot
+  attached. (3) *New Session Here…*, driven end to end: ⇧⌘N over the
+  attached `lore` session opened the sheet on `~/code/fun/lore`; ⌘↩ with
+  nothing typed drafted `1c0bf8c7` there, the pane left `lore` for the
+  draft (title and banner agreed), `ccc rm` took the draft away. Still
+  owed a hand — a script cannot feel a click — but nothing a script can
+  see is wrong. Found on the way: `ccc window show` did not bring the
+  window front while another app held focus (`NSApp.activate()` is
+  cooperative since macOS 14); `open -a` did. Queued. 211 tests.
 - **later** — peek/reply without attach (experiment 4); RC-free approvals via
   the PermissionRequest hook; the phone, if the Mac app earns it.
