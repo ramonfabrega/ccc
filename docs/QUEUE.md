@@ -82,7 +82,19 @@ closes unmeasured").
 So the next thing is a **direction**, not an item. Whatever it is, the
 client is still read-only plus attach (CLAUDE.md's thesis), and the
 things that would change that — peek/reply without attach, RC-free
-approvals, the phone — are under "Later" and have never been argued.
+approvals, the phone — are under "Later".
+
+**A survey ran against that direction on 2026-09-04 and moved it**
+(`docs/EVIDENCE.md` "the mobile survey"; the amended argument is under
+"Later"). It landed no code and three findings. **The phone's argued
+value is already shipped**: Remote Control puts five of nine live workers
+in the Claude mobile app, where they can already be answered — so a ccc
+phone must earn its place on something else, and the only argument that
+survived is that ccc would need no tmux where every shipping
+Ghostty-on-iOS client does. **Experiment 4 is superseded, not answered**:
+reply-without-attach has a documented socket, one refused probe from
+being a twin. And **ccc is blind to all of it** — `--rc`, the presence
+file, the inbox socket — which is now **item 17**, and is Mac work.
 
 ### 4. Debt: the blocking poll read
 
@@ -201,10 +213,39 @@ pane shows whatever `claude attach` is drawing. Anything that wants to put
 a known sequence on screen and read it back has nowhere else to put it,
 which is what made the shell pane look like a fixture in the first place.
 
+### 17. ccc is blind to RC, and one of those blindnesses is a feature
+
+Found by the mobile survey (`docs/EVIDENCE.md` "the mobile survey"), which
+is also where the numbers are. `grep -rn -- "--rc\|remote-control\|
+remoteControl\|PRESENCE\|MESSAGING_SOCKET" Sources/` returns nothing, while
+**five of nine live workers carry `--rc`**. Three separate gaps, smallest
+first:
+
+- **`CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses mobile
+  push while a marker file exists, and the harness docs say to "configure
+  a screen-lock listener or similar tool" to write it on unlock and remove
+  it on lock. **ccc is that tool** — menubar-resident, already knows window
+  focus. The phone is already in the user's pocket and already buzzing;
+  this is the part that stops it buzzing while they are at the Mac. Twin:
+  `ccc presence` (on/off/status), the setting the app drives.
+- **The roster row does not say whether a session is remote-controllable.**
+  ccc reads `dispatch.launch.flagArgs` already; `--rc` is one predicate
+  away, and it is the difference between "answerable from the phone" and
+  "only answerable here". Nothing else in ccc can tell the user that.
+- **Spawning.** ccc's spawn never offers `--rc`. Whether it should default
+  to it is the user's call, not ccc's, but the box should exist.
+
+None of this is the phone. All of it makes the phone the user already has
+work better, and all of it is testable on the Mac through the twins.
+
 ## Later
 
-Peek/reply without attach (experiment 4). RC-free approvals via the
-PermissionRequest hook. The phone, if the Mac app earns it.
+Reply without attach — **not** experiment 4; the session inbox socket, one
+probe away (see the amendment below). RC-free approvals via the
+PermissionRequest hook, which is now the *only* write path the phone in
+the user's pocket does not already have. The phone, if the Mac app earns
+it — and after this survey it must earn it on something other than
+unblocking.
 
 **Argued 2026-09-04, once, so it is not re-derived.** These three are one
 thing in the order given, and the order is not preference.
@@ -216,14 +257,51 @@ looks is a banner that already arrives. What it adds is answering the
 phone's prerequisites; they are its content, and they are testable on the
 Mac through the twins, where a phone client is not.
 
+**Amended the same day, by measurement, and the amendment is the whole
+point** (`docs/EVIDENCE.md` "the mobile survey"). The second sentence is
+**false**. Answering the "your turn" from a phone is already shipped —
+by Anthropic, through **Remote Control**, to these very sessions.
+Five of nine workers in the live roster carry `--rc`, including the job
+this was measured in; the Claude app can already send messages, answer
+permission prompts and `AskUserQuestion`, and set `/model` and `/config`;
+and push for both is already enabled here. RC is an outbound relay to the
+Anthropic API with no third-party entry point, so ccc cannot join it and
+does not need to. **A ccc phone must now earn its place on something other
+than unblocking** — and `--rc` is the first thing ccc should *read*, since
+it currently neither sets nor shows it.
+
 **Approvals before peek/reply**, on what is known rather than what is
 wanted. `PermissionRequest` is a documented surface with a `decision`
 object (`docs/HARNESS.md`), and `ccc hook` already receives Notification
 over the control socket — the new part is a hook that blocks and answers.
-Peek/reply rests on **experiment 4, which has never been run**: whether
-the daemon exposes the TUI's reply field outside the TUI is written down
-as *unknown*. Run the experiment before building anything on it; it either
-opens the path or closes it, and it is a measurement, not a slice.
+~~Peek/reply rests on experiment 4, which has never been run.~~ **It does
+not.** Experiment 4 asked how the *TUI's* reply field reaches the daemon;
+the need behind it has a **documented** answer that makes the experiment
+optional. Every session binds an inbox socket, and the docs sanction
+exactly this use — *"when you want a script or hook to post into a
+session"*. The address is a join ccc can already make: roster **`replPid`**
+→ `/tmp/cc-socks/<replPid>.sock`, nine for nine (`pid` is the launcher and
+matches nothing). `CLAUDE_CODE_MESSAGING_SOCKET` and
+`CLAUDE_CODE_MESSAGING_TOKEN` name a session's own; the auth line is
+optional on macOS.
+
+Two limits split what used to be one line into two features:
+
+- **A peer message can never approve.** The docs are explicit that it
+  "never counts as your consent, so it can't answer a pending permission
+  prompt". So the inbox socket is *reply* without attaching and never
+  *approve* without attaching — approvals still need the
+  `PermissionRequest` hook, and the order above survives for a new reason.
+- **ccc asserts no permission class**, being no session, so a receiver in
+  `bypassPermissions` holds its message for approval. Receivers that
+  prompt (`--permission-mode auto` included) take it.
+
+**What is left is one probe, and it is one permission rule wide.** The
+message line's wire format is undocumented and lives in the CLI's bytecode.
+A four-shape probe against ccc's own socket was refused by the auto-mode
+classifier — writing to a session's IPC socket reads as injection, which
+is the correct read. It was not routed around. Run it as `! python3 …`, or
+allow the rule, and `ccc reply <ref> "<text>"` is a small twin after it.
 
 **The phone breaks exactly one locked decision, and it is not "no daemon
 of our own".** It is *"PTY is always local; remote is the same command
@@ -234,6 +312,29 @@ Give the phone an in-process ssh client (a library, earned per part) and
 survives untouched. So the expensive part is a **dependency** question,
 not an architecture one — cheaper than "the phone needs a server" makes it
 sound, and worth knowing before that gets re-argued.
+
+**That dependency now has a name, and so does the rest of the port**
+(`docs/EVIDENCE.md` "the mobile survey"). Upstream ships no iOS Ghostty and
+plans none, but keeps **libghostty building for iOS in CI** — and a whole
+category already ships on it, several of them purpose-built for driving
+Claude Code from a phone (`daiimus/geistty`, gterm, VVTerm, Hoshi, AgenTTY,
+Clauntty, Claudette Echo, Echo, CodeAgents Mobile). Read three things off
+them rather than re-deriving:
+
+- **The ssh library is `apple/swift-nio-ssh`** — pure Swift, no fork/exec,
+  what geistty ships (forked only for RSA; Ed25519 works upstream), with
+  `gaetanzanella/swift-ssh-client` as a higher-level wrapper.
+- **The seam is already the port line.** libghostty's **External termio
+  backend** takes terminal data from an external source instead of a local
+  process — the same shape as our one-page seam, driven from SSH. It was
+  built to swap cores and turns out to swap platforms.
+- **`No tmux, ever` is the edge, not the tax.** Every one of those clients
+  reaches for tmux control mode to survive app suspension. ccc needs none:
+  the daemon is the multiplexer, resume is `claude attach <id>`, and the
+  session was never the app's to hold. The house rule that reads as
+  asceticism on the Mac is what would make ccc's phone *cheaper* than the
+  ones already in the store — which is the only argument for building one
+  that survived this survey.
 
 **One thing item 14 left here on its way out.** `ccc pixel --cell`'s scale
 arithmetic is tested at 2x but has never met a Retina panel, because the

@@ -2823,3 +2823,141 @@ Code, where the terminal's own stable bundle id is what TCC checks.
 `ccc capture` and `ccc pixel` stay — they are correct, they are tested, and
 they are what the next session runs if a colour is ever doubted again. What
 left is the standing obligation to run them.
+
+## the mobile survey: RC is already the phone (2026-09-04)
+
+Opened as "explore mobile", widened on the user's ask to *what does the
+Claude mobile app actually do, how does RC work, can Ghostty run on a
+phone, and what are the unknown unknowns*. No code shipped. What it
+returned falsifies one leg of the phone argument written into
+`docs/QUEUE.md` "Later" earlier the same day, so the argument is amended
+rather than repeated.
+
+**`--rc` is already on most of the fleet, and ccc never put it there.**
+Read straight out of the live roster:
+
+```
+python3 -c 'import json,os; d=json.load(open(os.path.expanduser("~/.claude/daemon/roster.json")));
+[print(k, (v["dispatch"]["launch"].get("flagArgs") or [])) for k,v in d["workers"].items()]'
+```
+
+Five of nine workers carry `--rc` in `flagArgs`/`respawnFlags` — including
+`b3919c35`, the `ccc` job this survey ran in. `grep -rn -- "--rc\|remote-control\|
+remoteControl\|PRESENCE\|MESSAGING_SOCKET" Sources/` returns **nothing**:
+ccc neither sets the flag, reads it, nor shows it. The flag is the user's
+own spawn habit, and ccc is blind to it.
+
+**RC is an outbound cloud relay, not a LAN thing** (`code.claude.com/docs/en/
+remote-control`). The local session makes outbound HTTPS only, never opens
+an inbound port, registers with the Anthropic API and polls; the phone
+talks to Anthropic and Anthropic routes to the Mac. Execution and files
+stay local, but **the transcript is stored on Anthropic servers while
+connected** — that is what keeps the surfaces in sync and what survives a
+network drop. There is no third-party entry point to that relay: the client
+on the other end is the Claude app or claude.ai/code, and nothing else.
+
+**What the phone can already do, today, to these sessions.** Send messages;
+answer permission prompts and `AskUserQuestion`; `/model`, `/effort`,
+`/config key=value`, `/compact`, `/context`, `/usage`, `/mcp`. Push is
+already on here — `~/.claude/settings.json` carries `agentPushNotifEnabled:
+true` and `inputNeededNotifEnabled: true`, and `~/.claude.json` carries
+`hasUsedRemoteControl: true` with `remoteControlSurfacesSeen: ["mobile",
+"desktop"]`.
+
+So **the phone's whole argued marginal value is already shipped.** The
+queue's "Later" said the phone's value is unblocking, and that unblocking
+*is* the two write paths (approvals, peek/reply) — so build those first.
+The first half stands; the second is wrong. Anthropic already built both,
+for every `--rc` session, on a surface ccc cannot enter and does not need
+to. A ccc phone must earn its place on something else.
+
+**Experiment 4 is not answered, and no longer blocks anything.** Its literal
+question — how the agents-view peek/reply reaches the daemon — was pursued
+into the CLI binary (`strings` over
+`~/.local/share/claude/versions/2.1.260`, a bun standalone whose logic is
+`@bun @bytecode` so only literals and export maps survive). The rendezvous
+channel is per-worker: `/tmp/cc-daemon-501/<daemon>/rv/<short>.sock`, keyed
+by `rvAuth` in roster.json, vocabulary `subscribe snapshot repaint splice
+setcwd handoff attacher-caps pty-auth-required`. Undocumented, unpromised,
+and now unnecessary, because the **need** has a documented answer.
+
+**The documented write path is the session's inbox socket**
+(`code.claude.com/docs/en/cross-session-messaging`). Every session binds
+one, and the docs sanction exactly our use: *"Read this section when a
+session you expect isn't in the agent list, when you want a script or hook
+to post into a session"*. Measured here:
+
+```
+env | grep CLAUDE_CODE_MESSAGING
+  CLAUDE_CODE_MESSAGING_SOCKET=/tmp/cc-socks/54334.sock
+  CLAUDE_CODE_MESSAGING_TOKEN=22bc88ad82387f90c224c44bb36ad335
+```
+
+**The address is a join ccc can already make: roster `replPid` →
+`/tmp/cc-socks/<replPid>.sock`, nine for nine** (`join.py`; `pid` is the
+launcher and matches nothing — it is `replPid`, the REPL process, and
+getting that wrong addresses no one). On macOS the auth line is optional;
+a script sends `{"type":"auth","token":"<token>"}` as the first line only
+where it must. The socket is 0600 and per-uid.
+
+Two limits, both load-bearing:
+
+- **A peer message can never approve anything.** The docs are explicit: a
+  message from another session "never counts as your consent, so it can't
+  answer a pending permission prompt on your behalf". So the inbox socket
+  is *reply* without attaching, and **never** *approve* without attaching.
+  Those two were one line in the queue and are now measurably two features.
+- **ccc is not a session, so it asserts no permission class.** An
+  unverifiable sender is treated as asserting none, which means a receiving
+  session in `bypassPermissions` holds the message for approval rather than
+  delivering it. Receivers that prompt (including `--permission-mode auto`,
+  which lore runs) take it.
+
+**The one thing not measured: the message line's wire format.** Only the
+auth line is documented, and the literals live in the bytecode chunk. A
+four-shape probe against ccc's *own* socket (own-child messages are
+verified and delivered, so blast radius is one conversation) was **refused
+by the auto-mode classifier** — writing to a session's IPC socket reads as
+injection. Not routed around. It is one `Bash` permission rule or one
+`! python3 …` away, and it is the last thing between here and a `ccc
+reply` twin.
+
+**Ghostty on a phone: answered, and it is not a research question.**
+Upstream has no iOS app and no plan for one, but keeps **libghostty
+building for iOS in CI** and invites the community to it. Several apps
+ship on that: `daiimus/geistty` (libghostty's **External termio backend** —
+terminal data from an external source instead of a local process — plus
+`swift-nio-ssh` for transport, Metal at 120fps, iOS Keychain for
+credentials), plus gterm, VVTerm, Hoshi, AgenTTY, Clauntty, Claudette Echo,
+Echo, CodeAgents Mobile. Several of those are **purpose-built for driving
+Claude Code TUIs from a phone**. The category exists and is competitive.
+
+Three consequences for ccc, in descending order of how much they change:
+
+- **The seam already points at iOS.** libghostty's External termio backend
+  is the same shape as ccc's one-page seam (feed bytes, write bytes,
+  resize, snapshot), which is what geistty drives from SSH instead of a
+  PTY. The seam was designed for swapping cores and turns out to be the
+  port line too.
+- **The subprocess problem has a named answer.** `docs/QUEUE.md` "Later"
+  called the in-process ssh client "a dependency question, not an
+  architecture one" and it was right: `apple/swift-nio-ssh` is the answer
+  geistty shipped (forked only for RSA; Ed25519 works upstream), with
+  `gaetanzanella/swift-ssh-client` as a higher-level wrapper. Pure Swift,
+  no fork/exec, on iOS today.
+- **`No tmux, ever` is the edge, not the tax.** Every shipping
+  Ghostty-on-iOS client reaches for tmux control mode to survive app
+  suspension — geistty names it, AgenTTY sells it. ccc needs none of it:
+  the daemon is already the multiplexer, so resume is `claude attach <id>`
+  and the session was never the app's to hold. The house rule that reads
+  as an ascetic constraint on the Mac is the thing that would make ccc's
+  phone *cheaper* than the ones already in the store.
+
+**And one Mac-side finding that needs no phone.**
+`CLAUDE_CLIENT_PRESENCE_FILE` (v2.1.181+) suppresses mobile push while a
+marker file exists; the docs say to "configure a screen-lock listener or
+similar tool" to write it on unlock and remove it on lock. **ccc is that
+tool** — it is a menubar-resident app that already knows window focus — and
+today it does not know the variable exists. That is a twin-shaped feature
+against a documented surface, on the Mac, with the phone already in the
+user's pocket.

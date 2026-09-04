@@ -167,7 +167,34 @@ hook's reason lands under the poll's banner.
 
 **Remote Control.** Outbound-only HTTPS from the session to Anthropic; the
 phone push is native and undocumented; no third-party channel. `Channels`
-is the sanctioned inbound surface (not investigated).
+is the sanctioned inbound surface (not investigated). **Amended 2026-09-04
+with what it already does for us** (`docs/EVIDENCE.md` "the mobile
+survey"): `--rc` / `--remote-control` on a session, or `--rc` in a
+`--bg` dispatch's `flagArgs`, puts it on claude.ai/code and in the Claude
+mobile app, where it can be **messaged, and its permission prompts and
+`AskUserQuestion`s answered**, plus `/model`, `/effort`, `/config
+key=value`, `/compact`, `/context`, `/usage`, `/mcp`. The session
+registers with the API and polls; no inbound port; the transcript is
+stored on Anthropic servers while connected. Push is gated by
+`agentPushNotifEnabled` and `inputNeededNotifEnabled`, and suppressed
+while `CLAUDE_CLIENT_PRESENCE_FILE` names an existing file — the hook ccc
+should own (queue item 17). **ccc reads none of this today.**
+
+**The session inbox socket** (`cross-session-messaging`, harness v2.1.224+)
+— the sanctioned way for a non-session process to put text into a running
+session, which is what "reply without attaching" needed and what
+experiment 4 was chasing privately. Every session binds one; the docs name
+"a script or hook to post into a session" as a use. Address:
+`/tmp/cc-socks/<replPid>.sock`, where `replPid` is the roster field (**not
+`pid`**, which is the launcher) — joined nine for nine on 2026-09-04. A
+session's own is exported as `CLAUDE_CODE_MESSAGING_SOCKET` with
+`CLAUDE_CODE_MESSAGING_TOKEN`; the `{"type":"auth","token":"…"}` first line
+is optional on macOS, required on Windows. 0600, per-uid, refused in a
+directory it cannot accept. **A message on it is never consent** — it
+cannot answer a permission prompt, so approvals remain the
+`PermissionRequest` hook's job — and an unverifiable sender asserts no
+permission class, so a `bypassPermissions` receiver holds it. The message
+line's own shape is **not documented and not yet measured**.
 
 ## Undocumented but observable (lenient decoding, banner on change)
 
@@ -254,6 +281,16 @@ is the sanctioned inbound surface (not investigated).
    `ESC 7 ESC 8 ESC [<u ESC [>4m`.
 4. Find how the TUI's peek/reply reaches the daemon (`rendezvousSock` /
    `ptySock` in the roster) — a v2 exploration, not a v0 dependency.
+   **Superseded 2026-09-04, not answered** (`docs/EVIDENCE.md` "the mobile
+   survey"). The rendezvous channel was located — per-worker UDS at
+   `/tmp/cc-daemon-501/<daemon>/rv/<short>.sock`, keyed by `rvAuth` in
+   roster.json, vocabulary `subscribe snapshot repaint splice setcwd
+   handoff attacher-caps pty-auth-required` recovered from the CLI's
+   strings — but its logic is `@bun @bytecode` and the surface is
+   undocumented and unpromised. **Stop here**: the need behind the
+   experiment (reply without attaching) has a *documented* answer in the
+   session inbox socket below, so building on the rendezvous socket would
+   be reverse-engineering a private channel when a public one exists.
 5. Type in an attached pane, kill the terminal, reattach: does the draft
    survive via the queued-reply path or only via peek?
    **Answered incidentally 2026-09-02:** yes for `Ctrl+Z`. Experiment 3
