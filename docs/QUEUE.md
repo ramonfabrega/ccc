@@ -1,11 +1,13 @@
 # Queue
 
-What is next, and nothing else. A finished item leaves, and its commands
-and numbers go to `docs/EVIDENCE.md`. Its *argument* — the reversals, the
-user's words — is the lore wiki's, but **not for ccc to put there**: lore
-mines this repo and its wells (CLAUDE.md, References). Nothing an item
-leaves behind is written outside this repo. Item numbers are stable
-addresses: append, never renumber.
+What is next, and nothing else. A finished item leaves; its commands and
+numbers go to `docs/EVIDENCE.md`, and **its argument stays in the
+transcript for lore to mine**. Nothing is owed outside this repo — not
+milestone narrative, not a ledger. A message to lore is for the
+*perishable* and the *cross-project* only: a correction to something it
+banked wrong, a finding another project needs before the next ingest, a
+pattern candidate. Item numbers are stable addresses: append, never
+renumber.
 
 An item **inlines its conclusion**. A cold session reads this file and
 CLAUDE.md, and must be able to start without opening a third thing; when
