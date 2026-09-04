@@ -157,25 +157,79 @@ public enum Tailnet {
         public var description: String { "tailscale did not answer: \(reason)" }
     }
 
+    /// tailscale ran and said something, and the something is not JSON.
+    ///
+    /// **What it said is the whole diagnosis, so it is carried.** Measured
+    /// 2026-09-04 on air: the picker showed a raw `DecodingError` —
+    /// "The given data was not valid JSON… Unexpected character 'T' around
+    /// line 1, column 1" — which names a character and not a cause, and the
+    /// line that would have named the cause had already been dropped twice
+    /// over: stderr went to `nullDevice`, and `peers(from:)` is handed bytes
+    /// with no memory of which binary produced them. One line of what the
+    /// binary printed is the difference between a bug report and a fix, and
+    /// it costs a `Pipe`.
+    public struct Unreadable: Error, CustomStringConvertible {
+        public var binary: String
+        public var said: String
+        public var description: String {
+            said.isEmpty
+                ? "`\(binary) status --json` answered nothing"
+                : "`\(binary) status --json` answered something that is not JSON: \(said)"
+        }
+    }
+
     /// Ask the local tailscale. Never a network call of ours — the daemon
     /// already knows, and this is the same read the `tailscale status`
     /// command a human would type performs.
     public static func scan() throws -> [Peer] {
         guard let binary = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
         else { throw NotInstalled() }
+        return try scan(binary: binary)
+    }
 
+    /// The same read against a named binary, so the failures above are
+    /// **run** in the tests rather than described by them: a stand-in that
+    /// prints a sentence and exits 0 is exactly what air's picker met.
+    static func scan(binary: String) throws -> [Peer] {
         let process = Process()
         process.executableURL = URL(filePath: binary)
         process.arguments = ["status", "--json"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        process.standardInput = FileHandle.nullDevice
         do { try process.run() } catch { throw Unreachable(reason: "\(error)") }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        // Both pipes to EOF before waiting, or a full one deadlocks
+        // (`ClaudeCLI.run`'s lesson). stderr is read rather than discarded
+        // because it is where a binary that will not answer explains itself.
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        let errors = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw Unreachable(reason: "`tailscale status --json` exited \(process.terminationStatus)")
+            let said = firstLine(errors, or: String(decoding: data, as: UTF8.self))
+            throw Unreachable(reason: "`\(binary) status --json` exited \(process.terminationStatus)"
+                + (said.isEmpty ? "" : ": \(said)"))
         }
-        return try peers(from: data)
+        do {
+            return try peers(from: data)
+        } catch {
+            // Not the `DecodingError`: it describes the bytes we could not
+            // read, and the question is what tailscale wrote instead.
+            throw Unreadable(binary: binary,
+                             said: firstLine(String(decoding: data, as: UTF8.self), or: errors))
+        }
+    }
+
+    /// The first line worth showing of what a binary printed — a sheet has
+    /// room for a sentence, not for a stream — falling back to the other
+    /// stream when the first is silent, since which one carries the message
+    /// is the binary's choice and not ours.
+    static func firstLine(_ text: String, or fallback: String = "") -> String {
+        let source = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : text
+        guard let line = source.split(whereSeparator: \.isNewline)
+            .map({ $0.trimmingCharacters(in: .whitespaces) })
+            .first(where: { !$0.isEmpty })
+        else { return "" }
+        return line.count > 200 ? String(line.prefix(200)) + "\u{2026}" : line
     }
 }

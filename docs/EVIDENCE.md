@@ -2592,3 +2592,67 @@ ccc 0.1.21 (156)  /Users/rf-studio/Applications/ccc.app
 $ ccc shell d079be9f
 shell in ~/code/work/cuanto/.claude/worktrees/pending-auths-search — ⇧⌘T closes it
 ```
+
+## the picker's error names a character, not a cause (2026-09-04)
+
+Reported from air, on v0.1.21: **Add Mac** opened and showed, in place of
+the tailnet,
+
+```
+dataCorrupted(Swift.DecodingError.Context(codingPath: [], debugDescription:
+"The given data was not valid JSON.", underlyingError: Optional(Error
+Domain=NSCocoaErrorDomain Code=3840 "Unexpected character 'T' around line 1,
+column 1." …)))
+```
+
+Nothing was being added and nothing was saved — the sheet never got as far
+as a list. The scan is what failed: `AddHostModel.scan` shows `"\(error)"`
+whole, and the error came from `Tailnet.scan` handing a decoder something
+that is not JSON. So the sentence is honest about *where* it broke and says
+nothing about *why*, which is the bug.
+
+**Why the cause could not be recovered from that string.** Two throws away:
+
+- `standardError = FileHandle.nullDevice` — a binary that will not answer
+  usually explains itself on stderr, and ccc sent that to `/dev/null`.
+- `peers(from:)` takes `Data`, so by the time decoding fails there is no
+  binary path and no memory of the bytes; `DecodingError` describes the
+  parser's position and nothing else.
+
+What is known from the string alone: whichever of the three `candidates`
+air has, it **exited 0** (`scan` throws `Unreachable` otherwise) and wrote
+something starting with `T` at column 1 — a sentence, on stdout, in place
+of a status. Studio's `/usr/local/bin/tailscale` is a two-line shim onto
+`/Applications/Tailscale.app/Contents/MacOS/Tailscale` and answers JSON;
+air's is a different install, and which one is exactly what the old message
+could not say.
+
+**The fix is the diagnostic.** `Tailnet.Unreadable` carries the binary and
+the first line it printed, stderr is read instead of discarded, and a
+non-zero exit quotes its reason too:
+
+```
+`/Applications/Tailscale.app/Contents/MacOS/Tailscale status --json` answered
+something that is not JSON: Tailscale is stopped.
+```
+
+One definition, two surfaces: `ccc hosts discover` prints `ccc: \(error)`
+and the sheet shows the same string, so the CLI on air now reports the same
+sentence the picker does.
+
+**Run, not described.** `Tailnet.scan(binary:)` is the same read against a
+named path, so three tests drive real subprocesses: a stub that prints a
+sentence and exits 0 (air's shape) must surface the sentence; a stub that
+exits 1 talking on stderr must surface *that* line and `exited 1`; and a
+stub that `cat`s the captured `status --json` must still return the two
+Macs. 399 tests pass. Studio's real binary, through the twin, is unchanged:
+
+```
+$ ccc hosts discover
+air     air.bengal-barb.ts.net  Ramon’s MacBook Air
+studio  studio.bengal-barb.ts.net  Ramon’s Mac Studio  this Mac
+```
+
+**Still open, and only air can close it:** what air's tailscale actually
+says. `ccc hosts discover` on air prints it now — one line, and it will name
+the install.

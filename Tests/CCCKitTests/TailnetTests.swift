@@ -109,4 +109,73 @@ import Testing
         let blank = try Tailnet.peers(from: Data(#"{"Self":{"OS":"macOS","Online":true,"DNSName":"."}}"#.utf8))
         #expect(blank.isEmpty)
     }
+
+    /// The failure a human actually reads. Air's picker showed
+    /// "Unexpected character 'T' around line 1, column 1" — a `DecodingError`
+    /// naming the character it choked on and nothing about the cause. The
+    /// sentence the sheet shows has to quote what tailscale said instead,
+    /// because that line is the only thing that says *why*.
+    @Test func whatTailscaleSaidIsTheError() {
+        let said = Tailnet.Unreadable(binary: "/usr/local/bin/tailscale",
+                                      said: "Tailscale is stopped.")
+        #expect("\(said)".contains("Tailscale is stopped."))
+        #expect("\(said)".contains("/usr/local/bin/tailscale"))
+        #expect("\(said)".contains("not JSON"))
+        // A binary that fails silently still says which binary it was.
+        #expect("\(Tailnet.Unreadable(binary: "/x/tailscale", said: ""))"
+            == "`/x/tailscale status --json` answered nothing")
+    }
+
+    /// One sentence out of a stream: the first line with anything on it,
+    /// from whichever of the two streams spoke, capped so a page of output
+    /// cannot become the sheet.
+    @Test func theFirstLineIsWhatIsShown() {
+        #expect(Tailnet.firstLine("\n\n  Tailscale is stopped.  \nmore\n") == "Tailscale is stopped.")
+        // stdout silent, stderr talking — which one carries it is tailscale's
+        // choice, so both are read and neither is assumed.
+        #expect(Tailnet.firstLine("   \n", or: "failed to connect") == "failed to connect")
+        #expect(Tailnet.firstLine("", or: "") == "")
+        let long = Tailnet.firstLine(String(repeating: "x", count: 500))
+        #expect(long.count == 201 && long.hasSuffix("\u{2026}"))
+    }
+
+    /// Air's failure, run rather than described: a binary that prints a
+    /// sentence on stdout and exits 0. That is the shape that produced
+    /// "Unexpected character 'T'", and the sentence has to come back out.
+    @Test func aBinaryThatTalksInsteadOfAnsweringSaysWhat() throws {
+        let said = "Tailscale is stopped."
+        let path = try stub("#!/bin/sh\necho '\(said)'\n")
+        #expect(throws: Tailnet.Unreadable.self) { try Tailnet.scan(binary: path) }
+        #expect((try? Tailnet.scan(binary: path)) == nil)
+        do { _ = try Tailnet.scan(binary: path) } catch { #expect("\(error)".contains(said)) }
+    }
+
+    /// The other half: a binary that fails and explains itself on stderr,
+    /// which used to go to `/dev/null` and take the reason with it.
+    @Test func aFailedBinarysStderrSurvives() throws {
+        let path = try stub("#!/bin/sh\necho 'failed to connect to local tailscaled' >&2\nexit 1\n")
+        do {
+            _ = try Tailnet.scan(binary: path)
+            Issue.record("a stub that exits 1 must not look like a tailnet")
+        } catch {
+            #expect("\(error)".contains("failed to connect to local tailscaled"))
+            #expect("\(error)".contains("exited 1"))
+        }
+    }
+
+    /// A real `tailscale status --json` still parses through the same door.
+    @Test func aGoodBinaryStillReturnsPeers() throws {
+        let json = try Fixtures.data("tailnet/status-2026-09-04.json")
+        let file = URL.temporaryDirectory.appending(path: "tailnet-\(UUID().uuidString).json")
+        try json.write(to: file)
+        let path = try stub("#!/bin/sh\ncat '\(file.path)'\n")
+        #expect(try Tailnet.scan(binary: path).map(\.name) == (try peers().map(\.name)))
+    }
+
+    private func stub(_ script: String) throws -> String {
+        let url = URL.temporaryDirectory.appending(path: "tailscale-stub-\(UUID().uuidString)")
+        try Data(script.utf8).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url.path
+    }
 }
