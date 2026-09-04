@@ -17,10 +17,11 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**v12 slice 2** is air's picker, and it is not finished until air runs it.
-**Add Mac** on air showed a raw `DecodingError` naming the character `T` and
-nothing about why, because stderr went to `nullDevice` and `peers(from:)` is
-handed bytes with no memory of which binary produced them. The cause, once
+**v12 slice 2 is done, and air is the one that said so:** Add Mac on air
+works, on v0.1.22. Before it, Add Mac there showed a
+raw `DecodingError` naming the character `T` and nothing about why, because
+stderr went to `nullDevice` and `peers(from:)` is handed bytes with no
+memory of which binary produced them. The cause, once
 the error could carry it: Tailscale's macOS bundle is the GUI and the CLI in
 one binary and picks by smelling for a shell — with neither `TERM` nor
 `SHLVL` set it decides it was double-clicked and prints "The Tailscale GUI
@@ -33,13 +34,15 @@ message stays, because it is what will name the next binary that answers
 something else (`docs/EVIDENCE.md` "the picker's error names a character, not
 a cause").
 
-Both halves are asserted on studio, against studio's copy of the same binary,
-and **neither has met air** — where the bug lives and where the fix can only
-arrive by pull. So the act that closes this slice is a **cut**, and the
-measurement is one sentence: Add Mac on air lists the tailnet.
+Both halves were asserted on studio, which was never the Mac that broke, so
+the cut was not the delivery of the fix but **the only way to measure it** —
+air can only pull. That is the shape to keep: a fix for a bug that lives on
+the other Mac is unproved until a release carries it there, however green
+the suite is here (`docs/EVIDENCE.md` "Cut as v0.1.22", "air answers").
 
-Before it, **v12 slice 1** was the shell pane's way out, and it came from
-the user asking whether there was one. There were three, all unfindable:
+**So there is no frontier again.** Before slice 2, **v12 slice 1** was the
+shell pane's way out, and it came from the user asking whether there was
+one. There were three, all unfindable:
 the row menu only ever said "Open in Terminal", so the mouse had no close
 at all, and ⇧⌘T was named in the two refusals and nowhere else. The row's
 item now flips to **Close Terminal** while its shell is up (`t` with it),

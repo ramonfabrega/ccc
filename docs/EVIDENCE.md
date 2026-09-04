@@ -2736,6 +2736,25 @@ that broke, and `shellish` must leave it unchanged. **The measurement is
 air's, and it is one sentence** — Add Mac on air lists the tailnet instead
 of naming a character — which cannot be taken until air pulls this cut.
 
+### air answers
+
+Reported from air on v0.1.22: **Add Mac works.** The sheet lists the tailnet
+where it used to show `Unexpected character 'T' around line 1, column 1`.
+
+That is the whole measurement, and it could only be taken there. The
+bisect that found the cause ran on studio, against a byte-identical copy of
+the binary, using `env -i` to *simulate* the environment a GUI process has —
+`Tailnet.shellish` was correct against a simulation and a stub. Air is where
+the real `ccc.app` runs the real `/Applications/Tailscale.app/Contents/
+MacOS/Tailscale` with no `TERM` and no `SHLVL` of its own, and it agrees.
+
+**What the slice is worth keeping for.** The suite was green on studio
+through the entire bug: 401 tests, and `ccc hosts discover` answering
+correctly the whole time, because studio's `/usr/local/bin/tailscale` shim
+made it immune by accident. Green here says nothing about a bug that lives
+on the other Mac — the release is not the delivery of such a fix, it is the
+only instrument that can measure it.
+
 ## the four branches, and the sha is the undo (2026-09-04)
 
 Item 7 closed. `origin` now carries `master` and `worktree-v2` and nothing
