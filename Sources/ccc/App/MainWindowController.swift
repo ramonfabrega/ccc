@@ -147,6 +147,10 @@ final class MainWindowController: NSWindowController {
             self?.pull(ref)
         }, openShell: { [weak self] ref, atRepo in
             self?.openShell(ref, atRepo: atRepo)
+        }, shellIsOpen: { [weak self] ref, atRepo in
+            self?.controller.shellIsOpen(ref, atRepo: atRepo) ?? false
+        }, closeShell: { [weak self] in
+            self?.closeShellAction(nil)
         }, selectionChanged: { [weak self] ref in
             self?.currentSelection = ref
         }))

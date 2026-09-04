@@ -69,6 +69,7 @@ ccc pull <ref> [--json]             # fast-forward the default branch to origin'
 ccc push <ref> [--base] [--json]    # push the worktree branch (or, with --base, the default branch); never forced
 ccc shell <ref> [--repo] | --close  # ⌘T's twin: a shell pane under the session pane, in <ref>'s folder
                                     # (over `ssh -t` when remote); --repo is the main checkout (⌥⌘T), --close is ⇧⌘T
+                                    # the row's item and `t` flip to Close Terminal while that row's shell is up
 
 # the pane
 ccc attach <ref> [--headless]       # attach in the window, or headless: a PTY + the socket, no window

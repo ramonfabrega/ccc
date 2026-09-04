@@ -507,9 +507,7 @@ final class PaneController {
         guard let row = poller.state.rows.first(where: { $0.ref == ref }) else {
             throw AttachError.badHost("no session '\(ref)' in the roster")
         }
-        // The repository's main checkout (`atRepo`): git's answer when the
-        // row has one, the harness's path convention otherwise.
-        let folder = atRepo ? (row.worktree?.repo ?? RepoPath.root(of: row.session.cwd)) : row.session.cwd
+        let folder = shellFolder(row, atRepo: atRepo)
         if let shell, shell.isRunning {
             let where_ = hosts.shortCwd(shellCwd ?? "", host: shell.ref.host)
             if shellCwd == folder && shell.ref.host == ref.host {
@@ -545,7 +543,40 @@ final class PaneController {
         self.shell = shell
         self.shellCwd = folder
         onShellStarted?(shell)
-        return ("shell in \(hosts.shortCwd(folder, host: ref.host))" + (ref.isLocal ? "" : " on \(ref.host)"), true)
+        // The sentence names the way out. Until v12 slice 1 only the two
+        // *refusals* did ("… is running something; ⇧⌘T closes it"), so the
+        // shortcut was advertised exactly when something had gone wrong and
+        // never on the open that raises the question. One shell at a time
+        // means the close verb needs no argument, so it fits the sentence.
+        return ("shell in \(hosts.shortCwd(folder, host: ref.host))" + (ref.isLocal ? "" : " on \(ref.host)")
+                + " — ⇧⌘T closes it", true)
+    }
+
+    /// Where `openShell` would put a shell for this row — the one rule,
+    /// asked by the row's menu (`shellIsOpen`) as well, so the item that
+    /// says "Close Terminal" and the open that says "already open" can
+    /// never disagree about which folder is which.
+    ///
+    /// The repository's main checkout (`atRepo`): git's answer when the row
+    /// has one, the harness's path convention otherwise.
+    private func shellFolder(_ row: SessionRow, atRepo: Bool) -> String {
+        atRepo ? (row.worktree?.repo ?? RepoPath.root(of: row.session.cwd)) : row.session.cwd
+    }
+
+    /// True when the shell pane on screen is the one this row's item would
+    /// open — which is what makes that item read **Close Terminal** instead
+    /// (v12 slice 1). Read when the menu opens, like the mute mark below it.
+    ///
+    /// The condition is `openShell`'s own "already open" test, not a looser
+    /// "some shell exists": a shell sitting in another row's folder is
+    /// something this item would *replace*, so it stays "Open in Terminal"
+    /// there. One shell at a time makes the two mutually exclusive across
+    /// the whole roster — at most one row, and at most one of its two
+    /// items, is ever the close.
+    func shellIsOpen(_ ref: SessionRef, atRepo: Bool = false) -> Bool {
+        guard let shell, shell.isRunning, shell.ref.host == ref.host else { return false }
+        guard let row = poller.state.rows.first(where: { $0.ref == ref }) else { return false }
+        return shellCwd == shellFolder(row, atRepo: atRepo)
     }
 
     /// ⇧⌘T's twin: SIGHUP to the shell; `onExit` unmounts the pane.

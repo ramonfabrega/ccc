@@ -60,6 +60,12 @@ struct RosterView: View {
     let pull: (SessionRef) -> Void
     /// Open in Terminal (v6 slice 4): `ccc shell <ref>`.
     let openShell: (SessionRef, _ atRepo: Bool) -> Void
+    /// Whether the shell pane on screen is the one this row's item would
+    /// open (v12 slice 1) — asked when the menu opens, so the item reads
+    /// "Close Terminal" for the row the shell is actually in.
+    let shellIsOpen: (SessionRef, _ atRepo: Bool) -> Bool
+    /// That item's other half: `ccc shell --close`, ⇧⌘T's twin.
+    let closeShell: () -> Void
     /// The window keeps the selection for ⌘T when nothing is attached.
     let selectionChanged: (SessionRef?) -> Void
     @State private var selection: SessionRef?
@@ -129,7 +135,10 @@ struct RosterView: View {
             .onKeyPress("a") { press { mark($0, marks($0)?.archived == true ? .unarchive : .archive) } }
             .onKeyPress("p") { press { mark($0, marks($0)?.pinned == true ? .unpin : .pin) } }
             .onKeyPress("n") { press(newSessionHere) }
-            .onKeyPress("t") { press { openShell($0, false) } }
+            // `t` is the row item's key, so it toggles with it: the row
+            // surface opens and closes, the menu bar keeps the two verbs
+            // apart (⌘T opens or focuses, ⇧⌘T closes from anywhere).
+            .onKeyPress("t") { press { shellIsOpen($0, false) ? closeShell() : openShell($0, false) } }
             .onKeyPress(.rightArrow) {
                 focusPane()
                 return .handled
@@ -183,14 +192,34 @@ struct RosterView: View {
         row.host == Host.localName || hosts.host(named: row.host)?.ccc != nil
     }
 
+    /// One of the row's two terminal items, in whichever direction it is
+    /// pointing. At most one item on the whole roster ever says "Close
+    /// Terminal": there is one shell pane, in one folder.
+    ///
+    /// The repository item defers to the plain one when both name the same
+    /// folder — a session opened *in* its main checkout, where `cwd` and
+    /// `repo` are the same path — so the close is offered once.
+    @ViewBuilder private func terminalItem(_ row: SessionRow, atRepo: Bool) -> some View {
+        let suffix = atRepo ? " at Repository" : ""
+        if shellIsOpen(row.ref, atRepo), !(atRepo && shellIsOpen(row.ref, false)) {
+            Button("Close Terminal") { closeShell() }
+        } else {
+            Button("Open in Terminal\(suffix)") { openShell(row.ref, atRepo) }
+        }
+    }
+
     @ViewBuilder private func menu(for row: SessionRow) -> some View {
         Button("Attach") { attach(row.ref) }.disabled(!row.session.isAttachable)
         if row.attached { Button("Detach") { detach() } }
         Button("New Session Here…") { newSessionHere(row.ref) }
-        Button("Open in Terminal") { openShell(row.ref, false) }
-        if row.worktree != nil {
-            Button("Open in Terminal at Repository") { openShell(row.ref, true) }
-        }
+        // The shell pane's item is a toggle, not a one-way door (v7 slice
+        // 3): the surface that opened it is the surface that closes it.
+        // ⇧⌘T stays the global close — the one that reaches a shell whose
+        // row is not on screen, and the only one that works from inside
+        // the shell — but a row menu that only ever said "Open in Terminal"
+        // left the pane looking like it had no way out.
+        terminalItem(row, atRepo: false)
+        if row.worktree != nil { terminalItem(row, atRepo: true) }
         // The worktree's landing (v6): three strategies, each enabled by
         // what the row measures — fast-forward only while master has not
         // moved, merge and squash whenever there is work — and the

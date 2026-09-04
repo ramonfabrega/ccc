@@ -2506,3 +2506,74 @@ All 20 existing Releases were normalized through the same command
 (`gh release edit <tag> --title <tag> --notes "$(scripts/release-notes
 <tag>)"`), which is the point of it being a command: one definition, and
 the back-fill and the next cut cannot disagree.
+
+## v12 slice 1 — the shell pane says how to close it (2026-09-04)
+
+The question was "how does one close the integrated terminal? currently
+there's no way to close it after it's open, right?" — asked by the person
+who has been driving this app all week. It had three ways: ⇧⌘T, `exit` in
+the shell, and `ccc shell --close`. **A verb that the daily driver cannot
+find is a verb that is not there**, so the gap was never the mechanism.
+
+Counted, the surfaces were lopsided:
+
+| | open | close |
+| --- | --- | --- |
+| row's context menu | Open in Terminal (+ at Repository) | — |
+| the row's key | `t` | — |
+| menu bar | ⌘T, ⌥⌘T | ⇧⌘T |
+| the shell itself | — | `exit` |
+| socket | `ccc shell <ref> [--repo]` | `ccc shell --close` |
+
+Three of the five ways in, and one of them, are on the row. The one way
+out that a mouse can reach was in a menu the mouse never opens for this —
+and ⇧⌘T's only appearance in any sentence was inside the two **refusals**
+("the shell in X is running something; ⇧⌘T closes it"). The shortcut was
+advertised exactly when something had gone wrong and never on the open
+that raises the question.
+
+### The row's item is a toggle
+
+`PaneController.shellIsOpen(ref, atRepo:)` is `openShell`'s own
+"already open" test — same host, same folder, one `shellFolder` rule
+shared by both so the item and the sentence cannot drift. When it answers
+true the row's item reads **Close Terminal**; `t` follows it, because `t`
+*is* that item's key. The menu bar keeps the two verbs apart: ⌘T opens or
+focuses, ⇧⌘T closes from anywhere — including from inside the shell,
+which is the case the row cannot serve.
+
+One shell at a time makes this exclusive across the whole roster: at most
+one row, and at most one of its two items, is ever the close. The
+repository item defers to the plain one when a session was opened *in* its
+main checkout and the two name the same path, so the close is offered once.
+
+The item is built when the menu opens — the same lazy evaluation the mute
+mark four lines below it has relied on since v3 slice 2, which is why no
+observable object was needed for this.
+
+### And the open now names the way out
+
+```
+$ ccc shell d079be9f
+shell in ~/code/work/cuanto/.claude/worktrees/pending-auths-search — ⇧⌘T closes it
+$ ccc shell d079be9f
+the shell pane is already open, in ~/code/work/cuanto/.claude/worktrees/pending-auths-search
+$ ccc shell --close
+shell closed
+$ ccc shell --close
+ccc: no shell pane is open
+```
+
+One sentence, both faces: the window's notice and the socket's reply are
+the same string, so the CLI transcript above is the notice's text.
+
+**Not photographed.** The notice HUD and the flipped menu item were not
+captured on screen: `ccc capture` refused again for want of Screen
+Recording ("could not create image from window; window 9316"), and System
+Events timed out for want of Accessibility — the same two permissions the
+queue already records as missing from these sessions. `ccc peek` needs
+neither and confirmed the shell pane mounts and unmounts, but it composites
+the window alone: a context menu is its own window, and the socket path
+never raises the HUD (that is `MainWindowController.openShell`, the
+window's gesture). The strings are shared with the CLI, which is what the
+transcript above stands in for.

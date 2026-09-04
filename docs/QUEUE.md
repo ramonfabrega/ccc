@@ -17,7 +17,16 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**There isn't one again.** v11 is done in four slices, cut as **v0.1.18**:
+**v12 slice 1** is the shell pane's way out, and it came from the user
+asking whether there was one. There were three, all unfindable: the row
+menu only ever said "Open in Terminal", so the mouse had no close at all,
+and ⇧⌘T was named in the two refusals and nowhere else. The row's item now
+flips to **Close Terminal** while its shell is up (`t` with it), and the
+open sentence names the shortcut (`docs/EVIDENCE.md` "v12 slice 1"). The
+count in that entry is the general shape to watch: **a verb with fewer
+surfaces than its opposite is a verb that will be reported missing.**
+
+Before it, **there wasn't a frontier.** v11 is done in four slices, cut as **v0.1.18**:
 the window comes back where you left it and every window gesture has a
 verb (slices 1 and 2), and the banner is now a title and a sentence —
 slices 3 and 4 measured the receipt line out of existence rather than
