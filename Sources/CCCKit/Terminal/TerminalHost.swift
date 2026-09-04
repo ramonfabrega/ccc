@@ -77,18 +77,33 @@ public struct SelectionRegion: Codable, Sendable, Equatable {
             self.row = row
         }
     }
+
+    /// How much a point takes with it — the twin of the click count (item
+    /// 13). One click selects cells, two select the word, three the line,
+    /// and the core owns all three rules.
+    public enum Grain: String, Codable, Sendable {
+        case cell, word, line
+    }
+
     public var from: Point
     public var to: Point
     public var rectangle: Bool
+    /// Optional on the wire, not in meaning: a v9 `ccc select` sends no
+    /// `grain` key at all and an older server must read that as `.cell`,
+    /// which is what it always did (`ControlWireTests`, the `send`/`paste`
+    /// precedent).
+    public var grain: Grain?
 
-    public init(from: Point, to: Point, rectangle: Bool = false) {
+    public init(from: Point, to: Point, rectangle: Bool = false, grain: Grain? = nil) {
         self.from = from
         self.to = to
         self.rectangle = rectangle
+        self.grain = grain
     }
 
-    public init(fromCol: Int, fromRow: Int, toCol: Int, toRow: Int, rectangle: Bool = false) {
-        self.init(from: Point(col: fromCol, row: fromRow), to: Point(col: toCol, row: toRow), rectangle: rectangle)
+    public init(fromCol: Int, fromRow: Int, toCol: Int, toRow: Int, rectangle: Bool = false, grain: Grain? = nil) {
+        self.init(from: Point(col: fromCol, row: fromRow), to: Point(col: toCol, row: toRow),
+                  rectangle: rectangle, grain: grain)
     }
 
     /// Negative coordinates would clamp to zero on the way into the core's

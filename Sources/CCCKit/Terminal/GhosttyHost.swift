@@ -200,49 +200,145 @@ public final class GhosttyHost: TerminalHost {
     /// verb here uses — column and row of the *viewport*, the grid a
     /// snapshot prints — never screen or history points.
     ///
-    /// This is the only producer of a selection in ccc. The child owns the
-    /// mouse (Claude Code keeps tracking on and does its own selection with
-    /// a drag, see `LinkScanner`), so a local drag-select would have to be a
-    /// gesture the child does not want, the way ⌘-click is; that gesture is
-    /// not here yet, and this is what stands in for it — and what a golden
-    /// and `ccc select` both drive.
+    /// The destination half of a selection: two points and a grain. The
+    /// *hand* is `GhosttySelectGesture` (item 13), which turns a real drag
+    /// into these same installs; this stays the twin's road — what `ccc
+    /// select` and every golden drive — so the gesture and the command end
+    /// in one place.
+    ///
+    /// `grain` is the double- and triple-click's twin: `.word` asks the core
+    /// for the nearest word between the two points, `.line` for the lines
+    /// they land on. The word and line *rules* are Ghostty's, never ours.
     ///
     /// Returns false when a point is off the grid, which is the core's
     /// answer, not a guess of ours.
     @discardableResult
     public func select(_ region: SelectionRegion?) -> Bool {
         guard let terminal else { return false }
+        guard let region else { return install(selection: nil) }
+        guard region.isNonNegative, let start = gridRef(col: region.from.col, row: region.from.row),
+              let end = gridRef(col: region.to.col, row: region.to.row) else { return false }
 
-        guard let region else {
-            let cleared = ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, nil) == GHOSTTY_SUCCESS
-            needsFullRedraw = needsFullRedraw || cleared
-            return cleared
+        switch region.grain ?? .cell {
+        case .cell:
+            var selection = GhosttySelection()
+            selection.size = MemoryLayout<GhosttySelection>.size
+            selection.start = start
+            selection.end = end
+            selection.rectangle = region.rectangle
+            return install(selection: selection)
+
+        case .word:
+            // `select_word_between` is the double-click-and-drag primitive the
+            // header names: from the anchor toward the pointer, the first
+            // selectable word. With both points equal it is the word under
+            // the one point, which is the plain double-click.
+            var options = GhosttyTerminalSelectWordBetweenOptions()
+            options.size = MemoryLayout<GhosttyTerminalSelectWordBetweenOptions>.size
+            options.start = start
+            options.end = end
+            var selection = GhosttySelection()
+            selection.size = MemoryLayout<GhosttySelection>.size
+            guard ghostty_terminal_select_word_between(terminal, &options, &selection) == GHOSTTY_SUCCESS else { return false }
+            return install(selection: selection)
+
+        case .line:
+            // No `select_line_between` exists, so a multi-row line selection
+            // is the union of the two ends' lines, taken in viewport order —
+            // the same order the caller passed the rows in.
+            guard let first = line(at: start), let last = line(at: end) else { return false }
+            var selection = GhosttySelection()
+            selection.size = MemoryLayout<GhosttySelection>.size
+            let downward = region.from.row <= region.to.row
+            selection.start = downward ? first.start : last.start
+            selection.end = downward ? last.end : first.end
+            selection.rectangle = false
+            return install(selection: selection)
         }
+    }
 
-        func ref(col: Int, row: Int) -> GhosttyGridRef? {
-            var point = GhosttyPoint()
-            point.tag = GHOSTTY_POINT_TAG_VIEWPORT
-            point.value.coordinate = GhosttyPointCoordinate(x: UInt16(clamping: col), y: UInt32(clamping: row))
-            var out = GhosttyGridRef()
-            out.size = MemoryLayout<GhosttyGridRef>.size   // sized struct, as everywhere in this API
-            guard ghostty_terminal_grid_ref(terminal, point, &out) == GHOSTTY_SUCCESS else { return nil }
-            return out
-        }
-        guard region.isNonNegative, let start = ref(col: region.from.col, row: region.from.row),
-              let end = ref(col: region.to.col, row: region.to.row) else { return false }
-
+    /// One row's line selection, trimmed by the core's own whitespace rules.
+    private func line(at ref: GhosttyGridRef) -> GhosttySelection? {
+        guard let terminal else { return nil }
+        var options = GhosttyTerminalSelectLineOptions()
+        options.size = MemoryLayout<GhosttyTerminalSelectLineOptions>.size
+        options.ref = ref
         var selection = GhosttySelection()
         selection.size = MemoryLayout<GhosttySelection>.size
-        selection.start = start
-        selection.end = end
-        selection.rectangle = region.rectangle
-        // The core copies the selection and tracks it itself, so the grid
-        // refs above do not have to outlive this call.
-        let done = ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS
-        // Only a selection that took needs a frame; a refused one changed
-        // nothing on screen.
+        guard ghostty_terminal_select_line(terminal, &options, &selection) == GHOSTTY_SUCCESS else { return nil }
+        return selection
+    }
+
+    /// A viewport cell as the grid reference every selection API takes. Nil
+    /// when the cell is off the grid — which is how `select` refuses a point
+    /// rather than clamping it to column 0.
+    func gridRef(col: Int, row: Int) -> GhosttyGridRef? {
+        guard let terminal, col >= 0, row >= 0 else { return nil }
+        var point = GhosttyPoint()
+        point.tag = GHOSTTY_POINT_TAG_VIEWPORT
+        point.value.coordinate = GhosttyPointCoordinate(x: UInt16(clamping: col), y: UInt32(clamping: row))
+        var out = GhosttyGridRef()
+        out.size = MemoryLayout<GhosttyGridRef>.size   // sized struct, as everywhere in this API
+        guard ghostty_terminal_grid_ref(terminal, point, &out) == GHOSTTY_SUCCESS else { return nil }
+        return out
+    }
+
+    /// Install a selection the core built (a gesture's, a word's, a line's)
+    /// or clear it with nil. The core copies it and converts it to tracked
+    /// state, so the untracked grid refs inside do not outlive this call.
+    ///
+    /// Only a selection that took needs a frame; a refused one changed
+    /// nothing on screen.
+    @discardableResult
+    func install(selection: GhosttySelection?) -> Bool {
+        guard let terminal else { return false }
+        var done = false
+        if var selection {
+            done = ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS
+        } else {
+            done = ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, nil) == GHOSTTY_SUCCESS
+        }
         needsFullRedraw = needsFullRedraw || done
         return done
+    }
+
+    /// Whether anything is selected right now.
+    public var hasSelection: Bool {
+        guard let terminal else { return false }
+        var selection = GhosttySelection()
+        selection.size = MemoryLayout<GhosttySelection>.size
+        return ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_SELECTION, &selection) == GHOSTTY_SUCCESS
+    }
+
+    /// The selected text, or nil when nothing is selected — what ⌘C copies
+    /// and what `ccc copy` prints.
+    ///
+    /// Plain, unwrapped, trimmed, because `selection.h` says exactly that:
+    /// "for copy/clipboard behavior matching Ghostty's
+    /// `Screen.selectionString()`, use plain output with unwrap and trim both
+    /// set to true". Unwrap is the one that matters — a soft-wrapped path
+    /// copied with its wrap points in it is a path that will not paste.
+    public func selectionText() -> String? {
+        guard let terminal else { return nil }
+        var options = GhosttyTerminalSelectionFormatOptions()
+        options.size = MemoryLayout<GhosttyTerminalSelectionFormatOptions>.size
+        options.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN
+        options.unwrap = true
+        options.trim = true
+        options.selection = nil   // the terminal's own active selection
+
+        // Ask for the size first: a selection can be the whole scrollback,
+        // so there is no stack buffer worth guessing at.
+        var needed = 0
+        let sized = ghostty_terminal_selection_format_buf(terminal, options, nil, 0, &needed)
+        guard sized == GHOSTTY_OUT_OF_SPACE, needed > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: needed)
+        var written = 0
+        let result = buffer.withUnsafeMutableBufferPointer { buf in
+            ghostty_terminal_selection_format_buf(terminal, options, buf.baseAddress, buf.count, &written)
+        }
+        guard result == GHOSTTY_SUCCESS, written > 0 else { return nil }
+        return String(decoding: buffer.prefix(written), as: UTF8.self)
     }
 
     // MARK: frames (the renderer's input)

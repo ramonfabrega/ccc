@@ -76,10 +76,19 @@ public enum ControlRequest: Codable, Sendable {
     /// 12b). Viewport coordinates, both ends inclusive — the same grid
     /// `snapshot` prints and `pixel --cell` aims at, so `select` then
     /// `snapshot --color` (headless) and `select` then `capture` + `pixel`
-    /// (on screen) are two readings of one thing. The pane's own drag does
-    /// not exist yet — the child owns the mouse — so this verb is where a
-    /// selection comes from, rather than a gesture's twin.
+    /// (on screen) are two readings of one thing.
+    ///
+    /// Since item 13 this is the **drag's twin** rather than the only
+    /// producer: shift-drag on the pane installs a selection the same way,
+    /// and `region.grain` is the twin of the click count — `word` is a
+    /// double-click, `line` a triple.
     case select(region: SelectionRegion?)
+    /// The ⌘C gesture's twin (item 13): the selected text, plain, with soft
+    /// wraps undone — and onto the system pasteboard, exactly as the key
+    /// does it, because a copy that did not reach the pasteboard would be a
+    /// different verb wearing this one's name. An error when nothing is
+    /// selected; `select` first.
+    case copy
     /// Where the window is and how big a cell is (v8 slice 3), so a real
     /// `screencapture` can be aimed at this one window and a cell can be
     /// turned into a pixel. Headless servers have no window and say so.

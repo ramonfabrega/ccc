@@ -29,13 +29,15 @@ item 3's first two steps shipped the same day: a real `Host` behind a
 real `sshd`, a fixture spawned, attached, resized and driven over it, and
 DESIGN.md §4c answered by measurement (docs/EVIDENCE.md "v9 slice 1 — the
 hop is real"). Doing it found the host list frozen at launch, now fixed.
-**12a and 12b shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 2" and
-"v9 slice 3"): `ccc snapshot --color`, a headless oracle that spells a
-colour the way `ccc pixel` does, and then selection wearing the theme's
-two colours — with `ccc select`, because the colours turned out to have
-no producer at all. What is left of item 12 is 12c (bold-is-bright).
-**The frontier is item 3's last step, the picker, or 13, the drag** —
-neither is large, and nothing now blocks either.
+**12a, 12b and 13 shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 2",
+"v9 slice 3", "v9 slice 4"): `ccc snapshot --color`, a headless oracle
+that spells a colour the way `ccc pixel` does; selection wearing the
+theme's two colours, with `ccc select`, because the colours turned out to
+have no producer at all; and then the hand — shift-drag, ⌥ for a
+rectangle, double- and triple-click, ⌘C, and `ccc select --word/--line`
+and `ccc copy` as their twins. What is left of item 12 is 12c
+(bold-is-bright). **The frontier is item 3's last step, the picker** —
+it is not large, and nothing blocks it.
 
 ## Open
 
@@ -70,7 +72,10 @@ read before the host list grows. No forcing function yet.
 ### 5. Small leftovers
 
 A sort by model. The Session menu's archive/pin items (the context menu
-has them). **`ccc stats`' first line says `uptime` next to `pid` and
+has them). **Selection autoscroll**: the core ships the tick event and
+reports a direction, and a drag that leaves the grid stops at the edge
+because the pane has no local scrollback viewport to tick — so this waits
+on one existing, not on the gesture (item 13). **`ccc stats`' first line says `uptime` next to `pid` and
 `memory`, which are the app's, but the number is the attached *pane's* —
 `PaneController.handle(.stats)` passes `uptimeSeconds: 0` whenever nothing
 is attached, so a week-old app reads "uptime 0s" the moment you detach
@@ -133,8 +138,8 @@ screencapture measurement by string equality.
 **12b is done** (docs/EVIDENCE.md "v9 slice 3"). A selected cell paints
 the theme's two colours, whatever the child had set. It found that
 nothing in ccc could *make* a selection — the inversion 12b was written
-against had never run — so `ccc select` came with it. What that left
-behind is item 13.
+against had never run — so `ccc select` came with it, and item 13 gave
+that a hand (docs/EVIDENCE.md "v9 slice 4").
 
 - **12c. bold-is-bright.** The only one needing the palette index. The core
   resolves index → RGB before a cell reaches us (`render.h`: "Bold color
@@ -150,22 +155,6 @@ rather than a capture taken beside it — worth doing once, for both, from
 a terminal that has the permission. And the colour oracle has still only
 ever run on one display, one profile, at 1x; `pixel --cell`'s scale
 arithmetic is tested at 2x but has never met a Retina panel.
-
-### 13. The drag: selection has colours and no gesture
-
-12b built the whole selection path — the core's `OPT_SELECTION`, a range
-per row, the theme's colours, `ccc select` — and stopped at the hand.
-**The child owns the mouse**: Claude Code keeps tracking on and does its
-own drag-selection, answering "copied N chars to clipboard" (v7 slice 2),
-so ccc's drag has to be a gesture the child does not want, the way
-⌘-click is. Open: which modifier (⌥-drag is the rectangle's natural home
-and the core takes `rectangle` already); whether ⌘C copies through
-`ghostty_terminal_selection_format_buf` or the pane keeps no clipboard of
-its own; and what clears a selection (a plain click, a keypress, the next
-frame from the child?). The core also ships a whole gesture state machine
-(`selection.h`: `ghostty_selection_gesture_event`, with press/drag/
-release/autoscroll/deep-press) — worth reading before hand-rolling a drag,
-since word- and line-selection come with it.
 
 ## Later
 

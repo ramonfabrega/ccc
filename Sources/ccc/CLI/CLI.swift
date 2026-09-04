@@ -168,13 +168,27 @@ enum CLI {
                 return try request(.resize(cols: cols, rows: rows), json: json)
             case "select":
                 // `ccc select COL ROW COL ROW [--rect]`, both ends inclusive;
-                // `ccc select --clear` puts it back.
+                // `ccc select --clear` puts it back. `--word` and `--line`
+                // are the double- and triple-click's twins and take one
+                // point, so `ccc select --word 6 0` is a double-click there;
+                // a second point drags the grain across, as the gesture does.
                 if rest.contains("--clear") { return try request(.select(region: nil), json: json) }
+                let grain: SelectionRegion.Grain? =
+                    rest.contains("--word") ? .word : (rest.contains("--line") ? .line : nil)
                 let numbers = rest.filter { !$0.hasPrefix("--") }.compactMap { Int($0) }
-                guard numbers.count == 4 else { return usage() }
+                // A grained selection may name one point (the click) or two
+                // (the drag); a cell selection is always two corners.
+                let points: [Int]
+                switch (grain, numbers.count) {
+                case (_, 4): points = numbers
+                case (.some, 2): points = numbers + numbers
+                default: return usage()
+                }
                 return try request(.select(region: SelectionRegion(
-                    fromCol: numbers[0], fromRow: numbers[1], toCol: numbers[2], toRow: numbers[3],
-                    rectangle: rest.contains("--rect"))), json: json)
+                    fromCol: points[0], fromRow: points[1], toCol: points[2], toRow: points[3],
+                    rectangle: rest.contains("--rect"), grain: grain)), json: json)
+            case "copy":
+                return try request(.copy, json: json)
             case "stats":
                 return try request(.stats, json: json)
             case "peek":
@@ -1199,7 +1213,8 @@ enum CLI {
             let swatch = "\u{1b}[48;2;\(colour.r);\(colour.g);\(colour.b)m  \u{1b}[0m"
             out += String(format: "  %@       %@  %@\n", swatch, colour.hex, label)
         }
-        out += "\n  selection is carried but not yet drawn (nothing reads Frame.Row.selection)\n"
+        // Item 12b drew it; item 13 gave it a hand. The note said neither.
+        out += "\n  selection: shift-drag the pane (⌥ for a rectangle), or `ccc select`\n"
         print(out)
         return 0
     }
@@ -1527,7 +1542,13 @@ enum CLI {
                ccc select <col> <row> <col> <row> [--rect] | --clear
                                                   select a region of the pane (both ends inclusive); it
                                                   paints the theme's selection colours, which
-                                                  `ccc snapshot --color` and `ccc pixel` both read
+                                                  `ccc snapshot --color` and `ccc pixel` both read.
+                                                  The pane's own gesture is shift-drag (plain drag when
+                                                  the child is not tracking the mouse), ⌥ for a rectangle
+               ccc select --word <col> <row> | --line <col> <row>
+                                                  the double- and triple-click's twins: the word or the
+                                                  line at one point (a second point drags the grain)
+               ccc copy [--json]                  ⌘C's twin: the selected text, onto the pasteboard
                ccc geometry [--json]              where the window and its pane are, and the cell size
                ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
                ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)

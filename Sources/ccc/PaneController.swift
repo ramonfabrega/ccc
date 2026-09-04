@@ -688,9 +688,25 @@ final class PaneController {
             }
             guard pane.select(region) else {
                 let size = pane.size
+                let grain = region.grain ?? .cell
+                // A word or line grain can also come back empty-handed — the
+                // core answers NO_VALUE for a point with nothing selectable
+                // under it — so the message names both ways to fail.
+                if grain != .cell, pane.select(SelectionRegion(from: region.from, to: region.from)) {
+                    pane.select(nil)
+                    return .error("no \(grain.rawValue) at \(region.from.col),\(region.from.row)")
+                }
                 return .error("\(region.from.col),\(region.from.row) → \(region.to.col),\(region.to.row) is not on a \(size.cols)x\(size.rows) grid")
             }
-            return .ok("selected \(region.from.col),\(region.from.row) → \(region.to.col),\(region.to.row)\(region.rectangle ? " (rectangle)" : "")")
+            let grain = (region.grain ?? .cell) == .cell ? "" : " (\(region.grain!.rawValue))"
+            return .ok("selected \(region.from.col),\(region.from.row) → \(region.to.col),\(region.to.row)\(region.rectangle ? " (rectangle)" : "")\(grain)")
+        case .copy:
+            guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
+            guard let pane = session.host as? GhosttyPane else {
+                return .error("copy needs the ghostty pane; this session is on the \(PaneController.selectedCore) core")
+            }
+            guard let text = pane.copySelection() else { return .error("nothing selected") }
+            return .ok(text)
         case .resize(let cols, let rows):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             session.resize(cols: cols, rows: rows)

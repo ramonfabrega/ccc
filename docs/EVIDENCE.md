@@ -1409,3 +1409,114 @@ or `ccc select 0 0 4 0` becomes a clear on an older far side. 318 tests.
 Not done, and now unblocked rather than blocked: the drag gesture itself
 (which modifier, and what ⌘C copies — the core has
 `ghostty_terminal_selection_format_buf` for the text).
+
+## v9 slice 4 — 13: the drag, and what a boundary means (2026-09-03)
+
+Queue item 13. 12b built the whole selection path and stopped at the
+hand; this is the hand. The core ships the state machine —
+`ghostty_selection_gesture_event` with typed press/drag/release events,
+a click sequence it counts itself, and the cell/word/line behaviour
+table — so `GhosttySelectGesture` is a lifetime wrapper and a coordinate
+conversion, and holds **no selection logic at all**. Same rule as keys
+(CLAUDE.md): word boundaries and reversed drags are Ghostty's to get
+right.
+
+### The three open questions, answered
+
+**Which modifier: shift.** Not ⌥, not ⌘. The child owns the mouse, so
+ours has to be a gesture it does not want — and xterm, iTerm2, kitty and
+Ghostty all make shift the override that bypasses mouse reporting, so no
+child has ever seen a shift-drag in any terminal and none can miss it
+here. ⌘ was already taken by links (v7 slice 2). ⌥ makes the drag a
+rectangle, which is where a terminal puts it and what
+`GhosttySelection.rectangle` already took. And when nothing is tracking,
+the plain drag is ours: the encoder emitted nothing for it anyway.
+
+**What ⌘C copies:** `ghostty_terminal_selection_format_buf`, plain,
+`unwrap` and `trim` both true — the header names that combination as the
+one matching Ghostty's own `Screen.selectionString()`. Unwrap is the one
+that earns its place: a soft-wrapped path copied with the wrap in it is a
+path that will not paste (`copyingUndoesASoftWrap`: ten columns, twelve
+characters, one string). **The pane keeps no clipboard of its own** — the
+copy *is* `NSPasteboard.general`, because a second store would only be a
+thing to keep in sync. ⌘C with nothing selected is not taken, so the menu
+keeps the key.
+
+**What clears a selection:** one line, `clearSelection()` at the top of
+`beginSelection`. A press takes the old selection away *before* the core
+is asked for a new one, so a plain click is a clear by construction, a
+double-click replaces it with a word, and a drag replaces it as it moves.
+Typing clears too (⌘C and ⌘V never reach `keyDown` — `performKeyEquivalent`
+answers first, so a copy cannot clear what it is about to copy).
+
+### The measurement: a drag runs between boundaries, not cells
+
+Probed against the real core, anchor at column 6, pointer at column 10,
+cell 8 px wide, varying only the pointer's x within its cell:
+
+    x = 80 81 82 83 84  → 6..<10      left half: the boundary before cell 10
+    x = 85 86 87        → 6..<11      right half: the boundary after it
+    no position at all  → 6..<10      offset 0, so the left half
+
+The anchor obeys the same rule (pressing in the right half of the "w"
+starts the selection *after* it), and it is direction-free: pressing past
+the "d" and dragging back to the "w" is the same five cells. So the
+pointer's sub-cell x is load-bearing and the pane passes the true
+position, not the cell's centre — which is what makes "drag past the
+middle of the character to take it" true here as everywhere else.
+`theHalfCellRule` pins both sides one pixel apart.
+
+### The twins
+
+The gesture's command twins, since a double-click is a gesture too:
+
+    ccc select --word <col> <row>     the double-click; a second point drags the grain
+    ccc select --line <col> <row>     the triple-click
+    ccc copy                          ⌘C: the text, and onto the pasteboard
+
+`grain` rides inside `SelectionRegion` rather than becoming a second
+verb, and is optional on the wire for the `send`/`paste` reason: a v9
+`ccc select` sends no `grain` key and an older server must read that as
+the cell selection it always was (`aSelectWithoutAGrainStillDecodes`).
+`--word` is `ghostty_terminal_select_word_between`, which the header
+names as the double-click-and-drag primitive; `--line` is
+`select_line`, twice, unioned in viewport order, because no
+`select_line_between` exists.
+
+Live, on a real haiku fixture (`6ee7ca93`, headless on a private
+`CCC_CONTROL_SOCKET` so the running app was not touched), against the
+line the fixture printed:
+
+    ccc select --word 4 9   → the          ccc select --word 10 9 → quick
+    ccc select --line 4 9   → ⏺ the quick brown fox jumps over the lazy dog.
+    ccc select 2 9 12 9     → the quick b  and `pbpaste` says the same
+    ccc select 2 8 12 10 --rect → the quick b     three rows, eleven columns
+    ccc select 40 8 12 10       → the whole line   the same corners, linear
+    ccc select --word 70 12 → ccc: no word at 70,12                    (exit 1)
+    ccc select --word 5 99  → ccc: 5,99 → 5,99 is not on a 71x25 grid  (exit 1)
+    ccc copy (nothing selected) → ccc: nothing selected                (exit 1)
+    ccc snapshot --color, row 9  6+5 #000000 on #B3D7FF   the theme's pair
+
+That last line is the whole chain in one reading: a word grain → the
+core's word rule → an installed selection → 12b's colours → the text on
+the pasteboard.
+
+### The routing is tested as the window will run it
+
+`PaneSelectionRoutingTests` drives real `NSEvent`s through the real
+`PaneInputView`, because the half that can break silently is not the
+selection but **who gets the press**: a wrong modifier leaves the pane
+looking right while the TUI stops answering the mouse. With DEC 1002 on,
+a plain drag puts bytes on the wire and selects nothing; a shift-drag
+sends the child *nothing at all* — not a press, not a release, since a
+child that saw no button-down must never get a button-up — and selects.
+With tracking off the plain drag selects. No assertion there depends on
+where a synthesized event lands in the grid: an event with no window is
+converted without the flip, so the y axis is upside down, and the tests
+fill every row with text instead of pinning a row.
+
+21 tests over two suites, plus the wire test; 340 total.
+Not done: **autoscroll**. The core ships an autoscroll tick event and
+reports a direction, and the pane has no scrollback UI to tick against —
+a drag that leaves the grid stops at the edge. Nor a deep-press, nor
+⌘A for select-all (`ghostty_terminal_select_all` exists).

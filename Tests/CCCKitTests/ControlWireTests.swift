@@ -81,6 +81,28 @@ import Testing
         #expect(cleared == nil)
     }
 
+    /// A v9 `ccc select` encodes no `grain` key at all — the field arrived
+    /// with item 13. The server must read that as the cell selection it
+    /// always was, never as a decode failure.
+    @Test func aSelectWithoutAGrainStillDecodes() throws {
+        let json = Data(#"{"select":{"region":{"from":{"col":1,"row":2},"to":{"col":3,"row":4},"rectangle":false}}}"#.utf8)
+        guard case .select(let region) = try JSONDecoder().decode(ControlRequest.self, from: json) else {
+            Issue.record("not a select")
+            return
+        }
+        #expect(region?.grain == nil)
+        // And nil is not a third meaning: it is `.cell`, which is what the
+        // host reads it as.
+        #expect((region?.grain ?? .cell) == .cell)
+
+        guard case .select(let word) = try roundTrip(.select(region: SelectionRegion(
+            fromCol: 1, fromRow: 2, toCol: 1, toRow: 2, grain: .word))) else {
+            Issue.record("not a select")
+            return
+        }
+        #expect(word?.grain == .word)
+    }
+
     /// The far side's `ccc version --json` is read by `hosts check`; a
     /// newer ccc adding fields there must not break an older reader, and
     /// the two fields that carry the number are the ones pinned.

@@ -26,6 +26,13 @@ public final class GhosttyPane: TerminalHost {
     }()
     /// Sub-line trackpad pixels not yet spent on a whole line of scroll.
     private var scrollRemainder: CGFloat = 0
+    /// The drag's state machine (item 13), built on the same terms as the
+    /// mouse encoder: the core owns the rules, this owns the handle.
+    private lazy var selection = GhosttySelectGesture(host: core)
+    /// True between a press this pane took for itself and its release, so
+    /// the drag and the release that follow go to the gesture rather than
+    /// to the child.
+    fileprivate private(set) var selecting = false
 
     public var onOutput: ((Data) -> Void)?
     /// The grid changed because the view did (window resize); the owner
@@ -103,16 +110,21 @@ public final class GhosttyPane: TerminalHost {
     public var size: (cols: Int, rows: Int) { metalView.gridSize() }
 
     /// `ccc select`: the core's selection, and a frame to show it in. The
-    /// pane has no drag of its own yet (the child owns the mouse), so this
-    /// is the only way a selection appears on screen — which is also what
-    /// makes the headless colour oracle and a real `screencapture` able to
-    /// look at the same selected cells (item 12b).
+    /// twin of the drag below — both end in `GhosttyHost.install`, which is
+    /// what makes the headless colour oracle and a real `screencapture` able
+    /// to look at the same selected cells (item 12b).
     @discardableResult
     public func select(_ region: SelectionRegion?) -> Bool {
         let done = core.select(region)
         scheduleFrame()
         return done
     }
+
+    /// `ccc copy`: the selected text, exactly as ⌘C would put it on the
+    /// pasteboard. Nil when nothing is selected.
+    public func selectionText() -> String? { core.selectionText() }
+
+    public var hasSelection: Bool { core.hasSelection }
 
     /// `ccc send --wheel N`: the wheel gesture's twin, at the pane's center.
     /// Same path as a real wheel: the core's mouse encoder when the child
@@ -147,6 +159,10 @@ public final class GhosttyPane: TerminalHost {
     // MARK: input (called by the container view)
 
     fileprivate func keyDown(_ event: NSEvent) {
+        // Typing takes the selection away, as it does in every terminal.
+        // ⌘C and ⌘V never reach here — `performKeyEquivalent` answers them
+        // first — so a copy cannot clear what it is about to copy.
+        clearSelection()
         if let key = Self.namedKey(for: event) {
             if core.press(key) { return }
         }
@@ -183,6 +199,97 @@ public final class GhosttyPane: TerminalHost {
     fileprivate func pasteFromPasteboard() {
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
         _ = core.paste(text)
+    }
+
+    // MARK: the drag (item 13)
+
+    /// Whether a press is ours rather than the child's.
+    ///
+    /// The child owns the mouse — Claude Code keeps tracking on and does its
+    /// own drag-selection, answering "copied N chars to clipboard" — so ours
+    /// has to be a gesture the child does not want. **Shift is that gesture**,
+    /// and not by our invention: xterm, iTerm2, kitty and Ghostty all make
+    /// shift the override that bypasses mouse reporting, so no child has ever
+    /// seen a shift-drag in any terminal and none can miss it here. That is
+    /// also why ⌘ is not it — ⌘ already opens links (v7 slice 2).
+    ///
+    /// When nothing is tracking the plain drag is ours too: the encoder would
+    /// emit nothing at all, and an untracked drag that selects is simply what
+    /// a terminal is. ⌥ makes the drag a rectangle, which is where a terminal
+    /// puts it and what `GhosttySelection.rectangle` already takes.
+    private func wantsSelection(_ event: NSEvent) -> Bool {
+        event.modifierFlags.contains(.shift) || !mouse.isTracking
+    }
+
+    /// Take the press, or leave it for the child. Answers which.
+    ///
+    /// The old selection goes away first, before the core is asked for a new
+    /// one. That single line is the whole "what clears a selection" rule: a
+    /// plain click leaves nothing installed and is therefore a clear, a
+    /// double-click replaces it with a word, a drag replaces it as it moves.
+    fileprivate func beginSelection(_ event: NSEvent) -> Bool {
+        guard wantsSelection(event) else { return false }
+        selecting = true
+        clearSelection()
+        let cell = self.cell(for: event)
+        selection.press(
+            col: cell.col, row: cell.row, position: surfacePoint(for: event),
+            time: event.timestamp, repeatInterval: NSEvent.doubleClickInterval)
+        scheduleFrame()
+        return true
+    }
+
+    fileprivate func dragSelection(_ event: NSEvent) {
+        let cell = self.cell(for: event)
+        selection.drag(
+            col: cell.col, row: cell.row, position: surfacePoint(for: event),
+            geometry: selectionGeometry, rectangle: event.modifierFlags.contains(.option))
+        scheduleFrame()
+    }
+
+    fileprivate func endSelection(_ event: NSEvent) {
+        let cell = self.cell(for: event)
+        selection.release(col: cell.col, row: cell.row)
+        selecting = false
+        scheduleFrame()
+    }
+
+    /// Take the selection away. The *gesture* is not reset: its click
+    /// sequence has to survive this, or the second click of a double would
+    /// count as a first.
+    public func clearSelection() {
+        guard core.hasSelection else { return }
+        _ = core.install(selection: nil)
+        scheduleFrame()
+    }
+
+    /// ⌘C, and `ccc copy`'s road: the selected text onto the system
+    /// pasteboard, or nil when nothing is selected.
+    ///
+    /// The pane keeps no clipboard of its own. A terminal's selection *is*
+    /// the pasteboard the moment the key is pressed, and a second store
+    /// would only be one more thing to keep in sync.
+    @discardableResult
+    public func copySelection() -> String? {
+        guard let text = core.selectionText(), !text.isEmpty else { return nil }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        return text
+    }
+
+    /// The pointer in **surface pixels**, the space `GhosttySurfacePosition`
+    /// and the gesture geometry are both expressed in: view points times the
+    /// backing scale.
+    private func surfacePoint(for event: NSEvent) -> CGPoint {
+        let point = container.convert(event.locationInWindow, from: nil)
+        return CGPoint(x: point.x * metrics.scale, y: point.y * metrics.scale)
+    }
+
+    private var selectionGeometry: GhosttySelectGesture.Geometry {
+        let grid = metalView.gridSize()
+        return .init(
+            columns: grid.cols, cellWidth: Int(metrics.widthPixels),
+            screenHeight: Int(metrics.heightPixels) * max(1, grid.rows))
     }
 
     fileprivate func scroll(_ event: NSEvent) {
@@ -296,6 +403,13 @@ final class PaneInputView: NSView {
             pane?.pasteFromPasteboard()
             return true
         }
+        // ⌘C copies the selection — and only when there *is* one. With
+        // nothing selected the key belongs to AppKit (and to the menu), the
+        // way a terminal leaves it.
+        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "c",
+           pane?.copySelection() != nil {
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 
@@ -315,6 +429,10 @@ final class PaneInputView: NSView {
             swallowedPress = true
             return
         }
+        // Ours or the child's? Shift, or nothing tracking, makes it ours
+        // (item 13) — and a press we take is never encoded, for the same
+        // reason the link gesture's is not.
+        if pane?.beginSelection(event) == true { return }
         pane?.mouseEvent(event, button: .left, action: .press)
     }
 
@@ -326,11 +444,19 @@ final class PaneInputView: NSView {
             swallowedPress = false
             return
         }
+        if pane?.selecting == true {
+            pane?.endSelection(event)
+            return
+        }
         pane?.mouseEvent(event, button: .left, action: .release)
     }
 
     override func mouseDragged(with event: NSEvent) {
         if swallowedPress { return }
+        if pane?.selecting == true {
+            pane?.dragSelection(event)
+            return
+        }
         pane?.mouseEvent(event, button: .left, action: .motion)
     }
 

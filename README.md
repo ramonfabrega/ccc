@@ -51,7 +51,11 @@ ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect '#RRGGBB' [--tolerance N
                                     # --expect makes the exit code the answer, so a script can judge a colour
 ccc select <c> <r> <c> <r> [--rect] | --clear
                                     # select a region of the pane (both ends inclusive) in the theme's
-                                    # selection colours; the pane has no drag yet — the child owns the mouse
+                                    # selection colours. The gesture is shift-drag (plain drag when the
+                                    # child is not tracking the mouse), ⌥ for a rectangle
+ccc select --word <c> <r> | --line <c> <r>
+                                    # the double- and triple-click's twins
+ccc copy                            # ⌘C's twin: the selected text, onto the pasteboard
 ccc geometry [--json]               # the window id screencapture wants, the pane's rect, the cell size
 ccc theme [--json]                  # the pane's colours: 16 ANSI + 6 specials, with a swatch per row
                                     # --json is the shape CCC_THEME reads; 16-255 are the xterm cube, not a choice
