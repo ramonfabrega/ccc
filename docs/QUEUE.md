@@ -181,6 +181,27 @@ And the oracle has still only ever run on **one display, one profile, at
 1x**. `ccc pixel --cell`'s scale arithmetic is tested at 2x, including
 against a real offscreen render, but has never met a Retina panel.
 
+**Measured 2026-09-04: studio cannot supply one.** Its display is
+1920x1080 and `UI Looks like 1920 x 1080`, so `backingScaleFactor` is 1
+and no sitting on this Mac can settle the 2x half — that half is
+**air's**, which is the Retina panel, and it needs a terminal there with
+Screen Recording permission. The two halves of this item are therefore on
+two Macs, and only the side-by-side with iTerm is studio's.
+
+**The permission, concretely.** `ccc capture` refuses from a Claude Code
+session's shell here and names the window it could not read (`window 9659`);
+the responsible app up that chain is **iTerm2** (`iTermServer` → `login` →
+`zsh` → `claude`). Granting Screen Recording to it makes `ccc capture`
+work from an ordinary session, not just from a hand-run terminal.
+
+**And the probe has to be a background.** 8b sampled the theme's `#15191F`
+rather than any glyph because text pixels are antialiased and a glyph's
+centre is not its nominal colour — which is fine for 12b (`#B3D7FF` is a
+*background*) and fatal for 12c, whose bold-is-bright is a *foreground*
+policy. The way out is a full block `█`: it fills the cell, so the
+foreground becomes a solid area a pixel probe can read. Expected, from
+`Theme.iterm`: `#B43C2A` for `\e[31m█`, `#DD7975` for `\e[1;31m█`.
+
 ### 15. What a second viewer does to the grid
 
 Homeless until now: it was cited as part of item 3, which has left.
@@ -197,6 +218,26 @@ or render the grid as-is at whatever size the first viewer set.
 which is the ordinary case the moment the lid opens somewhere else — so
 this is the one item below that will announce itself rather than wait to
 be picked.
+
+### 16. The shell pane has no twins but open and close
+
+Found while looking for item 14's fixture, and it blocks the half of it
+that wants **identical bytes in both terminals**: `ccc shell <ref>` opens
+the pane and `ccc shell --close` closes it, and that is the whole surface.
+Every verb that could read or drive it — `snapshot`, `select`, `send`,
+`copy`, `pixel --cell` — addresses the *session* pane. Measured
+2026-09-04 with a shell pane up and no session attached: `ccc send …`
+answers `ccc: nothing attached` and `ccc snapshot` answers `(nothing
+attached)`.
+
+This is the twin rule biting one level up — not a read field without its
+write verb, but a whole **pane** with two verbs and no others — and it
+matters beyond tidiness, because the shell pane is the
+only place ccc can paint chosen bytes into a real window. A screen oracle
+that wants to put the same `\e[1;31m█` in ccc and in iTerm has nowhere
+else to put it. 12b's method (attach a real session, `ccc select`, read
+`snapshot --color`) is the alternative, and it gives up on iTerm showing
+the same content.
 
 ## Later
 
