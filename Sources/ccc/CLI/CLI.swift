@@ -1531,6 +1531,18 @@ enum CLI {
             let last = f.last.map { "  last \"\($0)\"" } ?? ""
             print("fetch   rounds \(f.rounds)  repos \(f.repos)\(failed)  last \(ms(f.lastMs)) \(ago)\(last)")
         }
+        if let w = s.wake, w.wakes > 0 {
+            // Item 6. Wakes with no attempts is the interesting silence:
+            // ssh never noticed the sleep killed the pane, so the window
+            // that follows was never the thing standing between the user
+            // and a live pane. Say it rather than leave three zeroes to be
+            // read as "nothing to see".
+            let quiet = w.attempts == 0 && w.gaveUp == 0
+                ? "  ⚠ no reattach ever fired — ssh did not notice a pane die across a wake" : ""
+            let gave = w.gaveUp > 0 ? "  gave up \(w.gaveUp)" : ""
+            let last = w.last.map { "  last \"\($0)\"" } ?? ""
+            print("wake    \(w.wakes) wakes  reattach attempts \(w.attempts)\(gave)\(last)\(quiet)")
+        }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames
         // presented means the human sees nothing while snapshots look fine.

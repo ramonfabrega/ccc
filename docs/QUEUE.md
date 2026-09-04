@@ -84,22 +84,35 @@ The eviction half is **answered and gone** (docs/EVIDENCE.md "item 6 — the
 lid"): a closed lid is 18 dark wakes a night, not one sleep; the master
 comes back wedged on 17 of 18; eviction is the main path, not insurance;
 and a wake costs 14–22 s that no client-side fix can shorten, because the
-tailnet is what is missing. `scripts/lidtest` is the instrument, and
-`~/lidtest-studio.log`'s sampler is the server half.
+tailnet is what is missing. `scripts/lidtest` is the instrument.
 
-What that night did **not** exercise: `sshExit` within 20 s of wake
-replaying the same argv (`PaneController.reattachIfSleepKilledIt`), and
-`reconnect`'s case where ssh noticed first (`lastExitStatus == sshExit`).
-Nothing was attached, so neither has run.
+**Fixed before the next night, from those numbers:** the reattach window
+was 20 s, and the retries land at ~+5, +10, +15 s (each costs
+`ConnectTimeout=5`, and `reconnect` awaits its own failing poll first), so
+it gave up at +20 — one or two seconds *before* the network returned, on
+the three wakes in eighteen that took 21–22 s. Not merely tight, aligned
+to fail. Now 60 s, ~3x the measured worst case, guarded by
+`WakeWindowTests` which restates the night's numbers as arithmetic and
+fails at 20.
 
-It needs air's pane attached to a **studio** ref when the lid closes, and
-studio's pane on something else or nothing, or it measures item 15 at the
-same time. The night now says what to expect: **18 chances per night**, not
-one, and each wake gives the reattach a 14–22 s window of failing ssh to
-survive — which is longer than the 20 s guard is wide. **That is the thing
-to watch**: if the first reattach fires into a dead tailnet and gives up,
-the pane stays dead until the user clicks, and the guard wants to be a
-retry rather than a single shot.
+**Still unmeasured, and the night decides it.** `ccc stats` grew a `wake`
+line — `wakes`, reattach `attempts`, `gaveUp` — because three outcomes
+look identical from outside (the pane is not back):
+
+- `attempts == 0` after a night of `wakes`: **the guard never fired**, so
+  ssh never noticed the pane died. `ClaudeCLI.sshPrefix` sets no
+  `ServerAliveInterval`, and an idle `ssh -t … claude attach` over a dead
+  TCP connection may never return — the pane would hang on a frozen grid
+  rather than die. That is a different bug from this window, and the
+  counter is what tells them apart. **Do not add the keepalive first**:
+  the night is what says whether it is needed.
+- `gaveUp > 0`: the window is still too narrow.
+- `attempts > 0`, `gaveUp == 0`: it works.
+
+Needs air's pane attached to a **studio** ref when the lid closes, studio's
+pane on something else or nothing (or it measures item 15 too), and **air
+on a build that has this** — which means a release, since air only ever
+takes notarized zips.
 
 ### 7. Housekeeping: four branches to delete
 

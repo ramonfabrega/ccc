@@ -592,6 +592,9 @@ public struct StatsInfo: Codable, Sendable {
     /// would have to earn its place against. `nil` headless or from an
     /// older server.
     public var fetch: FetchStats?
+    /// The wake reattach's counters (item 6). `nil` headless or from an
+    /// older server.
+    public var wake: WakeStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
@@ -641,6 +644,39 @@ public struct FetchStats: Codable, Sendable, Equatable {
         self.lastMs = lastMs
         self.last = last
         self.lastSecondsAgo = lastSecondsAgo
+    }
+}
+
+/// The wake reattach (docs/QUEUE.md item 6). A sleep-killed remote pane is
+/// replayed within a window of the wake, and the lid night is what that
+/// window is up against: a wake is **14–22 s of failing ssh** before the
+/// tailnet answers, **18 times a night**, not once (docs/EVIDENCE.md
+/// "item 6 — the lid").
+///
+/// Three numbers, because they separate three outcomes that look identical
+/// from the outside — a pane that is not back:
+///
+/// - `attempts == 0` across a night of `wakes`: the guard never fired, so
+///   ssh never noticed the connection died. That is not this window's bug,
+///   it is a missing keepalive on the attach path.
+/// - `gaveUp > 0`: the guard fired and ran out of window.
+/// - `attempts > 0`, `gaveUp == 0`: it worked.
+public struct WakeStats: Codable, Sendable, Equatable {
+    /// `NSWorkspace.didWakeNotification`, and its `ccc hosts reconnect` twin.
+    public var wakes: Int
+    /// Reattach attempts made inside the window, retries included.
+    public var attempts: Int
+    /// Times the window closed on a remote pane ssh had killed — the pane
+    /// stays dead until the user clicks.
+    public var gaveUp: Int
+    /// The last wake's outcome, one sentence.
+    public var last: String?
+
+    public init(wakes: Int = 0, attempts: Int = 0, gaveUp: Int = 0, last: String? = nil) {
+        self.wakes = wakes
+        self.attempts = attempts
+        self.gaveUp = gaveUp
+        self.last = last
     }
 }
 

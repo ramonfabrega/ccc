@@ -89,6 +89,11 @@ final class PaneController {
     private var lastRef: SessionRef?
     private var lastExitStatus: Int32?
     private var wokeAt: ContinuousClock.Instant?
+    /// What the wake reattach did, for `ccc stats` (item 6). A night of
+    /// `wakes` with no `attempts` and no `gaveUp` says the guard never
+    /// fired — a different bug from the one the window bounds.
+    private(set) var wakeStats = WakeStats()
+    private var attemptsThisWake = 0
     /// The window face remembers what it was attached to across a relaunch
     /// (Sparkle's, or the user's) in UserDefaults; the headless face never
     /// does, or an agent's attach would steer the next window launch.
@@ -573,11 +578,13 @@ final class PaneController {
     @discardableResult
     func reconnect(host: String? = nil) async -> [HostPoll] {
         wokeAt = .now
+        wakeStats.wakes += 1
+        attemptsThisWake = 0
         let polls = await poller.reconnect(host: host)
         // Already dead when we woke: ssh noticed before we did.
         if let lastRef, session?.isRunning != true, lastExitStatus == Self.sshExit, lastRef.host != Host.localName,
            host == nil || host == lastRef.host {
-            try? attach(ref: lastRef)
+            reattach(ref: lastRef)
         }
         return polls
     }
@@ -586,14 +593,57 @@ final class PaneController {
     /// must never be re-run behind the user's back.
     private static let sshExit: Int32 = 255
 
-    /// A remote attach that exits with ssh's status within a short window
-    /// after wake is the sleep's doing, not the user's: run the same argv
+    /// How long after a wake a remote pane's ssh death still counts as the
+    /// sleep's doing. **60 s since 2026-09-04, from 20** — the lid night
+    /// (docs/EVIDENCE.md "item 6 — the lid") measured what this window is
+    /// up against and 20 s was inside it, not around it:
+    ///
+    /// A wake is 14–22 s of failing ssh before the tailnet answers. Each
+    /// attempt costs `ConnectTimeout=5`, and the first cannot start until
+    /// `reconnect`'s own poll has failed, so the retries land at roughly
+    /// +5, +10 and +15 s and the window shuts at +20 — **giving up one or
+    /// two seconds before the network comes back**, on the three wakes in
+    /// eighteen that took 21–22 s. The old bound was not merely tight, it
+    /// was aligned to fail. 60 s is ~3x the measured worst case, the same
+    /// headroom `waitUntilDrawn` carries, and it stays safe because 255 is
+    /// ssh's own status: a detach or a finished session exits 0 and is
+    /// never replayed.
+    private static let wakeWindow: Duration = .seconds(60)
+
+    /// A remote attach that exits with ssh's status within `wakeWindow` of
+    /// a wake is the sleep's doing, not the user's: run the same argv
     /// again. The draft lives with the session (experiment 5), so nothing
-    /// typed is lost.
+    /// typed is lost. A failed replay exits 255 in its turn and comes back
+    /// through here, which is what makes this a retry rather than one shot.
     private func reattachIfSleepKilledIt(ref: SessionRef, status: Int32) {
-        guard status == Self.sshExit, ref.host != Host.localName,
-              let wokeAt, wokeAt.duration(to: .now) < .seconds(20) else { return }
+        guard status == Self.sshExit, ref.host != Host.localName, let wokeAt else { return }
+        let since = wokeAt.duration(to: .now)
+        guard since < Self.wakeWindow else {
+            // The pane stays dead until the user clicks. Counted, because
+            // from the outside this is indistinguishable from ssh never
+            // having noticed the death at all.
+            wakeStats.gaveUp += 1
+            wakeStats.last = "gave up on \(ref) after \(attemptsThisWake) attempts, \(Self.seconds(since)) s after wake"
+            return
+        }
+        reattach(ref: ref)
+    }
+
+    /// One replay of the same argv, counted. Every reattach path lands here
+    /// so `attempts` cannot drift from what actually ran. `attempts` is the
+    /// lifetime total and `attemptsThisWake` is what the sentence says —
+    /// the two differ the moment there is a second wake, which the lid
+    /// night says is every fifteen minutes.
+    private func reattach(ref: SessionRef) {
+        wakeStats.attempts += 1
+        attemptsThisWake += 1
+        let since = wokeAt.map { Self.seconds($0.duration(to: .now)) } ?? "?"
+        wakeStats.last = "reattaching \(ref), attempt \(attemptsThisWake), \(since) s after wake"
         try? attach(ref: ref)
+    }
+
+    private static func seconds(_ d: Duration) -> String {
+        String(format: "%.0f", Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18)
     }
 
     enum AttachError: Error, CustomStringConvertible {
@@ -741,6 +791,7 @@ final class PaneController {
             var fetch = fetchStats
             fetch.lastSecondsAgo = lastFetchAt.map { Date().timeIntervalSince($0) }
             stats.fetch = fetch
+            stats.wake = wakeStats
             return .stats(stats)
         case .reconnect(let host):
             if let host, poller.poller(for: host) == nil {
