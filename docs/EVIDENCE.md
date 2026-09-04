@@ -1238,3 +1238,81 @@ Proved live against the running app, no relaunch:
 
 That last line is the safety claim holding: the pane attached over the
 removed host stayed alive across its removal and re-addition. 299 tests.
+
+## v9 slice 2 — 12a: colour a golden can assert (2026-09-03)
+
+Queue item 12a. `Grid` was `lines: [String]`, so the one oracle an agent
+can run with no screen could not answer a colour question — `ccc capture`
+/ `ccc pixel` can, but they need a *window* and Screen Recording
+permission, which a headless agent has neither of.
+
+**The colour was never far away.** `GhosttyHost.snapshot()` already read a
+colour-complete `Frame` — the same one the renderer paints from — and
+dropped every colour to keep `cell.text`. The slice is: stop dropping it
+when asked.
+
+    ccc snapshot [--json] [--color]
+    ccc replay <bytes-file> … [--color]
+    Grid.colors: [[ColorSpan]]?     nil unless asked; ColorSpan = col, len, fg, bg
+
+### Resolution is shared with the renderer; the merge is not
+
+Both go through `RunMerge.resolvedColors`, which applies `inverse` and
+substitutes the frame defaults — so a span reports the colour that is
+actually **painted**. The merge deliberately differs: the renderer merges
+by full `RunStyle` (fg + bold + italic + underline…) because that is what
+forces a new shaping call, while a colour oracle merges by colour alone.
+Sharing the merge would make one of the two wrong. `ColorSpansTests`
+pins the shared half cell by cell (`theOracleResolvesExactlyAsTheRenderer
+Does`), which is what stops a future re-implementation drifting the two
+oracles apart.
+
+One row of SGR through the real core, `ccc replay --color --json`:
+
+    plain red inverse bluebg
+    0+6   #DCDCDC on #15191F     default pair
+    6+3   #B43C2A on #15191F     ANSI red, palette resolved
+    10+7  #15191F on #DCDCDC     inverse: swapped, not ignored
+    18+6  #DCDCDC on #2744C7     background colour
+    24+16 #DCDCDC on #15191F     the tail
+
+40 columns become 7 runs, every column covered exactly once and the runs
+contiguous (asserted).
+
+### It agrees with the screen oracle by string equality
+
+The headless oracle spells a colour `#RRGGBB` — the same spelling
+`ccc pixel` and `ccc theme` print — so the two are comparable with no
+arithmetic. `Frame.RGB` is now `Codable` as that one string, and
+`rgbIsCodableAsTheHexPixelPrints` pins it against `PixelReader.hex`.
+
+The default background it reports is **`#15191F`**, which is the value
+"8b: there is no colour-management residual" measured off a real
+`screencapture` and found bit-identical between ccc's pane and iTerm.
+**Not re-run today**: `ccc capture` refused for want of Screen Recording
+permission on this job's terminal — correctly, since that permission
+belongs to whoever asks (v8 slice 3). So the agreement is against 8b's
+recorded number, not against a capture taken beside it.
+
+### Live, on a real attached pane
+
+`ccc attach ad19c590` then `ccc snapshot --color --json`: 93x47, **21 of
+47 rows carry more than one run** — `#999999` for the dim "Churned for
+2m 48s · done 2:55 AM" status line, `#B1B9F9` for highlighted text,
+`#DCDCDC` on `#15191F` elsewhere. Real TUI colour, read with no screen.
+
+The real `claude attach` capture is the opposite case and worth stating:
+it carries **no SGR colour anywhere**, so all 30 rows are one run of the
+default pair. That is now pinned, which says what colour the existing
+text goldens were always being drawn in.
+
+**Off by default, deliberately.** `snapshot()` is a hot path —
+`waitUntilDrawn` takes one every 250 ms through an attach transition, and
+`LeaveGesture` and `LinkScanner` each take one per gesture. None want
+colour, and an always-on grid would put ~4,400 cells of RGB through the
+control socket on every `ccc snapshot`. `theDefaultSnapshotCarriesNo
+Colour` pins that.
+
+The SwiftTerm escape hatch answers `colors: nil` rather than empty runs —
+`GridBuilder` reads text alone, and an empty array would read to a golden
+as "no colour anywhere" instead of "this core cannot say". 307 tests.

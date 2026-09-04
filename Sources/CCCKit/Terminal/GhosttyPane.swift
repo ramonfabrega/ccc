@@ -80,7 +80,7 @@ public final class GhosttyPane: TerminalHost {
         scheduleFrame()
     }
 
-    public func snapshot() -> Grid { core.snapshot() }
+    public func snapshot(colors: Bool) -> Grid { core.snapshot(colors: colors) }
 
     public func press(_ key: NamedKey) -> Bool { core.press(key) }
 

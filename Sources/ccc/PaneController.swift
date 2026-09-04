@@ -635,9 +635,10 @@ final class PaneController {
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             await session.detach()
             return .ok("detached \(session.ref)")
-        case .snapshot:
+        case .snapshot(let colors):
             guard let session else { return .snapshot(SnapshotInfo(attachedTo: nil, grid: nil)) }
-            return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.ref : nil, grid: session.host.snapshot()))
+            return .snapshot(SnapshotInfo(attachedTo: session.isRunning ? session.ref : nil,
+                                          grid: session.host.snapshot(colors: colors)))
         case .links(let open):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             let found = LinkScanner.links(in: session.host.snapshot())

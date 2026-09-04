@@ -210,7 +210,7 @@ public final class GhosttyHost: TerminalHost {
 
     /// The text oracle. Derived from the same `FrameReader` the renderer
     /// uses (one render state per terminal), without consuming dirty flags.
-    public func snapshot() -> Grid {
+    public func snapshot(colors: Bool) -> Grid {
         guard let terminal else {
             return Grid(cols: 0, rows: 0, lines: [], cursor: .init(col: 0, row: 0, visible: false))
         }
@@ -231,11 +231,17 @@ public final class GhosttyHost: TerminalHost {
         }
         var scrollback: Int = 0
         _ = ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS, &scrollback)
-        return Grid(
+        var grid = Grid(
             cols: frame.cols, rows: frame.rows.count, lines: lines,
             cursor: .init(col: frame.cursor?.x ?? 0, row: frame.cursor?.y ?? 0, visible: frame.cursor?.visible ?? false),
             scrollbackRows: scrollback
         )
+        // The colour was in hand the whole time — this same `frame` is what
+        // the renderer paints from, and the text above is it with every
+        // colour dropped. Item 12a is only ever this: stop dropping it when
+        // asked (`ColorSpans`).
+        if colors { grid.colors = ColorSpans.build(frame: frame) }
+        return grid
     }
 
     private func pad(_ text: String, to cols: Int) -> String {

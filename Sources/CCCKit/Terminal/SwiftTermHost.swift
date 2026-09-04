@@ -69,7 +69,12 @@ public final class SwiftTermHost: TerminalHost {
 
     private var inSizeCallback = false
 
-    public func snapshot() -> Grid {
+    /// SwiftTerm's screen state carries attributes, but `GridBuilder` reads
+    /// text alone and this core is the `CCC_CORE=swiftterm` escape hatch, not
+    /// the pane anyone runs. So `colors` is answered with nil — honestly
+    /// absent, which `ccc snapshot --color` reports as "this core carries no
+    /// colour" rather than as an empty grid.
+    public func snapshot(colors: Bool) -> Grid {
         GridBuilder.grid(from: terminalView.getTerminal(), cursorVisible: cursorVisible)
     }
 

@@ -29,12 +29,13 @@ item 3's first two steps shipped the same day: a real `Host` behind a
 real `sshd`, a fixture spawned, attached, resized and driven over it, and
 DESIGN.md §4c answered by measurement (docs/EVIDENCE.md "v9 slice 1 — the
 hop is real"). Doing it found the host list frozen at launch, now fixed.
-**The frontier is 12a — the headless colour oracle.** Re-probing item 12
-2026-09-03 broke it into three independent items, not the one change it
-claimed to be: `Frame` already carries RGB, so 12a is `GridBuilder`
-catching up to `FrameReader` and pays no seam cost. It is the one that
-compounds — it is what lets a renderer change be judged with no screen.
-Item 3's last step, the picker, is the other live thread.
+**12a shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 2 — 12a: colour a
+golden can assert"): `ccc snapshot --color` and `ccc replay --color`, and
+a headless oracle that spells a colour the way `ccc pixel` does. What is
+left of item 12 is 12b (selection colours) and 12c (bold-is-bright), which
+are independent of each other and of everything else. **The frontier is
+12b or item 3's last step, the picker** — neither is large, and nothing
+now blocks either.
 
 ## Open
 
@@ -114,42 +115,42 @@ one-line wake message, which is what it was wrong about before; it is not
 proof the TUI finished, and a render that pauses over 250 ms mid-paint can
 still swap in early. Not seen in the wild.
 
-### 12. Colour: three items, not one
+### 12. Colour: 12a shipped, 12b and 12c open
 
-**Re-probed 2026-09-03 and the old framing was wrong** — it said "a single
-change wearing three hats… all three want the palette index carried
-through `Frame` into `Grid`". Two of the three want no such thing.
-`Frame.Cell` **already carries** `fg`/`bg`/`underlineColor` as `RGB?` plus
-`flags`, and `Frame.Row` already has a `selection: Range<Int>?` field. The
-seam is not the obstacle; there are two readers over one core —
-`FrameReader` (colour-complete, feeds the renderer) and
-`GridBuilder.grid(from:cursorVisible:)` (text-only, feeds `Grid`) — and
-they have drifted. Ordered cheapest first:
+The 2026-09-03 re-probe broke this into three independent items — the old
+"a single change wearing three hats" was wrong, because `Frame.Cell`
+already carries `fg`/`bg`/`underlineColor` as `RGB?` and the seam was
+never the obstacle.
 
-- **12a. The headless colour oracle.** `Grid` is `lines: [String]`, so a
-  replay golden cannot assert RGB and the one oracle an agent can run with
-  no screen stays text-only (`ccc capture`/`ccc pixel` judge a colour but
-  need a *window*). `Frame` already has the RGB per cell — this is
-  `GridBuilder` catching up to `FrameReader`, not a seam change. **Highest
-  value: it is what lets a renderer change be judged without a screen.**
-- **12b. Selection colours.** Not "drawn by nobody" — `FrameReader.swift`
-  inverts a selected cell (`if selected { cell.flags.insert(.inverse) }`,
-  commented "v1 selection policy: invert; refine with a selection color
-  later"), so selection *is* visible. What is unused is
+**12a is done** (docs/EVIDENCE.md "v9 slice 2 — 12a: colour a golden can
+assert"). `Grid.colors` carries run-length-encoded resolved colour when
+asked; `snapshot()` stays text-only for the hot path. Resolution is shared
+with the renderer through `RunMerge.resolvedColors` and pinned cell by
+cell, the merge is deliberately not. Live pane: 21 of 47 rows carry more
+than one run. The default background reads `#15191F`, matching 8b's
+screencapture measurement by string equality.
+
+- **12b. Selection colours.** `FrameReader` inverts a selected cell
+  (`if selected { cell.flags.insert(.inverse) }`, commented "v1 selection
+  policy: invert; refine with a selection color later"), so selection *is*
+  drawn — the old claim "drawn by nobody" was wrong. What is unused is
   `Theme.selectionBackground`/`selectionForeground` and `Frame.Row`'s own
   `selection` field, which `FrameReader` always sets to `nil`. Populate the
-  field, draw the theme's colours. Self-contained, no seam change.
-- **12c. bold-is-bright.** The only one the old framing had right, and the
-  only one that needs the palette index. The core resolves index → RGB
-  before a cell reaches us (`render.h`: "Bold color handling is not
-  applied"), so promoting bold text from colour *n* to *n+8* — which iTerm
-  does — has no *n* left to add 8 to. Either carry the index across the
-  seam or resolve the palette ourselves. Hardest, least urgent, and it does
-  **not** block 12a or 12b.
+  field, draw the theme's colours. Self-contained, and 12a now gives it an
+  oracle: a selection golden can assert the two colours with no screen.
+- **12c. bold-is-bright.** The only one needing the palette index. The core
+  resolves index → RGB before a cell reaches us (`render.h`: "Bold color
+  handling is not applied"), so promoting bold text from colour *n* to
+  *n+8* — which iTerm does — has no *n* left to add 8 to. Either carry the
+  index across the seam or resolve the palette ourselves. Blocks nothing.
 
-Also uncovered, and cheap to state: the colour oracle has only ever run
-on one display, one profile, at 1x. `pixel --cell`'s scale arithmetic is
-tested at 2x but has never met a Retina panel.
+Two things 12a uncovered and did not fix: `ccc capture` could not be run
+from a background job's terminal (Screen Recording permission belongs to
+whoever asks, by design), so the headless-vs-screen agreement is against
+8b's *recorded* number rather than a capture taken beside it — worth doing
+once from a terminal that has the permission. And the colour oracle has
+still only ever run on one display, one profile, at 1x; `pixel --cell`'s
+scale arithmetic is tested at 2x but has never met a Retina panel.
 
 ## Later
 

@@ -163,6 +163,29 @@ extension Frame.RGB {
     }
 }
 
+/// One colour, one `#RRGGBB` string — **the same spelling `ccc pixel` and
+/// `ccc theme` print**, so a colour an agent reads out of `ccc snapshot
+/// --color --json` can be handed straight to `ccc pixel --expect` with no
+/// conversion. That is the whole point of the notation: the headless oracle
+/// and the screen oracle have to be comparable by string equality, or an
+/// agent has to trust arithmetic it cannot see.
+extension Frame.RGB: Codable {
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let rgb = Frame.RGB(hex: raw) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "\(raw.debugDescription) is not a #RRGGBB colour")
+        }
+        self = rgb
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(hex)
+    }
+}
+
 // MARK: - Codable, as hex strings
 
 extension Theme: Codable {

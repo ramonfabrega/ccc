@@ -20,8 +20,10 @@ public enum ControlRequest: Codable, Sendable {
     /// Detach the pane from its session by ending the child process the way
     /// the harness documents (Ctrl+Z is the default; see `DetachGesture`).
     case detach
-    /// The pane's grid as text. `nil` session when nothing is attached.
-    case snapshot
+    /// The pane's grid. `nil` session when nothing is attached. `colors`
+    /// asks for resolved RGB alongside the text (item 12a) — off by default
+    /// so the common snapshot stays the cheap text one.
+    case snapshot(colors: Bool = false)
     /// Bytes to the child: `text` is UTF-8 as typed; `keys` are named keys
     /// (`enter`, `escape`, `ctrl-c`, `ctrl-z`, `up`, `shift-enter`, …) that
     /// the terminal host encodes — never hand-rolled escape sequences.

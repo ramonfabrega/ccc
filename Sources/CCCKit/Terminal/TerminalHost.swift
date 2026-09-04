@@ -22,10 +22,16 @@ public protocol TerminalHost: AnyObject {
     var keyInterceptor: ((NamedKey) -> Bool)? { get set }
     /// Resize the grid. The owner mirrors the same size onto the PTY.
     func resize(cols: Int, rows: Int)
-    /// The text grid as the user sees it. The headless surface and the
-    /// test oracle: the GUI pane and `ccc snapshot` produce it through the
-    /// same function.
-    func snapshot() -> Grid
+    /// The grid as the user sees it. The headless surface and the test
+    /// oracle: the GUI pane and `ccc snapshot` produce it through the same
+    /// function.
+    ///
+    /// `colors: true` asks for resolved colour as well (item 12a). It is a
+    /// parameter rather than always-on because the callers that drive the
+    /// pane — `waitUntilDrawn` every 250 ms, `LeaveGesture`, `LinkScanner` —
+    /// want text and nothing else. A host that cannot answer in colour
+    /// leaves `Grid.colors` nil; it never fabricates one.
+    func snapshot(colors: Bool) -> Grid
     /// The AppKit view, if this host renders. Headless hosts return nil.
     var view: NSView? { get }
     /// What reached the screen: frames handed to the on-screen layer and
@@ -116,6 +122,34 @@ public struct Grid: Codable, Sendable, Equatable {
     public var cursor: Cursor
     /// Scrollback rows above the viewport, when the host knows.
     public var scrollbackRows: Int
+    /// Resolved colour, one run-length-encoded array per row, **present
+    /// only when the snapshot was asked for it** (`snapshot(colors: true)`,
+    /// `ccc snapshot --color`, `ccc replay --color`). `nil` otherwise, and
+    /// `nil` from a core that cannot answer — which is honest rather than
+    /// empty, and is why `color(col:row:)` returns an optional.
+    ///
+    /// Off by default because `snapshot()` is a hot path: `waitUntilDrawn`
+    /// takes one every 250 ms during an attach transition, and `LeaveGesture`
+    /// and `LinkScanner` each read one per gesture. None of them want colour,
+    /// and a grid that always carried it would put ~4,400 cells of RGB
+    /// through the control socket on every `ccc snapshot`.
+    public var colors: [[ColorSpan]]?
+
+    /// `len` cells from `col`, all painted the same. Colours are **resolved**
+    /// — `inverse` applied, frame defaults substituted — so this is what is
+    /// on the screen, comparable to `ccc pixel` by string equality.
+    public struct ColorSpan: Codable, Sendable, Equatable {
+        public var col: Int
+        public var len: Int
+        public var fg: Frame.RGB
+        public var bg: Frame.RGB
+        public init(col: Int, len: Int, fg: Frame.RGB, bg: Frame.RGB) {
+            self.col = col
+            self.len = len
+            self.fg = fg
+            self.bg = bg
+        }
+    }
 
     public struct Cursor: Codable, Sendable, Equatable {
         public var col: Int
@@ -143,4 +177,10 @@ public struct Grid: Codable, Sendable, Equatable {
             trimTrailing ? String(line.reversed().drop(while: { $0 == " " }).reversed()) : line
         }.joined(separator: "\n")
     }
+}
+
+extension TerminalHost {
+    /// The text grid — every caller that drives the pane rather than judging
+    /// its colour. Keeps the ~40 existing call sites reading as they did.
+    public func snapshot() -> Grid { snapshot(colors: false) }
 }

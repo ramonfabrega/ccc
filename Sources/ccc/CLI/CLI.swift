@@ -143,7 +143,10 @@ enum CLI {
                 }
                 return try await mark(MarkChange(rawValue: verb)!, ref: ref, json: json)
             case "snapshot":
-                return try request(.snapshot, json: json)
+                // `--color` asks for resolved RGB alongside the text (item
+                // 12a): the headless oracle's half of the pair whose other
+                // half is `ccc pixel`, and it spells a colour the same way.
+                return try request(.snapshot(colors: args.contains("--color")), json: json)
             case "links":
                 // `ccc links` lists; `ccc links --open N` opens the Nth,
                 // which is the ⌘-click on that link.
@@ -189,7 +192,8 @@ enum CLI {
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
-                                        bytes: intFlag("--bytes", rest), core: stringFlag("--core", rest) ?? "ghostty", json: json)
+                                        bytes: intFlag("--bytes", rest), core: stringFlag("--core", rest) ?? "ghostty", json: json,
+                                        colors: rest.contains("--color"))
             default:
                 stderr("ccc: unknown command '\(verb)'")
                 return usage()
@@ -960,7 +964,8 @@ enum CLI {
 
     /// `--bytes N` replays only the first N bytes: a phase boundary from the
     /// recording's `.meta.json`, so a golden can be taken mid-session.
-    static func replay(path: String, cols: Int, rows: Int, bytes limit: Int?, core: String, json: Bool) async throws -> Int32 {
+    static func replay(path: String, cols: Int, rows: Int, bytes limit: Int?, core: String, json: Bool,
+                       colors: Bool = false) async throws -> Int32 {
         var bytes = try Data(contentsOf: URL(filePath: path))
         if let limit, limit < bytes.count { bytes = bytes.prefix(limit) }
         let host: TerminalHost
@@ -972,7 +977,10 @@ enum CLI {
             return 2
         }
         host.feed(bytes)
-        let grid = host.snapshot()
+        let grid = host.snapshot(colors: colors)
+        if colors && grid.colors == nil {
+            stderr("ccc: core '\(core)' carries no colour; the grid is text only")
+        }
         if json { printJSON(grid) } else { print(grid.rendered()) }
         return 0
     }
@@ -1461,7 +1469,9 @@ enum CLI {
                ccc attach <ref> [--headless [--cols N --rows N]]
                                                   <ref> is `id` (this Mac) or `host:id`; the pane follows: an attached
                                                   session is left (Ctrl+Z, the harness's detach) for the new one
-               ccc snapshot [--json]
+               ccc snapshot [--json] [--color]    --color adds resolved RGB per run (`#RRGGBB`, the
+                                          spelling `ccc pixel` prints), so a colour can be judged
+                                          with no window and no Screen Recording permission
                ccc links [--open N] [--json]      the URLs on the pane's grid, numbered from 1; --open N opens
                                                   the Nth — the twin of Command-clicking that link
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
@@ -1508,7 +1518,7 @@ enum CLI {
                ccc geometry [--json]              where the window and its pane are, and the cell size
                ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
                ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
-               ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json]
+               ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json] [--color]
                ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
                ccc version [--json]               this build (version, build number, bundle)
                ccc install-cli [--dir <dir>] [--force]   link `ccc` on PATH into the installed app
