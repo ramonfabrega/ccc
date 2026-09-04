@@ -3242,3 +3242,43 @@ is ⌘R's twin since item 4.
 
 Twelve items, one of them a red test (the queue at 277 lines against
 its 200 bound); all fixed in "The docs said v0.1.18 and five members".
+
+## Cut as v0.1.24 (2026-09-04)
+
+**v0.1.24, build 176**, cut from `worktree-v2` at `ab01daf` on the user's
+word from a phone. Notarization `Accepted`, staple validated, `spctl`
+accepted as `Notarized Developer ID`, one `<item>`, both CDN keys
+overwritten zip-first, the live feed's `length=` equal to the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 176 length 5124962
+cut ccc v0.1.24 (5124962 bytes), published
+ota verify --feed ccc  →  ok: … version 176 length 5124962
+gh release view v0.1.24  →  ccc-v0.1.24.zip 5124962
+```
+
+Installed on studio with `scripts/install --dist` and verified against
+the **released** build, which is the first one whose app answers
+`ControlRequest.roster`:
+
+```
+ccc version                              →  ccc 0.1.24 (176)  ~/Applications/ccc.app
+ccc list --json --host local (served)    →  real 0.02  0.03  0.02
+ccc list --json --host local --fresh     →  real 0.41
+```
+
+Over the loopback hop the picture is the same shape as the headless
+measurement under "item 4 — the far side answers from the app", with one
+honest difference: studio was busy (the relaunch's fetch rounds, six
+working sessions), so the hop *itself* read 0.31–0.39 s for
+`ssh localhost true` where it read 0.08 s an hour earlier. `ccc list`
+over that hop read 0.19–0.34 s — **no more than the bare hop** — and
+`ccc stats`, a one-line socket round trip, the same. The claim that
+survives load is the one that matters: the far side's answer costs the
+hop and nothing else. Air's number, with the tailnet's latency in it, is
+the lid instrument's to print.
+
+One number to read carefully after a relaunch: `ccc stats` said
+`roster poll  mean 2913 ms  n=3` at 14 s of uptime and `mean 919 ms
+n=18` a minute later. The first ticks compete with the launch fetch and
+cold probes; the mean carries them for a while. The `last` is the tick.
