@@ -1537,11 +1537,18 @@ enum CLI {
             // that follows was never the thing standing between the user
             // and a live pane. Say it rather than leave three zeroes to be
             // read as "nothing to see".
-            let quiet = w.attempts == 0 && w.gaveUp == 0
-                ? "  ⚠ no reattach ever fired — ssh did not notice a pane die across a wake" : ""
+            // Only a wake that HAD a remote pane could have reattached, so
+            // only those make silence mean anything. A Mac that woke with
+            // nothing attached is the everyday case and gets no warning —
+            // the field is optional, and an older server that sends none
+            // has to stay silent rather than guess.
+            let armed = w.withRemotePane ?? 0
+            let quiet = armed > 0 && w.attempts == 0 && w.gaveUp == 0
+                ? "  ⚠ \(armed) wake(s) with a remote pane and not one reattach — ssh never noticed it die" : ""
+            let withPane = armed > 0 ? "  with a remote pane \(armed)" : ""
             let gave = w.gaveUp > 0 ? "  gave up \(w.gaveUp)" : ""
             let last = w.last.map { "  last \"\($0)\"" } ?? ""
-            print("wake    \(w.wakes) wakes  reattach attempts \(w.attempts)\(gave)\(last)\(quiet)")
+            print("wake    \(w.wakes) wakes\(withPane)  reattach attempts \(w.attempts)\(gave)\(last)\(quiet)")
         }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames

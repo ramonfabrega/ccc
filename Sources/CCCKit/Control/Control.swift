@@ -656,14 +656,27 @@ public struct FetchStats: Codable, Sendable, Equatable {
 /// Three numbers, because they separate three outcomes that look identical
 /// from the outside — a pane that is not back:
 ///
-/// - `attempts == 0` across a night of `wakes`: the guard never fired, so
-///   ssh never noticed the connection died. That is not this window's bug,
-///   it is a missing keepalive on the attach path.
+/// - `attempts == 0` across a night of `withRemotePane`: the guard never
+///   fired, so ssh never noticed the connection died. That is not this
+///   window's bug, it is a missing keepalive on the attach path.
 /// - `gaveUp > 0`: the guard fired and ran out of window.
 /// - `attempts > 0`, `gaveUp == 0`: it worked.
+///
+/// `wakes` without `withRemotePane` is neither — it is a Mac that woke with
+/// nothing attached, and it must not read as the first case.
 public struct WakeStats: Codable, Sendable, Equatable {
     /// `NSWorkspace.didWakeNotification`, and its `ccc hosts reconnect` twin.
     public var wakes: Int
+    /// Wakes with a **remote** pane in play — the only ones that could ever
+    /// have produced a reattach. Without this, `attempts == 0` reads as the
+    /// keepalive bug on any Mac that simply had nothing attached, which is
+    /// the everyday case and would make the warning below a lie.
+    ///
+    /// Optional, and for once not merely by convention: **v0.1.19 shipped
+    /// `WakeStats` without it**, so a newer `ccc stats` will meet a server
+    /// that sends every other key and not this one. A non-optional here
+    /// fails the whole `StatsInfo` decode, not just this field.
+    public var withRemotePane: Int?
     /// Reattach attempts made inside the window, retries included.
     public var attempts: Int
     /// Times the window closed on a remote pane ssh had killed — the pane
@@ -672,8 +685,9 @@ public struct WakeStats: Codable, Sendable, Equatable {
     /// The last wake's outcome, one sentence.
     public var last: String?
 
-    public init(wakes: Int = 0, attempts: Int = 0, gaveUp: Int = 0, last: String? = nil) {
+    public init(wakes: Int = 0, withRemotePane: Int? = 0, attempts: Int = 0, gaveUp: Int = 0, last: String? = nil) {
         self.wakes = wakes
+        self.withRemotePane = withRemotePane
         self.attempts = attempts
         self.gaveUp = gaveUp
         self.last = last

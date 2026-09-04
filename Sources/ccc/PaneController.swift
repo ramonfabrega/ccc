@@ -580,6 +580,12 @@ final class PaneController {
         wokeAt = .now
         wakeStats.wakes += 1
         attemptsThisWake = 0
+        // Only a wake with a remote pane in play can produce a reattach, so
+        // only those make `attempts == 0` mean anything. Read before the
+        // poll, because the poll is what may notice the pane is gone.
+        if let lastRef, lastRef.host != Host.localName, session != nil || lastExitStatus == Self.sshExit {
+            wakeStats.withRemotePane = (wakeStats.withRemotePane ?? 0) + 1
+        }
         let polls = await poller.reconnect(host: host)
         // Already dead when we woke: ssh noticed before we did.
         if let lastRef, session?.isRunning != true, lastExitStatus == Self.sshExit, lastRef.host != Host.localName,

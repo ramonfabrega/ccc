@@ -71,9 +71,31 @@ import Testing
     /// and the counters are what separate them, so they must survive the
     /// wire that `ccc stats` reads them over.
     @Test func theCountersRoundTrip() throws {
-        let sent = WakeStats(wakes: 18, attempts: 54, gaveUp: 3, last: "gave up on studio:abc after 3 attempts, 20 s after wake")
+        let sent = WakeStats(wakes: 18, withRemotePane: 18, attempts: 54, gaveUp: 3,
+                             last: "gave up on studio:abc after 3 attempts, 20 s after wake")
         let back = try JSONDecoder().decode(WakeStats.self, from: JSONEncoder().encode(sent))
         #expect(back == sent)
+    }
+
+    /// **v0.1.19 shipped `WakeStats` without `withRemotePane`**, so this is
+    /// not a hypothetical older server — it is one that exists and is
+    /// installed. A non-optional field here would fail the whole
+    /// `StatsInfo` decode rather than just this key.
+    @Test func wakeStatsFromV0119StillDecode() throws {
+        let json = Data(#"{"wakes":18,"attempts":0,"gaveUp":0}"#.utf8)
+        let decoded = try JSONDecoder().decode(WakeStats.self, from: json)
+        #expect(decoded.wakes == 18)
+        #expect(decoded.withRemotePane == nil)
+    }
+
+    /// The warning the first cut got wrong: nothing was attached, so no
+    /// reattach could have fired, and the line still cried keepalive. The
+    /// gate is `withRemotePane`, not `wakes`.
+    @Test func aWakeWithNothingAttachedIsNotAFinding() {
+        let idle = WakeStats(wakes: 12, withRemotePane: 0, attempts: 0, gaveUp: 0)
+        #expect((idle.withRemotePane ?? 0) == 0, "an idle Mac must not arm the warning")
+        let armed = WakeStats(wakes: 12, withRemotePane: 12, attempts: 0, gaveUp: 0)
+        #expect((armed.withRemotePane ?? 0) > 0, "a night of remote panes with no attempt is the finding")
     }
 
     /// A window face from an older build sends no `wake` key at all;

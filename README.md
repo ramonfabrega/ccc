@@ -27,7 +27,7 @@ pane is libghostty-vt + our Metal renderer, which took all six checks
 
 ```
 git submodule update --init         # vendor/ghostty, pinned to one commit; scripts/fetch-zig gets the Zig it needs
-swift build && swift test           # 392 tests: roster, hosts/refs, model + job probe, PTY, replay goldens,
+swift build && swift test           # 394 tests: roster, hosts/refs, model + job probe, PTY, replay goldens,
                                     # keys/mouse, renderer, theme, ← guard, pixels, worktree verbs, docs guard
 scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH (symlink into the bundle)
                                     # run it UNSANDBOXED: sandboxed it quits the app, half-copies the
