@@ -334,8 +334,10 @@ public final class GhosttyPane: TerminalHost {
 
     /// Mouse button events → the core's encoder. When the child has not
     /// enabled tracking the core emits nothing and we send nothing: that is
-    /// the correct answer, not a dropped event (local selection, which is
-    /// what a real terminal does with an untracked click, is not in v1).
+    /// the correct answer, not a dropped event — and since item 13 such a
+    /// press never reaches here anyway, because `beginSelection` takes it
+    /// for the local drag first, which is what a real terminal does with an
+    /// untracked click.
     fileprivate func mouseEvent(_ event: NSEvent, button: GhosttyMouse.Button?, action: GhosttyMouse.Action) {
         let cell = self.cell(for: event)
         let bytes = mouse.encode(button: button, action: action, col: cell.col, row: cell.row, mods: Self.mods(for: event))
