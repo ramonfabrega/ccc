@@ -121,7 +121,7 @@ import UniformTypeIdentifiers
     /// of a hop is not what this protects — a request it has never heard of
     /// is an error, not a decode failure.
     @Test func geometryCrossesTheWire() throws {
-        let sent = WindowGeometry(windowID: 8864, scale: 1, width: 1280, height: 800, pane: pane)
+        let sent = WindowGeometry(windowID: 8864, scale: 1, x: 120, y: 64, width: 1280, height: 800, pane: pane)
         let data = try JSONEncoder().encode(ControlResponse.geometry(sent))
         guard case .geometry(let back) = try JSONDecoder().decode(ControlResponse.self, from: data) else {
             Issue.record("not a geometry response")
@@ -129,6 +129,9 @@ import UniformTypeIdentifiers
         }
         #expect(back == sent)
         #expect(back.pane?.cols == 93)
+        // Where the window sits crosses too: it is what says a restored
+        // frame is the frame that was saved.
+        #expect((back.x, back.y) == (120, 64))
         let request = try JSONEncoder().encode(ControlRequest.geometry)
         #expect(String(decoding: request, as: UTF8.self).contains("geometry"))
     }
@@ -136,7 +139,7 @@ import UniformTypeIdentifiers
     /// A window with nothing attached still answers — the id is what
     /// `screencapture -l` needs, and it exists whether or not a pane does.
     @Test func aWindowWithNoPaneStillHasAnId() throws {
-        let sent = WindowGeometry(windowID: 12, scale: 2, width: 100, height: 50)
+        let sent = WindowGeometry(windowID: 12, scale: 2, x: 0, y: 0, width: 100, height: 50)
         let data = try JSONEncoder().encode(ControlResponse.geometry(sent))
         guard case .geometry(let back) = try JSONDecoder().decode(ControlResponse.self, from: data) else {
             Issue.record("not a geometry response")

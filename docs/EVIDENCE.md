@@ -1934,3 +1934,66 @@ job join     reads 20  cached 37  none 0  65% cached
 65% is three ticks in, not the steady state — the cached share climbs as
 terminal sessions stop changing, which is the whole reason the cache is
 keyed on (size, mtime).
+
+## v11 slice 1 — the window comes back where you left it (2026-09-04)
+
+Every launch — cold, ⌘Q and back, a Sparkle update — put the window at
+the screen's bottom-left corner at 1280×800. `MainWindowController` had
+called `setFrameAutosaveName("ccc.main")` since v0 and the defaults
+domain had never held the key:
+
+```
+$ defaults read com.ramonfabrega.ccc | grep -c 'NSWindow Frame'
+0
+```
+
+**`NSWindowController(window:)` clears `frameAutosaveName`.** Probed
+directly, app-less, before touching the app:
+
+```
+set ok: true name: t.probe
+after controller:  cascade: true ctrlName:
+```
+
+The name was set on line 36 and erased on line 39, so nothing ever
+saved and the restored frame was the `contentRect` literal — origin
+(0,0), which AppKit measures up from the bottom.
+
+The order is the whole fix: hand the window to the controller first,
+then turn cascading off, restore, and register the save. `setFrameUsingName`
+is not optional — the autosave name registers the *write*, it does not
+read — and its `false` is what says "first launch", which is the only
+time the window is centred. Both orders, run twice each against a
+scratch defaults domain, with a drag between the runs:
+
+```
+old run 1: name=(none)    frame=(300, 200, 1000, 600)  saved=(nothing)
+old run 2: name=(none)    frame=(0, 0, 1280, 832)      saved=(nothing)
+new run 1: name=probe.new frame=(300, 200, 1000, 600)  saved=300 200 1000 600 0 0 1920 1050
+new run 2: name=probe.new frame=(300, 200, 1000, 600)  saved=300 200 1000 600 0 0 1920 1050
+```
+
+The saved string carries the screen it was saved on, which is why the
+restore is AppKit's and not ours: a frame saved on a display that is
+gone comes back constrained to a display that is here.
+
+### The twin
+
+`ccc geometry` reported the window's size and not where it was, so the
+one question this slice answers had no command that could ask it.
+`WindowGeometry` now carries `x`/`y`, top-left down in the global space
+`screencapture -R` takes — the space the pane rect was already in, not
+AppKit's bottom-left up:
+
+```
+window 8864  120,64  1280x800pt  @2.0x
+```
+
+Quit, relaunch, run it again, compare: that is the check, and it needs
+no screen and no permission.
+
+### Measured
+
+384 tests, unchanged in count — `geometryCrossesTheWire` grew the origin
+assertion rather than gaining a neighbour, since the wire either carries
+the frame or does not.

@@ -129,6 +129,13 @@ public struct WindowGeometry: Codable, Sendable, Equatable {
     /// the content view, because that is what indexes the image.
     public var width: Double
     public var height: Double
+    /// Where the window sits on the desktop, **top-left down** in the global
+    /// screen space CoreGraphics uses — the same space `screencapture -R`
+    /// takes — rather than AppKit's bottom-left up, so it reads the way the
+    /// pane rect above already does. This is the answer to "did it come back
+    /// where I left it": quit, relaunch, compare.
+    public var x: Double
+    public var y: Double
     /// The attached pane, when one is mounted.
     public var pane: Pane?
 
@@ -168,9 +175,12 @@ public struct WindowGeometry: Codable, Sendable, Equatable {
         }
     }
 
-    public init(windowID: Int, scale: Double, width: Double, height: Double, pane: Pane? = nil) {
+    public init(windowID: Int, scale: Double, x: Double, y: Double,
+                width: Double, height: Double, pane: Pane? = nil) {
         self.windowID = windowID
         self.scale = scale
+        self.x = x
+        self.y = y
         self.width = width
         self.height = height
         self.pane = pane

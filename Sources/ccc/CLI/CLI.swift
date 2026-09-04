@@ -1380,7 +1380,7 @@ enum CLI {
             if json { printJSON(stats) } else { printStats(stats) }
         case .geometry(let geometry):
             if json { printJSON(geometry) } else {
-                print("window \(geometry.windowID)  \(Int(geometry.width))x\(Int(geometry.height))pt  @\(geometry.scale)x")
+                print("window \(geometry.windowID)  \(Int(geometry.x)),\(Int(geometry.y))  \(Int(geometry.width))x\(Int(geometry.height))pt  @\(geometry.scale)x")
                 if let pane = geometry.pane {
                     print("pane   \(Int(pane.x)),\(Int(pane.y))  \(Int(pane.width))x\(Int(pane.height))pt  \(pane.cols)x\(pane.rows) cells  cell \(pane.cellWidth)x\(pane.cellHeight)pt")
                 } else {

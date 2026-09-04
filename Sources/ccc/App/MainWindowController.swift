@@ -33,12 +33,23 @@ final class MainWindowController: NSWindowController {
         )
         window.title = BuildInfo.current.appTitle
         window.titlebarAppearsTransparent = true
-        window.setFrameAutosaveName("ccc.main")
         window.minSize = NSSize(width: 800, height: 400)
         // ⌘W closes the window, not the app; the controller keeps it so the
         // menubar item, the Dock, ⌘0 and `ccc window show` bring it back.
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        // Where the window was last time. The autosave name was set on the
+        // window before this line for eight versions and never once saved a
+        // frame: `NSWindowController(window:)` **clears** `frameAutosaveName`
+        // (probe: set it, hand the window to a controller, read it back —
+        // empty) and turns cascading on, so every launch landed on the
+        // contentRect above, which is the screen's bottom-left corner. Set
+        // it after the controller has had the window, restore explicitly —
+        // `setFrameAutosaveName` alone registers the save, it does not read
+        // — and centre only when there is nothing saved to read.
+        shouldCascadeWindows = false
+        if !window.setFrameUsingName(Self.frameName) { window.center() }
+        window.setFrameAutosaveName(Self.frameName)
         build()
         controller.makeHost = { [weak self] cols, rows in
             let bounds = self?.paneContainer.bounds ?? CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows)
@@ -59,6 +70,10 @@ final class MainWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: layout
+
+    /// The defaults key the frame is saved under (`NSWindow Frame ccc.main`).
+    /// Renaming it forgets every Mac's window position once.
+    static let frameName = "ccc.main"
 
     /// Points between the pane's edges and the grid, the way every terminal
     /// leaves a gutter (Ghostty's `window-padding-x/y`): without it the
@@ -688,8 +703,13 @@ final class MainWindowController: NSWindowController {
                 cols: size.cols, rows: size.rows,
                 cellWidth: metrics.width, cellHeight: metrics.height)
         }
+        // AppKit measures the desktop up from the primary screen's bottom
+        // left; CoreGraphics — `screencapture`, CGWindow — down from its top
+        // left, and that is the space every other rect here is in.
+        let desktopTop = NSScreen.screens.first?.frame.maxY ?? frame.maxY
         return WindowGeometry(
             windowID: window.windowNumber, scale: window.backingScaleFactor,
+            x: frame.minX, y: desktopTop - frame.maxY,
             width: frame.width, height: frame.height, pane: pane)
     }
 
