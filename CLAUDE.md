@@ -80,6 +80,16 @@ it should break while being awesome.**
   the app through `ccc hook` (v3 slice 2; `--settings` prints the entry, ccc
   never writes settings.json) and supplements only what the roster cannot
   show. A host can be muted (`ccc hosts mute`); the detector never is.
+  **What it says comes from the daemon's job file**, amended 2026-09-04:
+  the poll says *that* it is your turn, and `waitingFor` is absent exactly
+  when it is wanted (measured: the one blocked session carried none). So
+  `JobProbe` reads `detail`, `needs`, `output.result`, `suggestedReply`
+  and `children` out of `~/.claude/jobs/<id>/state.json` — five fields
+  where v5 read one — joined on the local row like the model and carried
+  across the hop. Still read-only, still lenient: a field that moves costs
+  the banner its payload and nothing else. **Every line of a notification
+  carries payload or is not drawn** — "is waiting", "on studio" and
+  "Click to attach" were three constants and a name.
 - **Every viewer attaches; the daemon mirrors.** Amended 2026-09-02 from
   "single attach, refused": measured (docs/DESIGN.md §4c), a second
   `claude attach` is accepted, output is broadcast to every viewer and input

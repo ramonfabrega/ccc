@@ -1,0 +1,206 @@
+import Foundation
+import Testing
+@testable import CCCKit
+
+/// The job join (v10) and what the banner makes of it. The shapes here are
+/// the daemon's real ones, copied from `~/.claude/jobs/*/state.json` on
+/// studio 2026-09-04 — including the ragged one, which is the whole reason
+/// `looksClipped` exists.
+@Suite struct JobProbeTests {
+    /// The blocked session that started this: the roster row carried **no**
+    /// `waitingFor`, and the job file held both the question and a
+    /// proposed answer.
+    static let blockedJSON = """
+    {
+      "state": "blocked",
+      "detail": "prod), and do you want fake captures to carry the card too so auth→capture flows are testable on staging?",
+      "needs": "prod), and do you want fake captures to carry the card too so auth→capture flows are testable on staging?",
+      "suggestedReply": "yes go ahead, include the fake capture piece",
+      "output": null,
+      "children": [
+        {"id": "4908", "href": "https://github.com/cuanto-app/cuanto/pull/4908", "kind": "pr"},
+        {"id": "4909", "href": "https://github.com/cuanto-app/cuanto/pull/4909", "kind": "pr"}
+      ],
+      "tokens": 51937
+    }
+    """
+
+    static let doneJSON = """
+    {
+      "state": "done",
+      "detail": "a stale progress line",
+      "output": {"result": "Bugs 2 and 3 fixed and shipped as PRs #4917 and #4916."},
+      "children": [
+        {"id": "4916", "kind": "pr"},
+        {"id": "4917", "kind": "pr"},
+        {"id": "carto-options.html", "kind": "frame", "title": "Life After Carto"}
+      ]
+    }
+    """
+
+    @Test func theQuestionComesOffTheJobFileWhenTheRosterHasNone() {
+        let job = JobInfo.decode(Data(Self.blockedJSON.utf8))
+        #expect(job?.needs?.hasSuffix("testable on staging?") == true)
+        #expect(job?.suggestedReply == "yes go ahead, include the fake capture piece")
+        #expect(job?.say(for: .blocked) == job?.needs)
+    }
+
+    /// `output.result` is the finished word and beats a `detail` left over
+    /// from before the session ended — measured, they disagree in 3 of 15.
+    @Test func theResultBeatsAStaleDetail() {
+        let job = JobInfo.decode(Data(Self.doneJSON.utf8))
+        #expect(job?.say(for: .done) == "Bugs 2 and 3 fixed and shipped as PRs #4917 and #4916.")
+        #expect(job?.say(for: .working) == "a stale progress line")
+    }
+
+    @Test func theReceiptNamesPRsByNumberAndFramesByTitle() {
+        let job = JobInfo.decode(Data(Self.doneJSON.utf8))
+        #expect(job?.receipt == "#4916 · #4917 · Life After Carto")
+    }
+
+    /// A session with eleven pull requests must not spend the whole line
+    /// on a list nobody reads to the end.
+    @Test func theReceiptStopsAtFourAndCountsTheRest() {
+        let many = (1...7).map { JobInfo.Link(id: "\($0)", kind: "pr") }
+        #expect(JobInfo(children: many).receipt == "#1 · #2 · #3 · #4 +3")
+        #expect(JobInfo().receipt == nil)
+    }
+
+    /// The boundary rule (CLAUDE.md): a wrong type is a dropped field, not
+    /// a failed reading, and a payload that is not an object is `nil`.
+    @Test func aWrongTypeIsDroppedAndTheRestSurvives() {
+        let json = #"{"detail": 42, "needs": "the real question", "children": "not a list"}"#
+        let job = JobInfo.decode(Data(json.utf8))
+        #expect(job?.detail == nil)
+        #expect(job?.needs == "the real question")
+        #expect(job?.children.isEmpty == true)
+        #expect(JobInfo.decode(Data("[]".utf8)) == nil)
+        #expect(JobInfo.decode(Data("not json".utf8)) == nil)
+    }
+
+    /// Nothing to say is `nil`, not an empty reading — a row's `job` is
+    /// present only when it carries something.
+    @Test func aFileWithNothingUsableIsNoReadingAtAll() {
+        #expect(JobInfo.decode(Data(#"{"state": "done", "tokens": 5}"#.utf8)) == nil)
+        #expect(JobInfo.decode(Data(#"{"detail": "   "}"#.utf8)) == nil)
+    }
+
+    /// A PR id arrives as a number in some shapes; both spellings count.
+    @Test func aNumericChildIdStillCounts() {
+        let job = JobInfo.decode(Data(#"{"children": [{"id": 4899, "kind": "pr"}]}"#.utf8))
+        #expect(job?.receipt == "#4899")
+    }
+
+    // MARK: what the banner says
+
+    private func event(_ kind: SessionEvent.Kind, name: String, waitingFor: String? = nil,
+                       job: JobInfo?) -> SessionEvent {
+        SessionEvent(kind: kind, ref: SessionRef(host: "studio", id: "abc123"), name: name,
+                     waitingFor: waitingFor, job: job, at: Date())
+    }
+
+    /// The daemon's extraction is ragged. A fragment gets a leading
+    /// ellipsis so it reads as deliberate rather than broken.
+    @Test func aClippedQuestionIsMarkedAsOne() {
+        let job = JobInfo.decode(Data(Self.blockedJSON.utf8))
+        let e = event(.blocked, name: "linear cuanto bill project", job: job)
+        #expect(e.body?.hasPrefix("…prod), and do you want") == true)
+        #expect(SessionEvent.looksClipped("prod), and do you") == true)
+        #expect(SessionEvent.looksClipped("and do you want") == true)
+        #expect(SessionEvent.looksClipped("Bugs 2 and 3 fixed") == false)
+        #expect(SessionEvent.looksClipped("4 files changed") == false)
+        #expect(SessionEvent.looksClipped("…already marked") == false)
+    }
+
+    /// `waitingFor` is the roster's own word and wins where it exists;
+    /// the job file is what answers when it does not, which is most of
+    /// the time.
+    @Test func theRostersOwnWordWinsWhenItHasOne() {
+        let job = JobInfo.decode(Data(Self.blockedJSON.utf8))
+        #expect(event(.blocked, name: "a", waitingFor: "approve rm -rf?", job: job).body == "approve rm -rf?")
+        #expect(event(.blocked, name: "a", job: nil).body == nil)
+    }
+
+    /// Mid-question is not the moment to list pull requests.
+    @Test func theReceiptIsForEndingsOnly() {
+        let job = JobInfo.decode(Data(Self.blockedJSON.utf8))
+        #expect(event(.blocked, name: "a", job: job).receipt == nil)
+        #expect(event(.done, name: "a", job: JobInfo.decode(Data(Self.doneJSON.utf8))).receipt
+                == "#4916 · #4917 · Life After Carto")
+    }
+
+    /// The host goes last so the ellipsis eats it and not the name, and it
+    /// is drawn at all only when the fleet is plural.
+    @Test func theHostRidesTheTailOfTheTitle() {
+        let e = event(.blocked, name: "linear cuanto bill project", job: nil)
+        #expect(e.title(showingHost: false) == "✋ linear cuanto bill project")
+        #expect(e.title(showingHost: true) == "✋ linear cuanto bill project · studio")
+        #expect(event(.done, name: "cdn", job: nil).title(showingHost: false) == "✓ cdn")
+    }
+
+    /// `ccc watch` keeps its sentence — its `kind` column makes the verb
+    /// redundant, but a log line reads as prose — and gains the payload
+    /// without repeating what the sentence already carried.
+    @Test func theWatchLineSaysEachThingOnce() {
+        let job = JobInfo.decode(Data(Self.doneJSON.utf8))
+        #expect(event(.done, name: "debug cuanto", job: job).watchLine
+                == "debug cuanto finished — Bugs 2 and 3 fixed and shipped as PRs #4917 and #4916.  [#4916 · #4917 · Life After Carto]")
+        // waitingFor is already in the headline, so it is not said twice.
+        #expect(event(.blocked, name: "a", waitingFor: "approve rm -rf?", job: nil).watchLine
+                == "a is waiting: approve rm -rf?")
+    }
+
+    // MARK: the probe on disk
+
+    @Test func anUnchangedJobFileCostsAStatAndNoRead() throws {
+        let dir = URL.temporaryDirectory.appending(path: "ccc-jobs-\(UUID().uuidString)")
+        let job = dir.appending(path: "abc123")
+        try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
+        try Data(Self.doneJSON.utf8).write(to: job.appending(path: "state.json"))
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let probe = JobProbe(jobsDirectory: dir)
+        #expect(probe.info(forJob: "abc123")?.receipt == "#4916 · #4917 · Life After Carto")
+        #expect(probe.stats == JobProbe.Counters(reads: 1, hits: 0, misses: 0))
+        for _ in 0..<5 { _ = probe.info(forJob: "abc123") }
+        #expect(probe.stats == JobProbe.Counters(reads: 1, hits: 5, misses: 0))
+        // An interactive session has no job directory at all.
+        #expect(probe.info(forJob: "nosuch") == nil)
+        #expect(probe.stats.misses == 1)
+    }
+
+    /// The draft reading (v5) now rides the parsed file instead of opening
+    /// it a second time, and must not have changed its mind about anything.
+    @Test func theDraftReadingAgreesWithItsOlderSelf() {
+        let unprompted = Data(#"{"needs": "send a prompt to start"}"#.utf8)
+        let asking = Data(Self.blockedJSON.utf8)
+        for data in [unprompted, asking] {
+            let viaFile = DraftProbe.reading(fromStateJSON: data)
+            let viaJob = JobInfo.decode(data).flatMap(DraftProbe.reading(from:))
+            #expect(viaFile == viaJob)
+        }
+        #expect(DraftProbe.reading(from: JobInfo(needs: "send a prompt to start")) == true)
+        #expect(DraftProbe.reading(from: JobInfo(detail: "something else")) == false)
+        #expect(DraftProbe.reading(from: JobInfo(children: [.init(id: "1")])) == nil)
+    }
+
+    /// Like the model and the worktree before it, the reading is joined
+    /// where the daemon's files are and rides the row across the hop —
+    /// and an older ccc on the far side simply sends no `job` key.
+    @Test func theRowCarriesTheJobAcrossTheWire() throws {
+        let session = Session(id: "abc123", cwd: "/x", kind: .background, startedAt: Date(), state: .blocked)
+        let row = SessionRow(session: session, host: "studio", model: nil, attached: false,
+                             job: JobInfo.decode(Data(Self.blockedJSON.utf8)))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let back = try JSONDecoder.roster.decode(SessionRow.self, from: encoder.encode(row))
+        #expect(back.job?.suggestedReply == "yes go ahead, include the fake capture piece")
+        #expect(back.job?.receipt == "#4908 · #4909")
+
+        // An older ccc on the far side sends the same row without the key.
+        var older = try #require(try JSONSerialization.jsonObject(with: encoder.encode(row)) as? [String: Any])
+        older.removeValue(forKey: "job")
+        let wire = try JSONSerialization.data(withJSONObject: older)
+        #expect(try JSONDecoder.roster.decode(SessionRow.self, from: wire).job == nil)
+    }
+}

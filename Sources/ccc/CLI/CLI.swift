@@ -621,8 +621,7 @@ enum CLI {
                 if json {
                     printJSON(event)
                 } else {
-                    let mark = event.kind == .blocked ? "⏸" : (event.kind == .done ? "✓" : "✗")
-                    print("\(clock.string(from: event.at))  \(mark) \(event.kind.rawValue.padding(toLength: 7, withPad: " ", startingAt: 0))  \(event.ref.description.padding(toLength: 14, withPad: " ", startingAt: 0))  \(event.headline)")
+                    print("\(clock.string(from: event.at))  \(event.mark) \(event.kind.rawValue.padding(toLength: 7, withPad: " ", startingAt: 0))  \(event.ref.description.padding(toLength: 14, withPad: " ", startingAt: 0))  \(event.watchLine)")
                 }
                 fflush(stdout)
             }
@@ -1474,6 +1473,15 @@ enum CLI {
         }
         if let j = s.modelJoin {
             print("model join   last \(ms(j.lastMs))  mean \(ms(j.meanMs))  reads \(j.reads)  cached \(j.hits)  gone \(j.misses)  well lookups \(j.lookups) (\(j.unresolved) unresolved)")
+        }
+        if let j = s.jobJoin {
+            // No wall time of its own: it rides the block `model join`
+            // already times. What it needs to say is how often the cadence
+            // actually opens a file, since it runs for every local
+            // background row on every tick.
+            let total = j.reads + j.hits
+            let share = total > 0 ? String(format: "  %.0f%% cached", 100 * Double(j.hits) / Double(total)) : ""
+            print("job join     reads \(j.reads)  cached \(j.hits)  none \(j.misses)\(share)")
         }
         if let n = s.notifications {
             // Posted but not authorized is the banner that never reached

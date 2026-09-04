@@ -92,11 +92,26 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         mutedLoaded = true
     }
 
+    /// More than one host is actually answering, which is the only case
+    /// where naming the host tells you anything (v10). One hop means "on
+    /// studio" is a constant with a single value.
+    private var fleetIsPlural: Bool {
+        poller.state.hosts.filter { $0.error == nil && $0.pollCount > 0 }.count > 1
+    }
+
     private func post(_ event: SessionEvent) {
         let content = UNMutableNotificationContent()
-        content.title = event.headline
-        if !event.ref.isLocal { content.subtitle = "on \(event.ref.host)" }
-        content.body = event.kind == .blocked ? "Click to attach" : event.ref.description
+        // Every line carries payload or is not drawn (v10). What was here
+        // — "<name> is waiting" over "on studio" over "Click to attach" —
+        // was three constants and a name: everything that notifies is
+        // waiting, there is one host, and the click has always attached.
+        content.title = event.title(showingHost: fleetIsPlural)
+        // The receipt, for a session that ended having produced something:
+        // "done" and "done, and there are two PRs" are different decisions.
+        if let receipt = event.receipt { content.subtitle = receipt }
+        // Whole and untruncated — macOS clamps it to two lines and gives
+        // the rest back on hover, a better cut than any computed here.
+        content.body = event.body ?? event.ref.description
         content.sound = event.kind == .blocked ? .default : nil
         content.threadIdentifier = event.ref.description
         content.userInfo = ["host": event.ref.host, "id": event.ref.id]

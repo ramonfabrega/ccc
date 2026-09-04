@@ -732,7 +732,8 @@ final class PaneController {
                 stats = StatsInfo(pid: me, footprintBytes: ProcessStats.footprint(of: me) ?? 0, childPID: nil,
                                   childFootprintBytes: nil, lastPollMs: state.lastPollMs,
                                   meanPollMs: state.meanPollMs, pollCount: state.pollCount,
-                                  modelJoin: state.modelJoin, hosts: state.hosts.map(HostPollStats.init),
+                                  modelJoin: state.modelJoin, jobJoin: state.jobJoin,
+                                  hosts: state.hosts.map(HostPollStats.init),
                                   ptyBytesIn: 0, ptyBytesPerSecond: 0,
                                   uptimeSeconds: ProcessStats.uptime(of: me) ?? 0)
             }

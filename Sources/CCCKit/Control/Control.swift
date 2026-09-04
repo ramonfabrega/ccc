@@ -203,6 +203,12 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     /// the repository is and carried across the hop like the model; nil
     /// off the wire from an older ccc, and nil for a plain folder.
     public var worktree: WorktreeInfo?
+    /// What the daemon's job file says this session is doing or asking
+    /// (v10, `JobProbe`): the roster carries a state, this carries the
+    /// sentence. Joined where the daemon's files are and carried across
+    /// the hop like the model; nil off the wire from an older ccc, and nil
+    /// for an interactive session, which has no job directory.
+    public var job: JobInfo?
 
     /// The address: what `ccc attach` takes and the roster's row identity.
     public var ref: SessionRef { SessionRef(host: host, id: session.id) }
@@ -223,7 +229,8 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     public var rank: Int { draft ? 2 : session.rank }
 
     public init(session: Session, host: String = Host.localName, model: String?, attached: Bool,
-                archived: Bool = false, pinned: Bool = false, draft: Bool = false, worktree: WorktreeInfo? = nil) {
+                archived: Bool = false, pinned: Bool = false, draft: Bool = false, worktree: WorktreeInfo? = nil,
+                job: JobInfo? = nil) {
         self.session = session
         self.host = host
         self.model = model
@@ -232,6 +239,7 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         self.pinned = pinned
         self.draft = draft
         self.worktree = worktree
+        self.job = job
     }
 
     /// Lenient on everything ccc adds, because these rows now arrive over
@@ -251,6 +259,7 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
         pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
         draft = try container.decodeIfPresent(Bool.self, forKey: .draft) ?? false
         worktree = try? container.decodeIfPresent(WorktreeInfo.self, forKey: .worktree)
+        job = try? container.decodeIfPresent(JobInfo.self, forKey: .job)
     }
 }
 
@@ -394,6 +403,12 @@ public struct StatsInfo: Codable, Sendable {
     /// on. Optional as one field so an older server (which sends no such
     /// key) still decodes here — the wire rule in `ControlWireTests`.
     public var modelJoin: ModelJoinStats?
+    /// The job join's cache behaviour (v10). It has no wall time of its
+    /// own — `modelJoin.lastMs` times the whole detached block, this one
+    /// included — but it needs its counters, because unlike the model join
+    /// it runs for every local background row on every tick. Optional for
+    /// the same wire reason as `modelJoin`.
+    public var jobJoin: JobProbe.Counters?
     /// Per host, once there is more than one (v2). Optional for the same
     /// wire reason as `modelJoin`.
     public var hosts: [HostPollStats]?
@@ -428,12 +443,13 @@ public struct StatsInfo: Codable, Sendable {
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
-                hosts: [HostPollStats]? = nil,
+                jobJoin: JobProbe.Counters? = nil, hosts: [HostPollStats]? = nil,
                 ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double,
                 paneFramesPresented: Int? = nil, paneLastPresentedSecondsAgo: Double? = nil,
                 build: BuildInfo? = .current) {
         self.build = build
         self.modelJoin = modelJoin
+        self.jobJoin = jobJoin
         self.hosts = hosts
         self.paneFramesPresented = paneFramesPresented
         self.paneLastPresentedSecondsAgo = paneLastPresentedSecondsAgo

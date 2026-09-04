@@ -38,6 +38,12 @@ public struct HostPoll: Sendable, Equatable {
     public var lastModelJoinMs: Double?
     public var meanModelJoinMs: Double?
     public var modelCounters: ModelProbe.Counters?
+    /// The job join's cache behaviour (v10), counted for the same reason
+    /// the model join's is: this one runs for **every** local background
+    /// row on **every** tick, so "what does the cadence cost" has to be a
+    /// number and not an argument. A terminal session's job file never
+    /// changes again, so the steady state should be overwhelmingly `hits`.
+    public var jobCounters: JobProbe.Counters?
     /// Calls into `WellPath.locateTranscript` and how many came back
     /// empty. A miss is the expensive shape: the direct path fails and
     /// the fallback stats every well (~100 here), and for a session
@@ -84,6 +90,9 @@ public final class HostPoller {
     private let probe = ModelProbe()
     /// The worktree column (v6), local rows only — same rule as the model.
     private let worktrees = WorktreeProbe()
+    /// What the daemon's job file says (v10), local rows only — same rule
+    /// again, and the read the draft column used to make for itself.
+    private let jobs = JobProbe()
     private var loop: Task<Void, Never>?
     private var inFlight: Task<Void, Never>?
     private var totalPollMs: Double = 0
@@ -213,6 +222,7 @@ public final class HostPoller {
         let decoded = RosterDecoder.decode(data)
         let probe = self.probe
         let worktrees = self.worktrees
+        let jobs = self.jobs
         let attached = attachedRef
         let known = transcriptPaths
         let hostName = state.host
@@ -246,15 +256,22 @@ public final class HostPoller {
                     }
                 }
                 let ref = SessionRef(host: hostName, id: session.id)
+                // The job reading (v10): what the daemon's own file says
+                // this session is doing or asking. Same shape as the model
+                // join — local only, carried across the hop on the row —
+                // and it subsumes the read the draft reading used to do
+                // for itself, so `state.json` is opened once per row.
+                let job = isLocal && session.kind == .background ? jobs.info(forJob: session.id) : nil
                 // The draft reading (v5) is the same kind of join: the
                 // daemon's job file, which only this Mac can open for its
                 // own sessions; the far side's ccc answers for its rows.
-                let draft = isLocal && DraftProbe.isDraft(session, transcriptFound: found[session.sessionId ?? ""] != nil)
+                let draft = isLocal && DraftProbe.isDraft(session, job: job,
+                                                          transcriptFound: found[session.sessionId ?? ""] != nil)
                 // The worktree reading (v6): files, and one `git rev-list`
                 // per moved sha — steady state costs no process at all.
                 let worktree = isLocal ? worktrees.info(forCwd: session.cwd) : nil
                 return SessionRow(session: session, host: hostName, model: model, attached: ref == attached, draft: draft,
-                                  worktree: worktree)
+                                  worktree: worktree, job: job)
             }
             return (rows, found, lookups, unresolved)
         }.value
@@ -281,6 +298,7 @@ public final class HostPoller {
         state.transcriptLookups += lookups
         state.transcriptUnresolved += unresolved
         state.modelCounters = probe.stats
+        state.jobCounters = isLocal ? jobs.stats : nil
         recordJoin(joinStarted)
         succeed(started)
     }

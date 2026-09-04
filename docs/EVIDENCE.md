@@ -1747,3 +1747,105 @@ added, measured, and removed.
 
 6 tests on `HostSetup` — the refusals and what gets written, which is the
 half that needs no reachable Mac. 367 total.
+
+## v10 slice 1 — the banner had one word of payload (2026-09-04)
+
+The roster is thin by design and the notification inherited that
+thinness. What ccc posted for a blocked session was
+`"<name> is waiting"` over `"on studio"` over `"Click to attach"`:
+**three constants and a name.** Everything that notifies is waiting,
+there is one hop so the host has one value, and the click has attached
+since v3. Strip what never varies and the whole banner is the session's
+name.
+
+### What the daemon already had
+
+`~/.claude/jobs/<id>/state.json` — the file `DraftProbe` has been opening
+since v5 for one boolean. Counted across the 20 jobs on studio:
+
+- `detail` in **20 of 20**, and its meaning shifts with the state:
+  `working` → the live activity, `blocked` → the question, `done` → the
+  result. Watched live, one session read `"PR #50 ready to merge;
+  awaiting go-ahead"`, then `"Reading the MIME table"` ten minutes later.
+- `output.result` on every finished job, 20–460 chars, **equal to
+  `detail` in 12 of 15** and longer in the other 3 (a stale progress
+  line left behind), which is why the result wins for `done`.
+- `children` in 14 of 20 — pull requests and published artifacts, with
+  kind and title.
+- `needs` and `suggestedReply` on the blocked one.
+
+The finding that settles it: the single session the roster showed as
+`blocked` carried **no `waitingFor` at all**, while its job file held
+both the question and a proposed answer. `waitingFor` is documented, and
+absent exactly when it is wanted.
+
+### The join
+
+`JobProbe` + `JobInfo`, the same shape as the model and worktree joins:
+local rows only, cached on the file's (size, mtime), carried across the
+hop on the row so an older ccc on the far side simply sends no `job`
+key. It **subsumes** the read `DraftProbe` was making for itself, so
+`state.json` is opened once per row rather than twice.
+
+`ccc list --json` on studio: **19 of 19 rows carry a job.**
+
+### What it costs, measured before it was believed
+
+28 job directories (19 with a readable file, 9 without). Cold, every
+file read: **5.19 ms**. Warm, one `stat` per row: **0.218 ms** mean over
+50 passes. Against the running build's `roster poll mean 201 ms` and
+`model join mean 20 ms` over 2,490 ticks, the steady state is **~0.1% of
+a tick**, and the worst case — every job file changing at once — is
+bounded at the cold number. Reported by `ccc stats` as `job join` with
+its cached share, because a join that runs for every local row on every
+tick has to be a number and not an intuition.
+
+The join has no wall time of its own: `model join`'s `lastMs` already
+times the whole detached block, this included. The counters are what it
+adds.
+
+### The shape that won
+
+Mocked at true banner width over four real sessions before any of it was
+written (the artifact is spent; the argument is here). Three candidates:
+name-then-payload, payload-as-title, and typed-by-state. Payload-as-title
+lost on a fact — a 460-char result has no natural 44-character headline,
+so *we* would have to cut it, and macOS clamps to two lines and gives the
+rest back on hover for free. So: **put the whole string in the body and
+let macOS truncate.**
+
+Typed-by-state lost as a *shape* and won as a *line*: the receipt
+(`#4916 · #4917 · Life After Carto`) changes what you do next, so it is
+a subtitle that appears when `children` is non-empty, not a second code
+path.
+
+The branch was considered and cut. It does not move the decision a
+banner asks you to make, it is present in 11 of 20, and about half of
+those repeat what the name already said (`cdn` →
+`worktree-cdn-global-purge`). It belongs in the roster row, where it
+already is.
+
+### Two details that only show up at real width
+
+The **host goes last**. A macOS title clips near 36 characters and
+`✋ studio · linear cuanto bill project` is 37 — leading with the host
+feeds the ellipsis the one token that identifies the session. It is also
+drawn only when more than one host is answering, which the poller knows.
+
+The **fragment gets an ellipsis**. The daemon's extraction is ragged: the
+live blocked question began `"prod), and do you want fake captures…"`.
+`looksClipped` is structural — a first character that cannot open a
+sentence — and prefixes `…` so it reads as deliberate. Shown as written,
+never parsed (the boundary rule).
+
+### Measured
+
+15 tests on `JobProbe`, the composition, and the wire, including the
+lenient cases (a wrong type is a dropped field, a numeric PR id, a file
+with nothing usable is no reading at all) and that the draft reading
+**agrees with its older self** now that it rides the parsed file. 382
+total, from 367.
+
+`ccc watch` gained the same payload and now prints `event.mark`, so the
+banner and the log line cannot disagree about a symbol — its blocked
+mark moves from `⏸` to `✋`, which is the roster header's own vocabulary.

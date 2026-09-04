@@ -45,8 +45,25 @@ public enum DraftProbe {
         return nil
     }
 
+    /// The same reading against an already-parsed job file (v10). The
+    /// poller opens `state.json` once per row for `JobProbe` and hands the
+    /// result here, so the draft reading costs no second read.
+    public static func reading(from job: JobInfo) -> Bool? {
+        if let needs = job.needs { return needs.contains(needsPhrase) }
+        if let detail = job.detail { return detail.contains(needsPhrase) }
+        return nil
+    }
+
     /// The full reading for one local row. `transcriptFound` is the model
     /// join's answer for the same row, so the fallback costs nothing extra.
+    public static func isDraft(_ session: Session, job: JobInfo?, transcriptFound: Bool) -> Bool {
+        guard couldBeDraft(session) else { return false }
+        if let job, let settled = reading(from: job) { return settled }
+        return !transcriptFound
+    }
+
+    /// The reading straight off disk, for callers with no `JobProbe` —
+    /// `ccc list` in a one-shot, and the tests that pin the phrase.
     public static func isDraft(_ session: Session, transcriptFound: Bool,
                                jobsDirectory: URL = defaultJobsDirectory) -> Bool {
         guard couldBeDraft(session) else { return false }

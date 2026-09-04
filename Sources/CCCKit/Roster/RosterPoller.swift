@@ -51,6 +51,8 @@ public final class RosterPoller {
         /// The local host's join; a remote host's join happened on the far
         /// side and is not ours to measure.
         public var modelJoin: ModelJoinStats? { hosts.first { $0.host == Host.localName }?.modelJoin }
+        /// The job join runs on the local host only, like the model join.
+        public var jobJoin: JobProbe.Counters? { hosts.first { $0.host == Host.localName }?.jobCounters }
 
         public func host(_ name: String) -> HostPoll? { hosts.first { $0.host == name } }
 

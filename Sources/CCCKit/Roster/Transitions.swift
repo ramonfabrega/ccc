@@ -20,20 +20,29 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     public var name: String?
     /// What it is waiting on, for `blocked`.
     public var waitingFor: String?
+    /// What the daemon's job file said at the moment of the transition
+    /// (v10). The roster says *that* it is your turn; this is what for.
+    public var job: JobInfo?
     public var at: Date
 
-    public init(kind: Kind, ref: SessionRef, name: String?, waitingFor: String? = nil, at: Date) {
+    public init(kind: Kind, ref: SessionRef, name: String?, waitingFor: String? = nil,
+                job: JobInfo? = nil, at: Date) {
         self.kind = kind
         self.ref = ref
         self.name = name
         self.waitingFor = waitingFor
+        self.job = job
         self.at = at
     }
 
     /// The session as a person would name it: its name, else its ref.
     public var subject: String { name ?? ref.description }
 
-    /// One sentence, the same in the notification and on the watch line.
+    /// One sentence, for the places that want a sentence: `ccc watch`'s
+    /// line, which already has a `kind` column, and `ccc stats`' last
+    /// event. **Not the banner's title** — a banner that spends its bold
+    /// line on "is waiting" has said nothing, since everything that
+    /// notifies is waiting (v10).
     public var headline: String {
         switch kind {
         case .blocked: return "\(subject) is waiting" + (waitingFor.map { ": \($0)" } ?? "")
@@ -41,6 +50,75 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         case .failed: return "\(subject) failed"
         case .stopped: return "\(subject) stopped"
         }
+    }
+
+    /// The payload: what the session is asking, or what it did. Whole and
+    /// untruncated on purpose — the banner clamps it to two lines and
+    /// gives the rest back on hover, which is a better cut than any this
+    /// side could compute (v10).
+    ///
+    /// `waitingFor` is the roster's own word for it and wins when it is
+    /// there; measured 2026-09-04, it usually is not — the one blocked
+    /// session on studio carried none while its job file held the whole
+    /// question.
+    public var body: String? {
+        if kind == .blocked, let waitingFor, !waitingFor.isEmpty { return waitingFor }
+        let state: Session.State = kind == .blocked ? .blocked : .done
+        guard let said = job?.say(for: state) else { return nil }
+        // The daemon's extraction is ragged — a real one began "prod), and
+        // do you want fake captures…" — so a fragment gets a leading
+        // ellipsis and reads as deliberate instead of broken.
+        return Self.looksClipped(said) ? "…\(said)" : said
+    }
+
+    /// What came out of it: the receipt line, for a session that ended
+    /// having produced something. `nil` while blocked — mid-question is
+    /// not the moment to list pull requests.
+    public var receipt: String? {
+        guard kind != .blocked else { return nil }
+        return job?.receipt
+    }
+
+    /// One character for the kind, so the banner's title need not spend a
+    /// third of its width on a word. `✋` is the roster's own vocabulary —
+    /// the header already draws `✋ N waiting` — and `ccc watch` prints the
+    /// same mark, because two surfaces disagreeing about a symbol is how
+    /// one definition becomes two.
+    public var mark: String {
+        switch kind {
+        case .blocked: return "✋"
+        case .done: return "✓"
+        case .failed: return "✗"
+        case .stopped: return "◼"
+        }
+    }
+
+    /// The banner's title: the mark, the name, and the host only when the
+    /// fleet has more than one answering (v10). The host goes **last** so
+    /// that the ellipsis eats it rather than the name — a macOS title
+    /// clips around 36 characters, and `✋ studio · linear cuanto bill
+    /// project` is 37, which would lose the one token that identifies the
+    /// session.
+    public func title(showingHost: Bool) -> String {
+        "\(mark) \(subject)" + (showingHost ? " · \(ref.host)" : "")
+    }
+
+    /// `ccc watch`'s line: the sentence, plus whatever the sentence did
+    /// not already carry. The `kind` column makes the verb redundant
+    /// there, but a log line reads better as prose than as a banner.
+    public var watchLine: String {
+        var line = headline
+        if let body, !headline.hasSuffix(body) { line += " — \(body)" }
+        if let receipt { line += "  [\(receipt)]" }
+        return line
+    }
+
+    /// A sentence that starts mid-clause. Cheap and structural: a first
+    /// character that cannot open one.
+    static func looksClipped(_ text: String) -> Bool {
+        guard let first = text.first else { return false }
+        if first.isUppercase || first.isNumber { return false }
+        return first.isLetter || ")]},;:".contains(first)
     }
 }
 
@@ -97,13 +175,14 @@ public struct TransitionDetector: Sendable, Equatable {
                     // "blocked" that is not your turn (v5). It becomes news
                     // when it is prompted and then asks something.
                     guard !key.draft else { continue }
-                    events.append(SessionEvent(kind: .blocked, ref: ref, name: s.name, waitingFor: key.waitingFor, at: now))
+                    events.append(SessionEvent(kind: .blocked, ref: ref, name: s.name, waitingFor: key.waitingFor,
+                                               job: row.job, at: now))
                 case .done, .failed, .stopped:
                     // Only a session that was live is news when it ends; a
                     // new row that arrives already finished is history.
                     guard let was = before, was.state == .working || was.state == .blocked else { continue }
                     events.append(SessionEvent(kind: key.state == .done ? .done : key.state == .failed ? .failed : .stopped,
-                                               ref: ref, name: s.name, at: now))
+                                               ref: ref, name: s.name, job: row.job, at: now))
                 case .working, nil:
                     continue
                 }
