@@ -13,6 +13,11 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     /// default branch, *local* (`master`, `main`): the nightly
     /// fast-forward is a local act, and `origin/master` may lag it.
     public var base: String
+    /// Whether `base` was recorded for this branch (`branch.<b>.ccc-base`,
+    /// written by `ccc spawn --base` and `ccc base`, or VS Code's
+    /// `vscode-merge-base`) rather than being the repository's default
+    /// branch. Nil off an older ccc, where it was always the default.
+    public var baseRecorded: Bool?
     /// Commits on `branch` that `base` lacks — what a merge would bring.
     public var ahead: Int
     /// Commits on `base` that `branch` lacks — what makes a fast-forward
@@ -62,6 +67,7 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         branch = try c.decode(String.self, forKey: .branch)
         base = try c.decode(String.self, forKey: .base)
+        baseRecorded = try c.decodeIfPresent(Bool.self, forKey: .baseRecorded)
         ahead = try c.decode(Int.self, forKey: .ahead)
         behind = try c.decode(Int.self, forKey: .behind)
         repo = try c.decode(String.self, forKey: .repo)
@@ -139,6 +145,9 @@ public final class WorktreeProbe: @unchecked Sendable {
     private var cache: [String: Entry] = [:]
     /// Per repository: the default branch, found once.
     private var bases: [String: String] = [:]
+    /// Per repository: the bases recorded in `.git/config`, re-read when
+    /// the file's mtime moves (one `stat` per row per tick otherwise).
+    private var recorded: [String: (modified: Date?, bases: [String: String])] = [:]
     /// Per repository: master's own standing against origin (unpulled,
     /// unpushed), keyed like `cache`, so twenty rows on one repo cost one
     /// count.
@@ -232,6 +241,144 @@ public final class WorktreeProbe: @unchecked Sendable {
         return nil
     }
 
+    // MARK: the recorded base (item 18)
+
+    /// The base recorded for `branch` in the repository's config, if any.
+    /// Caller holds `lock`. Re-parsed when the file's mtime moves.
+    private func recordedBase(for branch: String, commonDir: String, repo: String) -> String? {
+        let path = commonDir + "/config"
+        let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        if let known = recorded[repo], known.modified == modified { return known.bases[branch] }
+        let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        let bases = Self.recordedBases(in: text)
+        recorded[repo] = (modified, bases)
+        return bases[branch]
+    }
+
+    /// `[branch "<name>"]` sections of a git config, read for two keys:
+    /// ours, `ccc-base = <branch>`, and VS Code's `vscode-merge-base =
+    /// origin/<branch>` (honoured because it means the same thing and is
+    /// already in the fleet's configs; ours wins where both exist).
+    /// Lenient: anything that is not one of those two lines is skipped.
+    public static func recordedBases(in config: String) -> [String: String] {
+        var ours: [String: String] = [:]
+        var theirs: [String: String] = [:]
+        var section: String?
+        for raw in config.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") {
+                section = nil
+                let prefix = "[branch \""
+                if line.hasPrefix(prefix), let end = line.range(of: "\"]") {
+                    section = String(line[line.index(line.startIndex, offsetBy: prefix.count)..<end.lowerBound])
+                }
+                continue
+            }
+            guard let section, !line.hasPrefix("#"), !line.hasPrefix(";") else { continue }
+            let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count == 2, !parts[1].isEmpty else { continue }
+            switch parts[0].lowercased() {
+            case "ccc-base":
+                ours[section] = parts[1]
+            case "vscode-merge-base":
+                theirs[section] = parts[1].hasPrefix("origin/") ? String(parts[1].dropFirst("origin/".count)) : parts[1]
+            default:
+                break
+            }
+        }
+        return theirs.merging(ours) { _, mine in mine }
+    }
+
+    /// Record — or with `nil`, forget — the base for a branch:
+    /// `git config branch.<branch>.ccc-base <base>` in the repository.
+    /// The one write in this file, and it is to a key of ours in git's
+    /// own config, never to a ref. The next tick reads it (mtime).
+    public static func recordBase(_ base: String?, for branch: String, repo: String, git: String = defaultGit) throws {
+        if let base {
+            _ = try Git.run(git, ["-C", repo, "config", "branch.\(branch).ccc-base", base])
+        } else {
+            do {
+                _ = try Git.run(git, ["-C", repo, "config", "--unset", "branch.\(branch).ccc-base"])
+            } catch let failure as Git.Failure where failure.status == 5 {
+                // git's "no such key": nothing to forget.
+            }
+        }
+    }
+
+    /// The git checkout a folder is in — a linked worktree, or the main
+    /// checkout itself (whose `.git` is a directory) — with the branch it
+    /// is on. Nil outside any repository. What `ccc spawn` asks before
+    /// cutting a worktree: which repo, and which branch the asker is on.
+    public struct Checkout: Equatable, Sendable {
+        public var repo: String
+        public var commonDir: String
+        public var branch: String?
+    }
+
+    public static func checkout(of cwd: String) -> Checkout? {
+        if let layout = layout(of: cwd) {
+            return Checkout(repo: layout.repo, commonDir: layout.commonDir, branch: layout.branch)
+        }
+        var dir = URL(filePath: cwd).standardizedFileURL
+        while true {
+            let dotGit = dir.appending(path: ".git")
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                let head = (try? String(contentsOf: dotGit.appending(path: "HEAD"), encoding: .utf8))?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let branch = head.hasPrefix("ref: refs/heads/") ? String(head.dropFirst("ref: refs/heads/".count)) : nil
+                return Checkout(repo: dir.path, commonDir: dotGit.path, branch: branch)
+            }
+            let parent = dir.deletingLastPathComponent()
+            guard parent.path != dir.path, dir.path != "/" else { return nil }
+            dir = parent
+        }
+    }
+
+    /// A worktree name from a session name: lowercase, `-` for anything a
+    /// path or a branch would mind, nil when nothing is left.
+    public static func worktreeName(from name: String) -> String? {
+        var out = ""
+        for scalar in name.lowercased().unicodeScalars {
+            switch scalar {
+            case "a"..."z", "0"..."9", "-", "_", ".": out.unicodeScalars.append(scalar)
+            default: if !out.hasSuffix("-") { out.append("-") }
+            }
+        }
+        let trimmed = out.trimmingCharacters(in: CharacterSet(charactersIn: "-."))
+        return trimmed.isEmpty ? nil : String(trimmed.prefix(40))
+    }
+
+    /// Cut a worktree the way the harness lays them out —
+    /// `<repo>/.claude/worktrees/<name>` on `worktree-<name>` — off `base`,
+    /// and record the base for it (item 18). Refuses a base that does not
+    /// resolve and a name a shell or git would mind; git's own refusals
+    /// (a branch that exists, a path that does) pass through as the
+    /// sentence, nothing made.
+    public static func createWorktree(named name: String, base: String, repo: String,
+                                      git: String = defaultGit) throws -> SpawnResult.MadeWorktree {
+        guard worktreeName(from: name) == name else {
+            throw SpawnError(description: "'\(name)' is not a worktree name (letters, digits, - _ .)")
+        }
+        let commonDir = repo + "/.git"
+        guard sha(of: base, commonDir: commonDir) != nil else {
+            throw SpawnError(description: "no local branch '\(base)' in \(repo) to cut a worktree from")
+        }
+        let branch = "worktree-\(name)"
+        let path = repo + "/.claude/worktrees/\(name)"
+        guard !FileManager.default.fileExists(atPath: path) else {
+            throw SpawnError(description: "\(path) already exists; --worktree=<name> picks another")
+        }
+        try FileManager.default.createDirectory(atPath: repo + "/.claude/worktrees", withIntermediateDirectories: true)
+        do {
+            _ = try Git.run(git, ["-C", repo, "worktree", "add", "-q", "-b", branch, path, base])
+        } catch {
+            throw SpawnError(description: "git worktree add \(branch) off \(base): \(error)")
+        }
+        try recordBase(base, for: branch, repo: repo, git: git)
+        return SpawnResult.MadeWorktree(path: path, branch: branch, base: base)
+    }
+
     /// The repository's default branch, local: what `origin/HEAD` names
     /// when that branch exists here, else `master`, else `main`. Nil when
     /// none of them exists, which is a repo this cannot merge into.
@@ -250,14 +397,22 @@ public final class WorktreeProbe: @unchecked Sendable {
     public func info(forCwd cwd: String) -> WorktreeInfo? {
         guard let layout = Self.layout(of: cwd), let branch = layout.branch else { return nil }
         let base: String
+        let baseRecorded: Bool
         lock.lock()
-        // A cached name is trusted only while it still resolves: after
-        // `git branch -m master main` the old name has no ref, and a probe
-        // that lives as long as the app (the poller's) would otherwise
-        // blank the column for every worktree of that repo until relaunch
-        // (found 2026-09-04). One ref read per row per tick buys the check.
-        if let known = bases[layout.repo], Self.sha(of: known, commonDir: layout.commonDir) != nil {
+        // The base, in order (queue item 18): the one recorded for this
+        // branch in the repo's config, else the default branch. Either is
+        // trusted only while it still resolves: after `git branch -m
+        // master main` the old name has no ref, and a probe that lives as
+        // long as the app (the poller's) would otherwise blank the column
+        // for every worktree of that repo until relaunch (found
+        // 2026-09-04). One ref read per row per tick buys the check.
+        if let pinned = recordedBase(for: branch, commonDir: layout.commonDir, repo: layout.repo),
+           Self.sha(of: pinned, commonDir: layout.commonDir) != nil {
+            base = pinned
+            baseRecorded = true
+        } else if let known = bases[layout.repo], Self.sha(of: known, commonDir: layout.commonDir) != nil {
             base = known
+            baseRecorded = false
         } else {
             guard let found = Self.defaultBranch(commonDir: layout.commonDir) else {
                 bases[layout.repo] = nil
@@ -266,6 +421,7 @@ public final class WorktreeProbe: @unchecked Sendable {
             }
             bases[layout.repo] = found
             base = found
+            baseRecorded = false
         }
         lock.unlock()
         guard branch != base else { return nil }   // a worktree on master itself has nothing to land
@@ -288,6 +444,7 @@ public final class WorktreeProbe: @unchecked Sendable {
         lock.unlock()
         guard let (ahead, behind) = count(base: base, branch: branch, in: layout.repo) else { return nil }
         var info = WorktreeInfo(branch: branch, base: base, ahead: ahead, behind: behind, repo: layout.repo)
+        info.baseRecorded = baseRecorded
         if origin {
             info.unpushed = unpushedCount(of: branch, in: layout.repo)
             // ⇣ on the branch only once origin has it (slice 7): before the
@@ -747,6 +904,68 @@ extension ClaudeCLI {
         let result = try await run(argv, accepting: [0, 1], program: "ccc")
         let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
         return MergeOutcome(merged: result.status == 0, said: said)
+    }
+
+    /// What `ccc base <ref>` answers: the branch, what it is measured
+    /// against, and whether that was recorded or is the default.
+    public struct BaseReading: Codable, Sendable, Equatable {
+        public var branch: String
+        public var base: String
+        public var recorded: Bool
+        public var said: String
+    }
+
+    /// `ccc base <id> [<branch> | --clear]` on a remote host: the far
+    /// side's own ccc, where the repository is.
+    public func baseArgv(id: String, set: String?, clear: Bool) -> [String]? {
+        guard let ccc = host.ccc, let destination = host.ssh else { return nil }
+        var words = [ccc, "base", id, "--json"]
+        if let set { words.append(set) }
+        if clear { words.append("--clear") }
+        return sshPrefix(tty: false, destination: destination) + words
+    }
+
+    /// Read, record or forget the base of a session's worktree branch
+    /// (item 18). The read half of what `ccc list --json` shows as
+    /// `worktree.base`, and the write half that the twin rule owes it —
+    /// a worktree cut by hand off `storefront` can say so here, and the
+    /// column, `merge`, `update` and `pull` follow on the next tick.
+    /// Same road as `merge`: the row's cwd from one roster read, then git,
+    /// or the far side's verb for a remote ref.
+    public func base(id: String, set: String? = nil, clear: Bool = false,
+                     probe: WorktreeProbe = WorktreeProbe()) async throws -> BaseReading {
+        if host.isLocal {
+            let roster = RosterDecoder.decode(try await agentsJSON())
+            guard let row = roster.sessions.first(where: { $0.id == id }) else {
+                throw MergeError.noSuchSession(id)
+            }
+            guard let layout = WorktreeProbe.layout(of: row.cwd), let branch = layout.branch else {
+                throw MergeError.notAWorktree(id, row.cwd)
+            }
+            if let set {
+                guard WorktreeProbe.sha(of: set, commonDir: layout.commonDir) != nil else {
+                    throw SpawnError(description: "no local branch '\(set)' in \(layout.repo)")
+                }
+                try WorktreeProbe.recordBase(set, for: branch, repo: layout.repo, git: probe.git)
+            } else if clear {
+                try WorktreeProbe.recordBase(nil, for: branch, repo: layout.repo, git: probe.git)
+            }
+            guard let info = probe.fresh(forCwd: row.cwd) else {
+                throw MergeError.notAWorktree(id, row.cwd)
+            }
+            let recorded = info.baseRecorded ?? false
+            let verb = set != nil ? "recorded" : clear ? "cleared to" : recorded ? "recorded" : "default"
+            return BaseReading(branch: info.branch, base: info.base, recorded: recorded,
+                               said: "\(info.branch) is measured against \(info.base) (\(verb)); \(info.summary)")
+        }
+        guard let argv = baseArgv(id: id, set: set, clear: clear) else { throw MergeError.noRemoteCCC(host.name) }
+        try prepareControlDirectory()
+        let out = try await run(argv, program: "ccc")
+        do {
+            return try JSONDecoder().decode(BaseReading.self, from: out)
+        } catch {
+            throw SpawnError(description: "`ccc base` on \(host.name) answered something that is not a reading (an older ccc there?)")
+        }
     }
 
     /// `ccc push <id> [--base]` on a remote host: the far side's own ccc,

@@ -145,6 +145,16 @@ enum CLI {
                     return 2
                 }
                 return try await mark(MarkChange(rawValue: verb)!, ref: ref, json: json)
+            case "base":
+                // `ccc base <ref>` reads, `ccc base <ref> <branch>` records,
+                // `ccc base <ref> --clear` forgets (item 18).
+                let words = rest.filter { !$0.hasPrefix("--") }
+                guard let text = words.first else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await base(ref: ref, set: words.dropFirst().first, clear: rest.contains("--clear"), json: json)
             case "snapshot":
                 // `--color` asks for resolved RGB alongside the text (item
                 // 12a): the headless oracle's half of the pair whose other
@@ -360,6 +370,31 @@ enum CLI {
         return 0
     }
 
+    /// `ccc base <ref> [<branch> | --clear]` (item 18): what a session's
+    /// worktree branch is measured against, and the one write the column
+    /// owes — record a base for a worktree cut by hand, or forget one.
+    static func base(ref: SessionRef, set: String?, clear: Bool, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let reading: ClaudeCLI.BaseReading
+        do {
+            reading = try await cli.base(id: ref.id, set: set, clear: clear)
+        } catch {
+            stderr("ccc: \(error)")
+            return 1
+        }
+        if json { printJSON(reading) } else { print(reading.said) }
+        return 0
+    }
+
     /// `ccc merge <ref> [--ff-only|--no-ff|--squash]` (v6): land the
     /// session's worktree branch on the repository's default branch, where
     /// the repository is — git here, or the same verb on the far side's
@@ -504,7 +539,7 @@ enum CLI {
     /// is how an agent hands over a prompt with its newlines intact. No
     /// prompt is the draft: the session registers and waits for one.
     static func spawn(_ args: [String], json: Bool) async throws -> Int32 {
-        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort", "--from"]
+        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort", "--from", "--base"]
         var spec = SpawnRequest()
         var hostFlag: String?
         var from: SessionRef?
@@ -526,6 +561,7 @@ enum CLI {
                 case "--model": spec.model = value
                 case "--agent": spec.agent = value
                 case "--permission-mode": spec.permissionMode = value
+                case "--base": spec.base = value
                 case "--from":
                     guard let ref = SessionRef.parse(value) else {
                         stderr("ccc: '\(value)' is not a session ref (id, or host:id)")
@@ -539,6 +575,7 @@ enum CLI {
             }
             switch arg {
             case "--attach": attach = true
+            case "--rc", "--remote-control": spec.rc = true
             // `--worktree` is bare (the harness names it) or `--worktree=<name>`:
             // never `--worktree <name>`, which would eat the prompt's first word.
             case "--worktree": spec.worktree = ""
@@ -1510,11 +1547,17 @@ enum CLI {
             // aligned. The word is the flag the user typed, so nothing has
             // to be looked up to read it.
             let rc = (row.job?.remoteControl ?? false) ? "rc" : "  "
+            // Launched without a mode that answers for itself: this one
+            // stops at its first permission prompt, which on a phone is
+            // "until someone is at a laptop". Drawn only when it asks —
+            // the v11 rule — and only for a background job, since an
+            // interactive session has someone at it by definition.
+            let asks = (row.job?.asksForPermission ?? false) && row.session.kind == .background ? "asks" : "    "
             // The worktree (v6): the repository, then the branch and its
             // standing — the same reading as the window's row.
             let cwd = hosts.shortCwd(row.worktree?.repo ?? s.cwd, host: row.host) + (row.worktree?.baseMark.map { " \($0)" } ?? "")
             let worktree = row.worktree.map { " ⎇ \($0.summary)" } ?? ""
-            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(rc)  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
+            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(rc) \(asks)  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
             // What the session has to say for itself (v10 slice 2), on its
             // own indented line: the row above is columns, and a sentence
             // of up to 460 characters would destroy them. `--json` carries
@@ -1703,15 +1746,22 @@ enum CLI {
                                                   or assert it. The harness suppresses your phone's push while
                                                   a terminal reports focus, so `out` is what says nobody is here
                ccc spawn [--host <name>] [--cwd <dir>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
-                         [--effort <e>] [--worktree[=<name>]] [--from <ref>] [--attach] [--json] [<prompt>... | -]
+                         [--rc] [--effort <e>] [--worktree[=<name>]] [--base <branch>] [--from <ref>] [--attach] [--json]
+                         [<prompt>... | -]
                                                   `claude --bg` on a host (cwd: here, or the far side's home); the
                                                   prompt is the remaining words, or stdin for `-`; none makes a
                                                   draft that waits for one; --from forks a new session off <ref>'s
                                                   transcript, on its host and in its folder unless told otherwise
-                                                  (`--resume <session id> --fork-session`); --attach opens it in the app
+                                                  (`--resume <session id> --fork-session`); --attach opens it in the app.
+                                                  --permission-mode defaults to auto. --worktree from a folder on the
+                                                  default branch is the harness's; from any other branch, or with
+                                                  --base, ccc cuts the worktree off that branch and records the base
+               ccc base <ref> [<branch> | --clear]  what the worktree branch is measured against and lands on: read,
+                                                  record (a worktree cut by hand), or forget — `branch.<b>.ccc-base`
+                                                  in the repo's config; VS Code's vscode-merge-base is honoured too
                ccc merge <ref> [--ff-only|--no-ff|--squash] [--json]
-                                                  land the session's worktree branch on the repo's default branch,
-                                                  where the repo is; --ff-only (default) refuses when master moved;
+                                                  land the session's worktree branch on its base — recorded, else
+                                                  the repo's default branch — where the repo is; --ff-only (default) refuses when the base moved;
                                                   every strategy refuses a dirty or wrong-branch checkout and backs
                                                   out of a conflict (exit 1 with the reason; nothing is ever lost)
                ccc shell <ref> [--repo] | --close a shell pane under the session pane, in <ref>'s folder (over ssh -t

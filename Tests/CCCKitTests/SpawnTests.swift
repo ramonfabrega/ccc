@@ -20,7 +20,7 @@ import Testing
 
     @Test func localIsTheHarnessesWordsWithThePromptLast() {
         let request = SpawnRequest(cwd: "/Users/x/code/app", prompt: "fix the failing test", name: "fix", model: "opus")
-        #expect(local.spawnArgv(request) == ["/Users/x/.local/bin/claude", "--bg", "--name", "fix", "--model", "opus", "fix the failing test"])
+        #expect(local.spawnArgv(request) == ["/Users/x/.local/bin/claude", "--bg", "--name", "fix", "--model", "opus", "--permission-mode", "auto", "fix the failing test"])
         // The cwd is where the child runs, never a word: the harness has no --cwd.
         #expect(local.spawnCwd(request) == "/Users/x/code/app")
         #expect(!local.spawnArgv(request).contains("/Users/x/code/app"))
@@ -32,21 +32,21 @@ import Testing
         let sid = "1e7c5066-32da-4862-acef-0fc6b39f1bf9"
         let request = SpawnRequest(cwd: "/Users/x/cc-test", prompt: "carry on", name: "twin", from: sid)
         #expect(request.isFork)
-        #expect(request.claudeArguments == ["--bg", "--resume", sid, "--fork-session", "--name", "twin", "carry on"])
+        #expect(request.claudeArguments == ["--bg", "--resume", sid, "--fork-session", "--name", "twin", "--permission-mode", "auto", "carry on"])
         // A forked draft: the transcript, no prompt (measured: it restores on the first one).
         let draft = SpawnRequest(from: sid)
         #expect(draft.isDraft && draft.isFork)
-        #expect(draft.claudeArguments == ["--bg", "--resume", sid, "--fork-session"])
+        #expect(draft.claudeArguments == ["--bg", "--resume", sid, "--fork-session", "--permission-mode", "auto"])
         // An empty `from` is no fork at all.
         #expect(!SpawnRequest(from: "").isFork)
-        #expect(SpawnRequest(from: "").claudeArguments == ["--bg"])
+        #expect(SpawnRequest(from: "").claudeArguments == ["--bg", "--permission-mode", "auto"])
     }
 
     @Test func aRemoteForkKeepsTheIdBareAcrossTheHop() {
         let sid = "1e7c5066-32da-4862-acef-0fc6b39f1bf9"
         let argv = remote.spawnArgv(SpawnRequest(cwd: "/Users/rf-studio/cc-test", prompt: "carry on", from: sid))
         let tail = Array(argv.drop { $0 != "studio" }.dropFirst())
-        #expect(tail == ["cd", "/Users/rf-studio/cc-test", "&&", "~/.local/bin/claude", "--bg", "--resume", sid, "--fork-session", "'carry on'"])
+        #expect(tail == ["cd", "/Users/rf-studio/cc-test", "&&", "~/.local/bin/claude", "--bg", "--resume", sid, "--fork-session", "--permission-mode", "auto", "'carry on'"])
     }
 
     @Test func theAnswerNamesTheLineage() {
@@ -64,15 +64,39 @@ import Testing
     @Test func aDraftHasNoPromptWord() {
         let request = SpawnRequest(prompt: "  \n", name: "later")
         #expect(request.isDraft)
-        #expect(local.spawnArgv(request) == ["/Users/x/.local/bin/claude", "--bg", "--name", "later"])
+        #expect(local.spawnArgv(request) == ["/Users/x/.local/bin/claude", "--bg", "--name", "later", "--permission-mode", "auto"])
         #expect(local.spawnCwd(request) == nil)
     }
 
     @Test func everyFlagIsPassedThroughUnchanged() {
-        let request = SpawnRequest(prompt: "go", agent: "lean", permissionMode: "auto", effort: "high", worktree: "v6")
-        #expect(request.claudeArguments == ["--bg", "--agent", "lean", "--permission-mode", "auto", "--effort", "high", "--worktree", "v6", "go"])
-        #expect(SpawnRequest(worktree: "").claudeArguments == ["--bg", "--worktree"])
-        #expect(SpawnRequest(worktree: nil).claudeArguments == ["--bg"])
+        let request = SpawnRequest(prompt: "go", agent: "lean", permissionMode: "plan", effort: "high", worktree: "v6", rc: true)
+        #expect(request.claudeArguments == ["--bg", "--agent", "lean", "--permission-mode", "plan", "--effort", "high", "--rc", "--worktree", "v6", "go"])
+        #expect(SpawnRequest(worktree: "").claudeArguments == ["--bg", "--permission-mode", "auto", "--worktree"])
+        #expect(SpawnRequest(worktree: nil).claudeArguments == ["--bg", "--permission-mode", "auto"])
+    }
+
+    /// The mode defaults to `auto` (2026-09-04, the user's word via lore):
+    /// a worker answered from a phone cannot be un-prompted there. Any
+    /// explicit mode wins — `default` included, since that is the
+    /// harness's own name for the one that asks — and `--base` is never
+    /// a harness word: it is ccc's, consumed before the argv is built.
+    @Test func theModeDefaultsToAutoAndAnExplicitOneWins() {
+        #expect(SpawnRequest(prompt: "go").claudeArguments == ["--bg", "--permission-mode", "auto", "go"])
+        #expect(SpawnRequest(prompt: "go", permissionMode: "default").claudeArguments == ["--bg", "--permission-mode", "default", "go"])
+        #expect(SpawnRequest(prompt: "go", permissionMode: "").effectivePermissionMode == "auto")
+        #expect(!SpawnRequest(prompt: "go", base: "storefront").claudeArguments.contains("--base"))
+        #expect(!SpawnRequest(prompt: "go", base: "storefront").claudeArguments.contains("storefront"))
+    }
+
+    /// The answer names the worktree ccc cut, and an older ccc's answer
+    /// without one still decodes.
+    @Test func theAnswerNamesTheCut() throws {
+        let ref = SessionRef(host: Host.localName, id: "092ff6ad")
+        let made = SpawnResult.MadeWorktree(path: "/x/.claude/worktrees/w", branch: "worktree-w", base: "storefront")
+        #expect(SpawnResult(ref: ref, draft: false, cwd: "/x", said: "", worktree: made).description
+                == "spawned 092ff6ad in worktree-w off storefront")
+        let old = try JSONDecoder().decode(SpawnResult.self, from: Data(#"{"ref":"092ff6ad","draft":false,"said":""}"#.utf8))
+        #expect(old.worktree == nil)
     }
 
     /// Remote: no tty, a `cd` on the far side, and the prompt one quoted
@@ -83,7 +107,7 @@ import Testing
         #expect(argv.first == "/usr/bin/ssh")
         #expect(!argv.contains("-t"))
         let tail = Array(argv.drop { $0 != "studio" }.dropFirst())
-        #expect(tail == ["cd", "~/code/app", "&&", "~/.local/bin/claude", "--bg", "--name", "n", "'say it'\\''s done; then stop'"])
+        #expect(tail == ["cd", "~/code/app", "&&", "~/.local/bin/claude", "--bg", "--name", "n", "--permission-mode", "auto", "'say it'\\''s done; then stop'"])
         #expect(remote.spawnCwd(request) == nil)
         #expect(argv.contains("-o") && argv.contains { $0.hasPrefix("ControlPath=") && $0.hasSuffix("/studio.sock") })
     }
@@ -100,7 +124,7 @@ import Testing
     @Test func aRemoteRequestWithoutACwdHasNoCd() {
         let argv = remote.spawnArgv(SpawnRequest(prompt: "go"))
         #expect(!argv.contains("cd"))
-        #expect(argv.suffix(3) == ["~/.local/bin/claude", "--bg", "go"])
+        #expect(argv.suffix(5) == ["~/.local/bin/claude", "--bg", "--permission-mode", "auto", "go"])
     }
 
     // MARK: the answer
@@ -143,7 +167,7 @@ import Testing
     /// The pasteable line names the cwd locally (a `cd` a human would
     /// type) and carries it as a word remotely.
     @Test func theCommandLineIsWhatWouldRun() {
-        #expect(local.spawnCommandLine(SpawnRequest(cwd: "/tmp/x", prompt: "go on")) == "cd /tmp/x && /Users/x/.local/bin/claude --bg 'go on'")
-        #expect(remote.spawnCommandLine(SpawnRequest(cwd: "~/x", prompt: "go on")).hasSuffix("studio cd ~/x && ~/.local/bin/claude --bg 'go on'"))
+        #expect(local.spawnCommandLine(SpawnRequest(cwd: "/tmp/x", prompt: "go on")) == "cd /tmp/x && /Users/x/.local/bin/claude --bg --permission-mode auto 'go on'")
+        #expect(remote.spawnCommandLine(SpawnRequest(cwd: "~/x", prompt: "go on")).hasSuffix("studio cd ~/x && ~/.local/bin/claude --bg --permission-mode auto 'go on'"))
     }
 }

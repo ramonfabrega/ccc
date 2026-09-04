@@ -48,7 +48,10 @@ import Testing
             async let first: Void = poller.tick()
             // The script's first line writes the counter: once it exists,
             // that poll is in flight and the fresh tick has something to end.
-            for _ in 0..<60 where !FileManager.default.fileExists(atPath: counter) {
+            // The bound is generous because the first tick needs the main
+            // actor, which a render test running alongside can hold for
+            // seconds; the wait ends the moment the file appears.
+            for _ in 0..<600 where !FileManager.default.fileExists(atPath: counter) {
                 try await Task.sleep(for: .milliseconds(50))
             }
             #expect(FileManager.default.fileExists(atPath: counter), "the first poll never started")

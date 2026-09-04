@@ -138,22 +138,19 @@ signal is wrong**: studio is always-on, so "unlocked" would suppress push
 all day; idle time is the signal — unlocked *and* recently touched. **Only
 if slice 2 was not enough**: the bug just fixed was too much suppression.
 
-**Not a slice, a box.** ccc's spawn never offers `--rc`. Whether it should
-default to it is the user's call, but the box should exist.
+**The box exists** (`ccc spawn --rc`, 2026-09-04); whether it should be
+the default is still the user's call. The same day, at the user's word,
+`--permission-mode` **defaults to `auto`** and the row marks a background
+job launched with a mode that asks (`asks` in `ccc list`, a badge in the
+window) — as launched, since a runtime toggle never reaches the flags.
 
-### 18. The worktree family points at the default branch; the trunk is often elsewhere
-
-Two consumers in one day, 2026-09-04: attrition (via lore) and
-storefront-launch (cuanto's trunk is `storefront`, 590 ahead of master).
-Neither could use `--worktree`, which bases on the repo's default branch;
-both cut worktrees by hand and passed `--cwd`. **Structural**: `merge`,
-`update` and `pull` read the default branch too, and **the column shows a
-wrong number** — storefront's rows say `base: master`, `behind: 24`, measured
-against a branch nobody lands on. Three shapes: `--base <branch>` on
-`spawn --worktree`; **default the base to the spawning session's own
-branch when it is in a worktree**, the family and the column reading the
-base from the worktree's upstream (the recommendation: no flag, and it is
-every reporter's case and ours); or document `--cwd`. The user's call.
+**Item 18 left the same day** (`docs/EVIDENCE.md` "item 18 — the base is
+recorded"): a worktree branch's base is recorded in the repo's config,
+`ccc spawn --worktree` cuts off the asker's branch when that is not the
+default (or off `--base`), `ccc base <ref>` reads and writes it by hand,
+and the column, `merge`, `update` and `pull` follow it. Left open there:
+the sheet has no worktree or base field, and a remote `--base` is refused
+rather than routed to the far side's ccc.
 
 ## Later
 

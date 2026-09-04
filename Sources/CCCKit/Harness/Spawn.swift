@@ -33,10 +33,22 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
     /// the daemon records `restoresTranscript: false` for it. With no
     /// prompt it is a draft that already knows the conversation.
     public var from: String?
+    /// The branch a `--worktree` is cut from and measured against (queue
+    /// item 18). This is ccc's word, not the harness's: the harness cuts
+    /// its worktrees off the default branch, and two consumers in one day
+    /// (attrition, storefront-launch) could not use that because their
+    /// trunk is a branch that lags nothing. With a base — given, or
+    /// implied by a cwd that is itself on a non-default branch — ccc cuts
+    /// the worktree, records the base in the repo's config, and hands the
+    /// harness a plain cwd.
+    public var base: String?
+    /// `--rc`: Remote Control, so the session is answerable from the
+    /// Claude app (item 17's box). Passed through as typed; no default.
+    public var rc: Bool?
 
     public init(cwd: String? = nil, prompt: String? = nil, name: String? = nil, model: String? = nil,
                 agent: String? = nil, permissionMode: String? = nil, effort: String? = nil,
-                worktree: String? = nil, from: String? = nil) {
+                worktree: String? = nil, from: String? = nil, base: String? = nil, rc: Bool? = nil) {
         self.cwd = cwd
         self.prompt = prompt
         self.name = name
@@ -46,10 +58,26 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         self.effort = effort
         self.worktree = worktree
         self.from = from
+        self.base = base
+        self.rc = rc
     }
 
     public var isDraft: Bool { (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     public var isFork: Bool { !(from ?? "").isEmpty }
+
+    /// The permission mode a spawn gets when none is named. `auto` since
+    /// 2026-09-04, at the user's word relayed by lore: the commanders
+    /// spawn workers that are answered from a phone, where Remote Control
+    /// has no auto toggle, so a worker left on the harness's default
+    /// blocks on its first prompt until someone is at a laptop — and none
+    /// of the seven jobs then running carried a mode at all. An explicit
+    /// `--permission-mode` always wins, `default` included.
+    public static let defaultPermissionMode = "auto"
+
+    /// The mode this request runs with: the one named, else the default.
+    public var effectivePermissionMode: String {
+        (permissionMode ?? "").isEmpty ? Self.defaultPermissionMode : permissionMode!
+    }
 
     /// The harness's words after `claude`. The prompt is one argument, last.
     public var claudeArguments: [String] {
@@ -58,8 +86,9 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         if let name, !name.isEmpty { out += ["--name", name] }
         if let model, !model.isEmpty { out += ["--model", model] }
         if let agent, !agent.isEmpty { out += ["--agent", agent] }
-        if let permissionMode, !permissionMode.isEmpty { out += ["--permission-mode", permissionMode] }
+        out += ["--permission-mode", effectivePermissionMode]
         if let effort, !effort.isEmpty { out += ["--effort", effort] }
+        if rc == true { out.append("--rc") }
         if let worktree { out += worktree.isEmpty ? ["--worktree"] : ["--worktree", worktree] }
         if !isDraft, let prompt { out.append(prompt) }
         return out
@@ -83,18 +112,36 @@ public struct SpawnResult: Codable, Sendable, Equatable {
     /// `from` as given (a full session id), so the answer names its
     /// lineage. Absent off an older ccc.
     public var from: String?
+    /// The worktree ccc cut for this session (item 18): its branch and
+    /// the base it was cut from and is measured against. Nil when the
+    /// harness made the worktree, or there is none.
+    public var worktree: MadeWorktree?
 
-    public init(ref: SessionRef, draft: Bool, cwd: String?, said: String, from: String? = nil) {
+    public struct MadeWorktree: Codable, Sendable, Equatable {
+        public var path: String
+        public var branch: String
+        public var base: String
+        public init(path: String, branch: String, base: String) {
+            self.path = path
+            self.branch = branch
+            self.base = base
+        }
+    }
+
+    public init(ref: SessionRef, draft: Bool, cwd: String?, said: String, from: String? = nil,
+                worktree: MadeWorktree? = nil) {
         self.ref = ref
         self.draft = draft
         self.cwd = cwd
         self.said = said
         self.from = from
+        self.worktree = worktree
     }
 
     public var description: String {
         let lineage = from.map { " from \($0.prefix(8))" } ?? ""
-        return draft ? "drafted \(ref)\(lineage) (idle — attach and send a prompt)" : "spawned \(ref)\(lineage)"
+        let cut = worktree.map { " in \($0.branch) off \($0.base)" } ?? ""
+        return draft ? "drafted \(ref)\(lineage)\(cut) (idle — attach and send a prompt)" : "spawned \(ref)\(lineage)\(cut)"
     }
 }
 
@@ -147,6 +194,8 @@ extension ClaudeCLI {
     /// child session keeps no transcript, which is the model column gone.
     public func spawn(_ request: SpawnRequest) async throws -> SpawnResult {
         try prepareControlDirectory()
+        var request = request
+        let made = try prepareWorktree(&request)
         if let cwd = spawnCwd(request) {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory), isDirectory.boolValue else {
@@ -165,7 +214,49 @@ extension ClaudeCLI {
         let cwd = request.cwd.flatMap { $0.isEmpty ? nil : $0 }
             ?? (host.isLocal ? FileManager.default.currentDirectoryPath : host.home)
         return SpawnResult(ref: SessionRef(host: host.name, id: parsed.id), draft: parsed.draft, cwd: cwd, said: said,
-                           from: request.isFork ? request.from : nil)
+                           from: request.isFork ? request.from : nil, worktree: made)
+    }
+
+    /// Item 18: when the request wants a worktree off something other
+    /// than the default branch, cut it here and hand the harness a plain
+    /// cwd. That is the case when `base` is named, or when `--worktree`
+    /// is asked from a folder that is itself on a non-default branch —
+    /// the spawning session's own branch is the base then, which is what
+    /// every reporter wanted and none could say. Otherwise the request is
+    /// left alone and the harness makes its own worktree, keeping
+    /// `claude rm`'s cleanup of it. Local only: the far side's ccc does
+    /// this for its own repositories.
+    func prepareWorktree(_ request: inout SpawnRequest) throws -> SpawnResult.MadeWorktree? {
+        guard request.worktree != nil || request.base != nil else { return nil }
+        guard host.isLocal else {
+            if request.base != nil {
+                throw SpawnError(description: "--base cuts the worktree here and \(host.name) is remote; run `ccc spawn` on \(host.name), or pass --cwd to a worktree that exists there")
+            }
+            return nil
+        }
+        let cwd = request.cwd.flatMap { $0.isEmpty ? nil : $0 } ?? FileManager.default.currentDirectoryPath
+        guard let checkout = WorktreeProbe.checkout(of: cwd) else {
+            if request.base != nil { throw SpawnError(description: "\(cwd) is not in a git repository; --base needs one") }
+            return nil
+        }
+        let base: String
+        if let named = request.base, !named.isEmpty {
+            base = named
+        } else {
+            // No base named: the harness's worktree is fine when the
+            // folder is on the default branch; off it, the folder's own
+            // branch is the base.
+            let fallback = WorktreeProbe.defaultBranch(commonDir: checkout.commonDir)
+            guard let branch = checkout.branch, branch != fallback else { return nil }
+            base = branch
+        }
+        let name = request.worktree.flatMap { $0.isEmpty ? nil : $0 }
+            ?? request.name.flatMap { WorktreeProbe.worktreeName(from: $0) }
+            ?? String(UUID().uuidString.prefix(8)).lowercased()
+        let made = try WorktreeProbe.createWorktree(named: name, base: base, repo: checkout.repo)
+        request.cwd = made.path
+        request.worktree = nil
+        return made
     }
 
     /// The id and the draft mark out of the harness's answer, ANSI

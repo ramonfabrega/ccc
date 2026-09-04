@@ -61,6 +61,15 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// which are only answerable at this Mac — which is the question a
     /// person actually has.
     public var remoteControl: Bool
+    /// The `--permission-mode` the job was **launched** with, from the same
+    /// `respawnFlags` — `auto`, `default`, `plan`, …, or nil when none was
+    /// passed (the harness's default, which prompts). As launched, and
+    /// only that: a runtime `/model` or shift-tab never reaches the flags,
+    /// and a respawn brings the job back with these. Read (2026-09-04, at
+    /// the user's word relayed by lore) because the only way to learn
+    /// which worker would block on its first prompt was to open seven
+    /// state files; the row now says which ones ask.
+    public var permissionMode: String?
     // `children` — the job's pull requests and published artifacts — is
     // **not read**. It was, for a day: v11 slice 3 dropped the PR half of
     // the banner's receipt line and slice 4 dropped the rest, because the
@@ -81,12 +90,13 @@ public struct JobInfo: Codable, Sendable, Equatable {
     // earns itself.
 
     public init(detail: String? = nil, needs: String? = nil, result: String? = nil,
-                suggestedReply: String? = nil, remoteControl: Bool = false) {
+                suggestedReply: String? = nil, remoteControl: Bool = false, permissionMode: String? = nil) {
         self.detail = detail
         self.needs = needs
         self.result = result
         self.suggestedReply = suggestedReply
         self.remoteControl = remoteControl
+        self.permissionMode = permissionMode
     }
 
     /// Nothing worth carrying. The join yields `nil` rather than an empty
@@ -96,7 +106,7 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// not remote-controlled has said nothing, and a reading of "no" for
     /// every field is the empty reading this guards against.
     public var isEmpty: Bool {
-        detail == nil && needs == nil && result == nil && suggestedReply == nil && !remoteControl
+        detail == nil && needs == nil && result == nil && suggestedReply == nil && !remoteControl && permissionMode == nil
     }
 
     /// Hand-written and lenient, for the same reason `SessionRow`'s is:
@@ -114,6 +124,18 @@ public struct JobInfo: Codable, Sendable, Equatable {
         result = try? container.decodeIfPresent(String.self, forKey: .result)
         suggestedReply = try? container.decodeIfPresent(String.self, forKey: .suggestedReply)
         remoteControl = (try? container.decodeIfPresent(Bool.self, forKey: .remoteControl)) ?? false
+        permissionMode = try? container.decodeIfPresent(String.self, forKey: .permissionMode)
+    }
+
+    /// Whether a permission prompt will stop this job: launched without a
+    /// mode (the harness prompts by default) or with one that asks.
+    /// `auto` and `bypassPermissions` answer for themselves; everything
+    /// else — `default`, `plan`, `acceptEdits` — still asks for something.
+    public var asksForPermission: Bool {
+        switch permissionMode {
+        case "auto", "bypassPermissions": return false
+        default: return true
+        }
     }
 
     /// What this session has to say for itself, given what the roster says
@@ -147,8 +169,19 @@ public struct JobInfo: Codable, Sendable, Equatable {
         let info = JobInfo(detail: string("detail"), needs: string("needs"),
                            result: string("result", in: (object["output"] as? [String: Any]) ?? [:]),
                            suggestedReply: string("suggestedReply"),
-                           remoteControl: remoteControl(in: object))
+                           remoteControl: remoteControl(in: object),
+                           permissionMode: permissionMode(in: object))
         return info.isEmpty ? nil : info
+    }
+
+    /// The value after `--permission-mode` in `respawnFlags`, if any.
+    /// Lenient the same way `remoteControl` is: no array, no flag, or a
+    /// flag with nothing after it all read as "none was passed".
+    static func permissionMode(in object: [String: Any]) -> String? {
+        guard let flags = (object["respawnFlags"] as? [Any])?.compactMap({ $0 as? String }) else { return nil }
+        guard let i = flags.firstIndex(of: "--permission-mode"), i + 1 < flags.count else { return nil }
+        let mode = flags[i + 1].trimmingCharacters(in: .whitespaces)
+        return mode.isEmpty || mode.hasPrefix("--") ? nil : mode
     }
 
     /// `--rc` (or its long spelling) among `respawnFlags`. Lenient in the

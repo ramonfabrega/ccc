@@ -3282,3 +3282,45 @@ One number to read carefully after a relaunch: `ccc stats` said
 `roster poll  mean 2913 ms  n=3` at 14 s of uptime and `mean 919 ms
 n=18` a minute later. The first ticks compete with the launch fetch and
 cold probes; the mean carries them for a while. The `last` is the tick.
+
+## item 18 — the base is recorded (2026-09-04)
+
+Two consumers in one day could not use `ccc spawn --worktree`: attrition
+(trunk `worktree-replan-pdb`, main eight behind) and storefront-launch
+(trunk `storefront`, 590 ahead of master). The harness cuts its worktrees
+off the default branch and every verb in the family measured against it,
+so storefront's rows read `base: master, behind: 24` — a wrong number on
+screen, against a branch nobody lands on. Every repository root in the
+fleet is on `master`/`main` (checked: ccc, attrition, cuanto, lore), so
+"the root's branch" is not the signal; the base has to be per worktree.
+
+### The rule
+
+A worktree branch's base is, in order: `branch.<b>.ccc-base` in the
+repo's own config; VS Code's `branch.<b>.vscode-merge-base` (`origin/x`
+→ `x`, honoured because it means the same thing and cuanto's config
+already carries a dozen); else the default branch. Either is trusted only
+while it resolves. The config is parsed by hand, re-read on mtime, one
+`stat` per row per tick otherwise; `WorktreeInfo.baseRecorded` says which
+it was, nil off an older ccc.
+
+`ccc spawn --worktree` cuts the worktree itself — `.claude/worktrees/<n>`
+on `worktree-<n>`, the harness's own layout — when `--base` is named or
+the asking folder is on a non-default branch (the spawning session's own
+worktree, which was every reporter's case), records the base, and hands
+the harness a plain cwd. From a folder on the default branch with no base
+the harness cuts it as before, so `claude rm` keeps its cleanup. Remote
+`--base` is refused with the way out named. `ccc base <ref> [<branch> |
+--clear]` is the read and the write by hand, for the worktrees already
+cut. `BaseTests` (seven) pin the parse, the precedence, the cut, the
+refusals and the spawn's choice.
+
+### And, at the user's word, spawns are auto
+
+Lore relayed it: none of the seven jobs then running carried a
+`--permission-mode`, so each stopped at its first prompt, unanswerable
+from a phone. `SpawnRequest` now defaults the mode to `auto`; an explicit
+one wins, `default` included. `JobInfo.permissionMode` reads the launch
+mode off `respawnFlags`, `asksForPermission` names the ones that stop,
+and `ccc list` shows `asks` (the window a badge) for a background job
+launched that way. `ccc spawn --rc` exists; no default.

@@ -58,18 +58,24 @@ ccc hook [--settings]               # the harness's Notification hook: JSON on s
 ccc rm <ref> [--json]               # delete a session and its worktree, when the harness says that is safe
 
 # spawning, and the session's repository
-ccc spawn [--host <n>] [--cwd <d>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
-          [--effort <e>] [--worktree[=<name>]] [--from <ref>] [--attach] [--json] [<prompt>... | -]
+ccc spawn [--host <n>] [--cwd <d>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>] [--rc]
+          [--effort <e>] [--worktree[=<name>]] [--base <branch>] [--from <ref>] [--attach] [--json] [<prompt>... | -]
                                     # `claude --bg` on a host; no prompt makes a draft that waits for one,
-                                    # --from forks off <ref>'s transcript (`--resume … --fork-session`)
+                                    # --from forks off <ref>'s transcript (`--resume … --fork-session`).
+                                    # --permission-mode defaults to auto. --worktree from a folder on the
+                                    # default branch is the harness's; from any other branch (or with --base)
+                                    # ccc cuts the worktree off that branch and records it as the base
+ccc base <ref> [<branch> | --clear] # what the worktree branch is measured against and lands on: read it,
+                                    # record one for a worktree cut by hand, or forget it (`branch.<b>.ccc-base`
+                                    # in the repo's config; VS Code's vscode-merge-base is honoured too)
 ccc merge <ref> [--ff-only|--no-ff|--squash] [--json]
-                                    # land the worktree branch on the repo's default branch, where the repo
-                                    # is; refuses a dirty or wrong-branch checkout, backs out of a conflict
-ccc update <ref> [--ask] [--json]   # merge the default branch into the worktree branch ("Update branch");
+                                    # land the worktree branch on its base (recorded, else the repo's default
+                                    # branch), where the repo is; refuses a dirty or wrong-branch checkout
+ccc update <ref> [--ask] [--json]   # merge the base into the worktree branch ("Update branch");
                                     # --ask hands the session the merge as a prompt through the pane
 ccc fetch <ref> [--json]            # the one network call; every ⇡⇣ mark reads "as of the last fetch"
-ccc pull <ref> [--json]             # fast-forward the default branch to origin's, never a merge commit
-ccc push <ref> [--base] [--json]    # push the worktree branch (or, with --base, the default branch); never forced
+ccc pull <ref> [--json]             # fast-forward the base to origin's, never a merge commit
+ccc push <ref> [--base] [--json]    # push the worktree branch (or, with --base, its base branch); never forced
 ccc shell <ref> [--repo] | --close  # ⌘T's twin: a shell pane under the session pane, in <ref>'s folder
                                     # (over `ssh -t` when remote); --repo is the main checkout (⌥⌘T), --close is ⇧⌘T
                                     # the row's item and `t` flip to Close Terminal while that row's shell is up

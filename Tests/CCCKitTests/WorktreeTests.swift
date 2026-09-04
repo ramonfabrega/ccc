@@ -69,8 +69,10 @@ import Testing
             // Level: a fresh worktree has nothing to land — and the row
             // still says which branch it is on.
             let level = try #require(probe.info(forCwd: repo.wt))
-            #expect(level == WorktreeInfo(branch: "worktree-t", base: "master", ahead: 0, behind: 0,
-                                          repo: repo.root.standardizedFileURL.path))
+            var expected = WorktreeInfo(branch: "worktree-t", base: "master", ahead: 0, behind: 0,
+                                        repo: repo.root.standardizedFileURL.path)
+            expected.baseRecorded = false   // the default branch, nothing recorded (item 18)
+            #expect(level == expected)
             #expect(!level.hasWork && !level.canFastForward)
             #expect(level.summary == "worktree-t level")
             try repo.commit("b.txt", "two\n", message: "wt one", worktree: true)
