@@ -186,6 +186,11 @@ enum App {
         let install = appMenu.addItem(withTitle: "Install ‘ccc’ Command…", action: #selector(installCommandLineTool(_:)), keyEquivalent: "")
         install.target = self
         install.isEnabled = BuildInfo.current.isBundled
+        // Next to Install: both are one-time "set this Mac up" actions, so
+        // they sit together rather than a top-level Hosts menu earning its
+        // place for one item. The other way in is the New Session sheet's
+        // host row — the moment it is actually wanted (queue item 3).
+        appMenu.addItem(withTitle: "Add Mac…", action: #selector(MainWindowController.addHostAction(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide ccc", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit ccc", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

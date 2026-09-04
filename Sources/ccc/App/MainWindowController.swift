@@ -360,7 +360,8 @@ final class MainWindowController: NSWindowController {
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: NewSessionView(
             model: model,
             submit: { [weak self] in self?.submitNewSession(model) },
-            cancel: { [weak self] in self?.dismissNewSession() })))
+            cancel: { [weak self] in self?.dismissNewSession() },
+            addHost: { [weak self] in self?.addHostAction(nil) })))
         newSessionSheet = sheet
         window.beginSheet(sheet)
     }
@@ -369,6 +370,32 @@ final class MainWindowController: NSWindowController {
         guard let window, let sheet = newSessionSheet else { return }
         window.endSheet(sheet)
         newSessionSheet = nil
+    }
+
+    private var addHostSheet: NSWindow?
+
+    /// The picker (queue item 3). Reached from the app menu and from the New
+    /// Session sheet's host row, which is the moment it is actually wanted.
+    ///
+    /// Nothing is passed in and nothing comes back: the sheet writes through
+    /// `HostSetup.add` to `hosts.json`, and the host list is hot-reloaded, so
+    /// a host added here reaches the running app the way `ccc hosts add`
+    /// already does (v9 slice 1's fix). That is why this can be a leaf.
+    @objc func addHostAction(_ sender: Any?) {
+        guard let window, addHostSheet == nil else { return }
+        // From the New Session sheet, the picker is a sheet *on* it, so the
+        // host list underneath is still there to come back to.
+        let parent = newSessionSheet ?? window
+        let sheet = NSWindow(contentViewController: NSHostingController(
+            rootView: AddHostView(onClose: { [weak self] in self?.dismissAddHost() })))
+        addHostSheet = sheet
+        parent.beginSheet(sheet)
+    }
+
+    private func dismissAddHost() {
+        guard let sheet = addHostSheet else { return }
+        (newSessionSheet ?? window)?.endSheet(sheet)
+        addHostSheet = nil
     }
 
     private func submitNewSession(_ model: NewSessionModel) {
@@ -609,6 +636,15 @@ final class MainWindowController: NSWindowController {
         case "show": showAction(nil)
         case "hide": window?.orderOut(nil)
         case "close": window?.performClose(nil)
+        // The picker's twin for *opening* it. The picker's own work already
+        // has twins (`ccc hosts discover`, `ccc hosts add`); this is what
+        // lets `ccc peek` see the sheet, which is the only way to judge a
+        // window from a machine with no screen.
+        case "add-host": addHostAction(nil)
+        // Its gestures already have twins (`ccc spawn` runs what Start
+        // runs); this opens the sheet so `peek` can see it, which since
+        // sheets are composited is the only way to judge one with no screen.
+        case "new-session": newSessionAction(nil)
         case "resize":
             guard parts.count == 3, let w = Double(parts[1]), let h = Double(parts[2]), let window else { return false }
             var frame = window.frame
@@ -673,6 +709,31 @@ final class MainWindowController: NSWindowController {
             // NSBitmapImageRep contexts are bottom-left, so flip y for a non-flipped content view.
             let y = content.isFlipped ? content.bounds.height - frameInContent.maxY : frameInContent.minY
             context.cgContext.draw(image, in: CGRect(x: frameInContent.minX, y: y, width: frameInContent.width, height: frameInContent.height))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        // A sheet is its own NSWindow, so it is not in this hierarchy at all
+        // and every sheet the app has ever shown was invisible to `peek`.
+        // Composited here in its real place, which is what makes the New
+        // Session sheet and the host picker judgeable from a machine with no
+        // screen — the same reason `peek` composites the Metal pane above.
+        for sheet in window.sheets {
+            guard let sheetContent = sheet.contentView,
+                  let sheetRep = sheetContent.bitmapImageRepForCachingDisplay(in: sheetContent.bounds),
+                  let context = NSGraphicsContext(bitmapImageRep: rep) else { continue }
+            sheetContent.cacheDisplay(in: sheetContent.bounds, to: sheetRep)
+            guard let image = sheetRep.cgImage else { continue }
+            // Sheet frames are in screen coordinates; the window's own frame
+            // turns them into content-view ones.
+            let origin = content.convert(
+                CGPoint(x: sheet.frame.minX - window.frame.minX, y: sheet.frame.minY - window.frame.minY),
+                from: nil)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            let y = content.isFlipped
+                ? content.bounds.height - (origin.y + sheet.frame.height) : origin.y
+            context.cgContext.draw(
+                image,
+                in: CGRect(x: origin.x, y: y, width: sheet.frame.width, height: sheet.frame.height))
             NSGraphicsContext.restoreGraphicsState()
         }
         return rep.representation(using: .png, properties: [:])

@@ -90,20 +90,36 @@ struct NewSessionView: View {
     @Bindable var model: NewSessionModel
     let submit: () -> Void
     let cancel: () -> Void
+    /// Opens the picker as a sheet on this one, so the host list underneath
+    /// is still there to come back to. Nil in a preview.
+    var addHost: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Session").font(.title3.weight(.semibold))
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 8) {
-                if model.hosts.count > 1 {
-                    GridRow {
-                        Text("Host")
+                // Always shown, even with one host. It used to be hidden
+                // below two, which meant a Mac that had only ever seen
+                // `local` had no host UI at all — exactly the Mac that wants
+                // to add one (queue item 3).
+                GridRow {
+                    Text("Host")
+                    HStack(spacing: 6) {
                         Picker("", selection: $model.host) {
                             ForEach(model.hosts) { host in Text(host.name).tag(host.name) }
                         }
                         .labelsHidden()
-                        .frame(maxWidth: 200, alignment: .leading)
+                        // Sized to its content, not to a fixed 200pt: the
+                        // reserved width left "Add Mac…" floating a long way
+                        // from the control it belongs to.
+                        .fixedSize()
                         .onChange(of: model.host) { _, host in model.cwd = model.defaultCwd(for: host) }
+                        // Beside the picker rather than inside it: a menu
+                        // item that is not a choice, sitting among choices,
+                        // is selectable by the arrow keys and reads as a
+                        // host named "Add Mac…".
+                        Button("Add Mac…", action: addHost)
+                            .buttonStyle(.link)
                     }
                 }
                 GridRow {

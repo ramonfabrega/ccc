@@ -73,10 +73,13 @@ registering yourself is the loopback — off `tailscale status --json`,
 with `Tailnet.scan()` behind it. It enumerates only: nothing in that JSON
 says who runs an sshd, so `ccc hosts add`'s ssh probe stays the gate.
 
-**What is left: the menu that shows it.** `ccc hosts discover --json` is
-the shape it renders, `hosts add` is what its button calls, and the host
-list is hot-reloaded so the add lands in the running app. Nothing to work
-out; it is a view.
+**The picker shipped 2026-09-04** (docs/EVIDENCE.md "v9 slice 7"): App
+menu ▸ Add Mac…, and the New Session sheet's host row, which is where a
+host is actually being chosen — that row used to hide itself below two
+hosts, so the Mac with only `local` had no host UI at all. `HostSetup.add`
+came with it, because adding a host was about to have two implementations.
+
+**Item 3 is done.** What is left of the hop is air's to run (item 6).
 
 ### 4. Debt: the blocking poll read
 

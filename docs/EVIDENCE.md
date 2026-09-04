@@ -1688,3 +1688,62 @@ against 157 ms is in line with v9 slice 1's 684 ms.
 twin; the menu that shows it is next, and it has nothing left to work out.
 Driven from a real capture (`Fixtures/tailnet/status-2026-09-04.json`,
 trimmed to the fields we read). 7 tests, 361 total.
+
+## v9 slice 7 — item 3: the picker, and sheets become visible (2026-09-04)
+
+Queue item 3's last step. Two ways in, one sheet, and it does no work of
+its own: the list is `Tailnet.scan()` and the button is `HostSetup.add`,
+both shared with `ccc hosts discover` and `ccc hosts add`.
+
+    App menu ▸ Add Mac…                     one-time setup, next to Install 'ccc' Command…
+    New Session ▸ Host ▸ Add Mac…           where a host is actually being chosen
+    ccc window add-host | new-session       the twins that open them
+
+### Where, and why not elsewhere
+
+`NewSessionView` hid the Host row entirely below two hosts, so a Mac that
+had only ever seen `local` had **no host UI at all** — exactly the Mac
+that wants to add one. The row is now always shown, with the picker sized
+to its content rather than a fixed 200pt, which had left the link
+floating a long way from the control it belongs to.
+
+Not the status item: clicking it shows the window, and turning a
+one-click gesture into a menu costs more than it gives. Not the View
+menu, which is display preferences.
+
+### Adding a host was about to have two implementations
+
+`HostSetup.add` is new and is the reason the picker is safe to have: the
+probe, the flag overrides, the validation and the save were inline in
+`ccc hosts add`, and the picker would have been a second copy that
+eventually learned something the first did not. The CLI now reads flags
+and prints; it decides nothing (CLAUDE.md: one definition, many surfaces).
+
+### `peek` could not see a sheet — and never could
+
+A sheet is its own `NSWindow`, so it was absent from the view hierarchy
+`peek` walks, and **every sheet this app has ever shown was invisible to
+the headless oracle**. `peek` now composites `window.sheets` in their real
+places, the same way it already composites the Metal pane. That is what
+made the two screenshots above possible with no Screen Recording
+permission; the material backdrop still renders transparent, which is
+`peek`'s documented limitation and not a rendering bug.
+
+### What the loopback looks like, which is why the sheet says so
+
+Registering this Mac and peeking the roster: **every session appears
+twice**, under `local` and under `studio` — they are the same daemon. That
+is exactly what makes it useful for testing the remote path, and exactly
+what would baffle someone who clicked Add without knowing, so the row for
+this Mac says it in the sheet before you click.
+
+`hosts.json` was left as it was found (`local` alone); the loopback was
+added, measured, and removed.
+
+### Measured
+
+`ccc hosts add studio` then `ccc hosts check`: local 157 ms, studio
+648 ms with the model column intact. The picker's Add is that same call.
+
+6 tests on `HostSetup` — the refusals and what gets written, which is the
+half that needs no reachable Mac. 367 total.

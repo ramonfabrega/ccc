@@ -206,7 +206,7 @@ enum CLI {
                 return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
                                        repeats: intFlag("--repeat", rest) ?? 200, core: stringFlag("--core", rest), json: json)
             case "window":
-                guard let action = rest.first, ["show", "hide", "close", "resize"].contains(action) else { return usage() }
+                guard let action = rest.first, ["show", "hide", "close", "resize", "add-host", "new-session"].contains(action) else { return usage() }
                 if action == "resize" {
                     guard rest.count == 3, Int(rest[1]) != nil, Int(rest[2]) != nil else { return usage() }
                     return try request(.window(action: "resize \(rest[1]) \(rest[2])"), json: json)
@@ -690,56 +690,32 @@ enum CLI {
 
         case "add":
             guard let name = rest.dropFirst().first, !name.hasPrefix("--") else {
-                stderr("ccc: usage: ccc hosts add <name> --ssh <destination> [--claude <absolute path>]")
+                stderr("ccc: usage: ccc hosts add <name> [--ssh <destination>] [--claude <absolute path>]")
                 return 2
             }
-            // Ask the host where things are — home, claude, ccc — in one
-            // ssh, rather than guess (`ClaudeCLI.Probe`). Flags override
-            // what it says; `--no-ccc` reads the harness instead of the far
-            // side's ccc (a correct roster with a blank model column).
-            let ssh = stringFlag("--ssh", rest) ?? name
-            var notes: [String] = []
-            var probed: ClaudeCLI.Probe?
-            do {
-                probed = try await ClaudeCLI(executable: "claude", host: Host(name: name, ssh: ssh)).probe()
-            } catch {
-                notes.append("could not reach \(ssh) to look for claude and ccc (\(error))")
-            }
-            let claude = stringFlag("--claude", rest) ?? probed?.claude
-            guard let claude else {
-                // An unknown host key is the *first* add from a new Mac, and
-                // it is not a missing-claude problem: ccc's probe is a
-                // non-interactive ssh, which cannot show the accept-this-key
-                // prompt, so it fails before it looks for anything. Say the
-                // one command that fixes it rather than the search path that
-                // was never reached (measured 2026-09-04, adding studio by
-                // its full MagicDNS name).
-                if notes.contains(where: { $0.contains("Host key verification failed") }) {
-                    stderr("ccc: \(ssh)'s host key is not known, so ccc's non-interactive ssh was refused before it could look for claude. "
-                           + "Run `ssh \(ssh)` once, accept the key, then `ccc hosts add \(name)` again.")
-                    return 1
-                }
-                stderr("ccc: no claude found on \(name) at \(ClaudeCLI.Probe.claudeCandidates.joined(separator: ", ")); pass --claude <absolute path>"
-                       + (notes.isEmpty ? "" : " (\(notes.joined(separator: "; ")))"))
-                return 1
-            }
-            let remoteCCC = rest.contains("--no-ccc") ? nil : (stringFlag("--ccc", rest) ?? probed?.ccc)
-            if remoteCCC == nil, !rest.contains("--no-ccc") {
-                notes.append("no ccc on \(name) (looked in \(ClaudeCLI.Probe.cccCandidates.joined(separator: ", "))): roster via claude agents, no model column; install ccc there and re-add")
-            }
-            let host = Host(name: name, ssh: ssh, claude: claude, ccc: remoteCCC, home: probed?.home)
-            if let problem = host.validate() {
+            // The add itself is `HostSetup.add`, shared with the app's
+            // picker so the two cannot drift about what a host needs
+            // (CLAUDE.md: one definition, many surfaces). This case reads
+            // flags and prints; it decides nothing.
+            switch await HostSetup.add(
+                name: name,
+                ssh: stringFlag("--ssh", rest),
+                claude: stringFlag("--claude", rest),
+                ccc: stringFlag("--ccc", rest),
+                wantCCC: !rest.contains("--no-ccc")
+            ) {
+            case .failure(let problem):
                 stderr("ccc: \(problem)")
-                return 2
+                if case .invalid = problem { return 2 }
+                return 1
+            case .success(let added):
+                let host = added.host
+                let reader = host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)"
+                let home = host.home.map { ", home \($0)" } ?? ", home unknown (`ccc hosts check` learns it)"
+                print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)\(home)); `ccc hosts check \(name)` to prove it")
+                for note in added.notes { stderr("ccc: \(note)") }
+                return 0
             }
-            loaded.config.hosts.removeAll { $0.name == name }
-            loaded.config.hosts.append(host)
-            try loaded.config.save()
-            let reader = host.ccc.map { "ccc \($0)" } ?? "claude agents (no model column)"
-            let home = host.home.map { ", home \($0)" } ?? ", home unknown (`ccc hosts check` learns it)"
-            print("added \(name) (ssh \(host.ssh ?? "-"), claude \(host.claude ?? "-"), roster via \(reader)\(home)); `ccc hosts check \(name)` to prove it")
-            for note in notes { stderr("ccc: \(note)") }
-            return 0
 
         case "reconnect":
             // The wake-up gesture by hand (docs/DESIGN.md §4b). The app owns
@@ -1633,7 +1609,9 @@ enum CLI {
                ccc copy [--json]                  ⌘C's twin: the selected text, onto the pasteboard
                ccc geometry [--json]              where the window and its pane are, and the cell size
                ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
-               ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)
+               ccc window show|hide|close|add-host|new-session|resize W H
+                                          the window's own gestures (close = Cmd-W); add-host and
+                                          new-session open their sheets, which `ccc peek` composites
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json] [--color]
                ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
                ccc version [--json]               this build (version, build number, bundle)

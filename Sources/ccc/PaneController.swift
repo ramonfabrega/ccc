@@ -721,7 +721,7 @@ final class PaneController {
             return .geometry(geometry)
         case .window(let action):
             guard let windowAction else { return .error("no window (headless)") }
-            return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (show|hide|close)")
+            return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (show|hide|close|add-host|new-session|resize W H)")
         case .stats:
             var stats: StatsInfo
             if let session {
