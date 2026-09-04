@@ -3324,3 +3324,47 @@ one wins, `default` included. `JobInfo.permissionMode` reads the launch
 mode off `respawnFlags`, `asksForPermission` names the ones that stop,
 and `ccc list` shows `asks` (the window a badge) for a background job
 launched that way. `ccc spawn --rc` exists; no default.
+
+## Cut as v0.1.25 (2026-09-04)
+
+**v0.1.25, build 180**, cut from `worktree-v2` at `63457e7`, an hour after
+v0.1.24, because two things in it change what the commanders get the
+moment they next spawn. Notarization `Accepted`, one `<item>`, both CDN
+keys, the live feed equal to the zip, the GitHub Release with the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 180 length 5155931
+ota verify --feed ccc  →  ok: … version 180 length 5155931
+```
+
+Installed with `scripts/install --dist` and verified against the released
+build. The `asks` column on the live roster, first reading:
+
+```
+  97c4731d  working  busy           beta-fb-polish       ~/code/work/cuanto ⎇ beta-fb-polish ↑591 ↓24 ⇡1
+  58023208  working  busy  rc asks  storefront-launch    ~/code/work/cuanto ⎇ worktree-storefront-standby ↑590 ↓24
+  7f476e34  working  busy  rc asks  att-capture          ~/code/fun/attrition ⎇ lane-capture ↑22
+  3c382923  working  busy  rc asks  attrition            ~/code/fun/attrition ⎇ worktree-replan-pdb ↑25
+  b3919c35  working  busy  rc asks  ccc                  ~/code/fun/ccc ⎇ worktree-v2 ↑21
+```
+
+The four commanders launched without a mode read `asks`; the lanes
+attrition spawned after lore's interim instruction (`--permission-mode
+auto` by hand) do not — the column discriminates exactly the population
+lore described, from the files it described.
+
+And the base, on the row that reported the wrong number:
+
+```
+ccc base 58023208
+  worktree-storefront-standby is measured against master (default); … ↑590 ↓24
+ccc base 58023208 storefront
+  worktree-storefront-standby is measured against storefront (recorded); … level
+ccc list | grep 58023208   (one tick later)
+  58023208  working  busy  rc asks  storefront-launch  ~/code/work/cuanto ⎇ worktree-storefront-standby level
+```
+
+`↑590 ↓24 ⇣1` became `level`, and the `⇣1` on the repository went with
+it — that was `origin/master` ahead of `master`, a number about a branch
+this worktree never lands on. The record is one line in cuanto's
+`.git/config`; `--clear` takes it back.
