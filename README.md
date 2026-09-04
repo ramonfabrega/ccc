@@ -110,6 +110,8 @@ ccc version [--json]                # this build: version, build number, bundle 
 ccc install-cli [--dir <d>] [--force]  # link `ccc` on PATH into the installed app
 ccc replay <bytes> [--bytes N] [--core X]  # render a recording headlessly (the golden-test oracle)
 ccc bench <bytes> [--repeat N]      # throughput, snapshot cost, footprint delta, grid digest
+scripts/release-notes [<tag>]       # a release's notes: this repo's commit subjects + a compare link
+                                    # (scripts/package calls it; the twin that normalizes an old Release)
 scripts/record-attach <id>          # record a real `claude attach` as the replay fixture
 ```
 

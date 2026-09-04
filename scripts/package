@@ -39,3 +39,39 @@ ota bundle --name ccc --bundle-id com.ramonfabrega.ccc \
     --out .build/dist/ccc.app
 
 ota release .build/dist/ccc.app --feed ccc "$@"
+
+# The GitHub Release, which used to be step 4 of RELEASES.md and therefore a
+# sentence rather than a command. That seam is where the flow drifted: 14 of
+# the first 16 releases matched the documented `gh release create
+# --generate-notes` and two did not, each written by a session that had the
+# document open. A release is one act now, so there is nothing left to
+# remember — and the notes come from `scripts/release-notes`, one definition
+# the normalizing `gh release edit` reads too.
+#
+# Skipped for the two lanes that are not releases: `--ad-hoc` never leaves
+# this Mac, and `--no-publish` deliberately stops before the CDN.
+for arg in "$@"; do
+    case "$arg" in
+        --ad-hoc|--no-publish) echo "skipping the GitHub Release ($arg)"; exit 0 ;;
+    esac
+done
+
+version="$(cat VERSION)"
+tag="v${version}"
+zip=".build/dist/ccc-${tag}.zip"
+
+if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    echo "no tag $tag — the zip is published but the Release needs one." >&2
+    echo "  git tag -a $tag -m \"ccc $version\" && git push origin $tag && scripts/package" >&2
+    exit 1
+fi
+
+# Re-runnable: a cut that failed after the upload should not need the
+# Release deleted by hand before trying again.
+if gh release view "$tag" >/dev/null 2>&1; then
+    echo "updating the existing Release $tag"
+    gh release edit "$tag" --title "$tag" --notes "$(scripts/release-notes "$tag")"
+    gh release upload "$tag" "$zip" --clobber
+else
+    gh release create "$tag" "$zip" --title "$tag" --notes "$(scripts/release-notes "$tag")"
+fi

@@ -1,0 +1,44 @@
+#!/bin/zsh
+# The release notes for a tag: this repo's commit subjects, which are its
+# actual changelog.
+#
+#   scripts/release-notes v0.1.20          # notes for that tag
+#   scripts/release-notes                  # notes for the newest tag
+#
+# **Why not `--generate-notes`.** RELEASES.md named it for sixteen cuts and
+# it builds its body from merged PULL REQUESTS. This repo has none —
+# everything lands by fast-forward — so it wrote a compare link and nothing
+# else, sixteen times, while the changelog sat in the commit subjects it
+# never read. When the repo does take pull requests, this is the file to
+# revisit; until then a PR-shaped generator has nothing to generate from.
+#
+# `scripts/package` calls this and creates the release itself, so the flow
+# is one act. That seam is where the drift lived: step 3 was a script and
+# step 4 was a sentence in a document, and two of sixteen releases went
+# their own way — each written by a session that had the document open.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+tag="${1:-$(git describe --tags --abbrev=0)}"
+git rev-parse -q --verify "refs/tags/$tag" >/dev/null || {
+    echo "release-notes: no such tag: $tag" >&2; exit 1
+}
+
+# The previous tag by history, not by name: `--abbrev=0` from the tag's
+# parent answers "what was released before this", which a version sort gets
+# wrong the moment a patch lands after a minor.
+prev="$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)"
+range="${prev:+$prev..}$tag"
+
+# --no-merges: an ff-only repo has few, and the ones it has say "Merge
+# branch 'worktree-icon'", which is not news.
+git log --no-merges --reverse --pretty='- %s' "$range"
+
+remote="$(git remote get-url origin)"
+slug="${${remote##*github.com[:/]}%.git}"
+echo
+if [[ -n "$prev" ]]; then
+    echo "**Full Changelog**: https://github.com/$slug/compare/$prev...$tag"
+else
+    echo "**Full Changelog**: https://github.com/$slug/commits/$tag"
+fi

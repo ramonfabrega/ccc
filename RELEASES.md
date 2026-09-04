@@ -66,15 +66,38 @@ cut from the branch master fast-forwards to, and rebuild the dev copy after.
    `scripts/package --no-publish` stops after the appcast and prints the two
    `share` lines instead of running them. `scripts/package --ad-hoc` is a
    packaging test on this Mac and refuses to notarize or publish at all.
-4. **GitHub Release** off the tag, with the zip (the durable record of every
-   version; the CDN carries only the latest):
-   ```sh
-   gh release create v0.1.0 .build/dist/ccc-v0.1.0.zip --generate-notes
-   ```
-5. **Install the cut on studio** (`scripts/install --dist`) so the daily
+   Its last act is the **GitHub Release** off the tag, with the zip
+   attached — the durable record of every version, since the CDN carries
+   only the latest. Title is the bare tag; the body is
+   `scripts/release-notes`, which is this repo's commit subjects and a
+   compare link. Re-runnable: an existing Release is updated and its asset
+   clobbered rather than refused.
+4. **Install the cut on studio** (`scripts/install --dist`) so the daily
    driver is the released build and Sparkle has nothing to offer it.
 
-Step 3's last act is the check that used to be steps 5 and 6 by hand. To run
+## Why the Release is step 3's job and not step 4's
+
+It was step 4 for the first twenty cuts — a sentence in this file naming
+`gh release create --generate-notes`. **Fourteen of sixteen releases
+matched it and two did not**, each written by a session that had this file
+open (2026-09-04; docs/EVIDENCE.md "The release notes have drifted"). That
+is `DocsGuardTests`' own rule arriving as a fact about this document: *a
+rule that is only prose is a rule a tired afternoon defeats.* Step 3 was a
+script and step 4 was prose, and the drift lived exactly at that seam — so
+the seam is gone.
+
+`--generate-notes` went with it, and not only for consistency: it builds
+its body from merged **pull requests**, and this repo has none — everything
+lands by fast-forward. It wrote a compare link and nothing else, sixteen
+times, while the changelog sat in commit subjects it never read.
+`scripts/release-notes <tag>` reads those instead, and is a command of its
+own so that normalizing an old Release (`gh release edit <tag> --notes
+"$(scripts/release-notes <tag>)"`) and cutting a new one share one
+definition. **When the repo takes pull requests, revisit it** — a
+PR-shaped generator will have something to generate from, and this file is
+not where that decision should be remembered.
+
+Step 3's feed check is what used to be steps 5 and 6 by hand. To run
 it again later, against whatever the CDN is serving right now:
 ```sh
 ota verify --feed ccc

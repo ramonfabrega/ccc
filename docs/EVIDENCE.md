@@ -2489,9 +2489,20 @@ a compare link as the body. **14 of 16 releases match it. Two do not:**
 notes, each written by a session that had the doc open.
 
 That is the same failure `DocsGuardTests` was built for and says out loud:
-*a rule that is only prose is a rule a tired afternoon defeats.* Step 4 is
-prose, and it has now been defeated twice. Recorded, not fixed — the
-standard itself is worth arguing before it is enforced, since
-`--generate-notes` on a repo with no pull requests produces a compare link
-and nothing else, while this repo's actual changelog is its commit
-subjects.
+*a rule that is only prose is a rule a tired afternoon defeats.* Step 4 was
+prose, and it had been defeated twice.
+
+**Fixed the same day.** `scripts/release-notes <tag>` prints this repo's
+commit subjects for the range plus a compare link, and `scripts/package`
+creates the Release itself as its last act — so the flow is one command and
+the seam that drifted is gone. `--generate-notes` went with it on its
+merits, not only for consistency: it builds from merged pull requests, and
+a repo where everything lands by fast-forward has none, so it wrote a
+compare link and nothing else sixteen times. Skipped for `--ad-hoc` and
+`--no-publish`, which are not releases; re-runnable, since a cut that fails
+after the upload should not need the Release deleted by hand.
+
+All 20 existing Releases were normalized through the same command
+(`gh release edit <tag> --title <tag> --notes "$(scripts/release-notes
+<tag>)"`), which is the point of it being a command: one definition, and
+the back-fill and the next cut cannot disagree.
