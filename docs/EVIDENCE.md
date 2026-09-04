@@ -2653,6 +2653,61 @@ air     air.bengal-barb.ts.net  Ramon’s MacBook Air
 studio  studio.bengal-barb.ts.net  Ramon’s Mac Studio  this Mac
 ```
 
-**Still open, and only air can close it:** what air's tailscale actually
-says. `ccc hosts discover` on air prints it now — one line, and it will name
-the install.
+### The cause: the binary asks whether a shell launched it
+
+Air answered the open question, and it was not the install:
+
+```
+air ❯ which tailscale
+/opt/homebrew/bin/tailscale
+air ❯ ls -l /usr/local/bin/tailscale
+ls: /usr/local/bin/tailscale: No such file or directory
+air ❯ /Applications/Tailscale.app/Contents/MacOS/Tailscale status --json | head -c 60
+{
+  "Version": "1.98.9-t4fb758c39-g200941d74",
+```
+
+The same binary, byte-for-byte the one studio has (9,826,288 bytes), and it
+answers JSON. So the failure was not tailscale's state and not the install —
+it was **who was asking**. Bisected on studio, against the same binary:
+
+```
+$ env -i        …/Tailscale status --json   →  The Tailscale GUI failed to start: …  exit 0
+$ env -i TERM=dumb  …                       →  {"Version": …
+$ env -i SHLVL=0    …                       →  {"Version": …
+$ env -i TERM=      …                       →  The Tailscale GUI failed to start: …
+$ env -i FOO=bar    …                       →  The Tailscale GUI failed to start: …
+$ env -i HOME=… USER=… LOGNAME=… SHELL=… PATH=… TMPDIR=…  →  The GUI line
+$ env -i HOME=… USER=… PATH=… TERM=xterm    →  {"Version": …
+```
+
+The macOS bundle is the GUI **and** the CLI in one binary, and it decides
+which one it is by smelling for a shell: with neither `TERM` nor `SHLVL` set
+it concludes it was double-clicked, tries to raise the GUI, and reports the
+failure as *"The Tailscale GUI failed to start: The operation couldn't be
+completed. (Tailscale.CLIError error 3.)"* — **on stdout, exit 0**. Either
+variable alone flips it back; an empty `TERM=` reads as absent; six plausible
+shell variables together do nothing. That sentence is the `T` at column 1.
+
+**Why only air, and why only the app.** A GUI process has no `TERM` and no
+`SHLVL`, so `ccc hosts discover` in a terminal could never reproduce what
+ccc.app hit — the twins disagreed because the environments did, which is the
+one way two surfaces of one definition can still diverge. And studio was
+immune by accident: it has `/usr/local/bin/tailscale`, the two-line
+`#!/bin/sh exec …` shim Tailscale's *Install CLI* writes, and `sh` exports
+`SHLVL` on its way through. Air never ran that installer, so ccc reached the
+bundle directly. The candidate list's first entry was a shell script, and
+that is the whole reason this looked like an air-only bug.
+
+**The fix:** `Tailnet.shellish` supplies both variables — `TERM` from
+CLAUDE.md's `xterm-256color`, never `dumb` (the one value a program is
+entitled to read as *there is no terminal*), and `SHLVL=1` — inheriting the
+rest of the environment whole and never overwriting a real terminal's answer.
+Both, not the one heuristic that happened to be measured. `env -i
+TERM=xterm-256color SHLVL=1 …/Tailscale status --json` answers `{"Version":`,
+and a stub that behaves the way the bundle does — JSON for a shell, the GUI
+sentence for anyone else — drives `Tailnet.scan` in the tests. 401 pass.
+
+The better error message stays: it is what turned "Unexpected character 'T'"
+into a sentence a human could act on in one round trip, and it is what will
+name the next binary that answers something else.

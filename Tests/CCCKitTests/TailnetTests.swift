@@ -143,7 +143,7 @@ import Testing
     /// sentence on stdout and exits 0. That is the shape that produced
     /// "Unexpected character 'T'", and the sentence has to come back out.
     @Test func aBinaryThatTalksInsteadOfAnsweringSaysWhat() throws {
-        let said = "Tailscale is stopped."
+        let said = "The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)"
         let path = try stub("#!/bin/sh\necho '\(said)'\n")
         #expect(throws: Tailnet.Unreadable.self) { try Tailnet.scan(binary: path) }
         #expect((try? Tailnet.scan(binary: path)) == nil)
@@ -169,6 +169,42 @@ import Testing
         let file = URL.temporaryDirectory.appending(path: "tailnet-\(UUID().uuidString).json")
         try json.write(to: file)
         let path = try stub("#!/bin/sh\ncat '\(file.path)'\n")
+        #expect(try Tailnet.scan(binary: path).map(\.name) == (try peers().map(\.name)))
+    }
+
+    /// The cause, not the symptom. Tailscale's macOS bundle is the GUI and
+    /// the CLI in one binary and picks by smelling for a shell: no `TERM`
+    /// and no `SHLVL` means double-clicked, so it prints the GUI's failure
+    /// on stdout and exits 0. A GUI app's environment has neither, which is
+    /// why only ccc.app ever saw this. Both are supplied, and an empty
+    /// `TERM=` counts as absent — the binary reads it that way.
+    @Test func aGUIAppSuppliesTheShellItIsMissing() {
+        let bare = Tailnet.shellish([:])
+        #expect(bare["TERM"] == "xterm-256color")
+        #expect(bare["SHLVL"] == "1")
+        #expect(Tailnet.shellish(["TERM": ""])["TERM"] == "xterm-256color")
+        // A real terminal's answer is never overwritten.
+        let inherited = Tailnet.shellish(["TERM": "xterm-ghostty", "SHLVL": "3", "HOME": "/x"])
+        #expect(inherited["TERM"] == "xterm-ghostty")
+        #expect(inherited["SHLVL"] == "3")
+        #expect(inherited["HOME"] == "/x", "the rest of the environment is inherited whole")
+    }
+
+    /// And the same thing end to end, against a stub that behaves the way
+    /// the measured binary does: JSON for a shell, the GUI's sentence for
+    /// anyone else. It answers, so `TERM` reached it.
+    @Test func theBinaryIsRunAsACLI() throws {
+        let json = try Fixtures.data("tailnet/status-2026-09-04.json")
+        let file = URL.temporaryDirectory.appending(path: "tailnet-\(UUID().uuidString).json")
+        try json.write(to: file)
+        let path = try stub("""
+            #!/bin/sh
+            if [ -z "$TERM" ]; then
+              echo 'The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)'
+              exit 0
+            fi
+            cat '\(file.path)'
+            """)
         #expect(try Tailnet.scan(binary: path).map(\.name) == (try peers().map(\.name)))
     }
 

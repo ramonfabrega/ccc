@@ -194,6 +194,7 @@ public enum Tailnet {
         let process = Process()
         process.executableURL = URL(filePath: binary)
         process.arguments = ["status", "--json"]
+        process.environment = shellish(ProcessInfo.processInfo.environment)
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
@@ -218,6 +219,39 @@ public enum Tailnet {
             throw Unreadable(binary: binary,
                              said: firstLine(String(decoding: data, as: UTF8.self), or: errors))
         }
+    }
+
+    /// The environment a shell would have handed it, which is the bug.
+    ///
+    /// Measured 2026-09-04, studio, `/Applications/Tailscale.app/Contents/
+    /// MacOS/Tailscale`: that binary is both the GUI and the CLI, and it
+    /// decides which one it is by looking for a shell in its environment.
+    /// With **neither `TERM` nor `SHLVL` set** it concludes it was
+    /// double-clicked, prints "The Tailscale GUI failed to start: The
+    /// operation couldn't be completed. (Tailscale.CLIError error 3.)" **on
+    /// stdout**, and exits **0** — which is how a JSON decoder came to meet
+    /// the letter T. Either variable alone flips it back to JSON; an empty
+    /// `TERM=` reads as absent; `HOME`, `USER`, `PATH`, `LOGNAME`, `SHELL`
+    /// and `TMPDIR` together do not help.
+    ///
+    /// A GUI app has neither variable, which is why this failed only inside
+    /// ccc.app and never from `ccc hosts discover` in a terminal — the twins
+    /// disagreed because the environment did. It is also why studio never
+    /// saw it: studio has `/usr/local/bin/tailscale`, the two-line
+    /// `#!/bin/sh exec …` shim Tailscale's "Install CLI" writes, and `sh`
+    /// exports `SHLVL` on the way through. Air has no shim, so ccc runs the
+    /// bundle directly and gets the GUI's answer.
+    ///
+    /// So: supply what the shim supplies by accident. Both variables —
+    /// pinning the fix to the single heuristic we happened to measure is how
+    /// this comes back.
+    static func shellish(_ environment: [String: String]) -> [String: String] {
+        var out = environment
+        // CLAUDE.md's TERM. Not "dumb": that is the one value a program
+        // looking for a terminal is entitled to read as "there isn't one".
+        if (out["TERM"] ?? "").isEmpty { out["TERM"] = "xterm-256color" }
+        if (out["SHLVL"] ?? "").isEmpty { out["SHLVL"] = "1" }
+        return out
     }
 
     /// The first line worth showing of what a binary printed — a sheet has
