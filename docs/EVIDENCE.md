@@ -3197,3 +3197,48 @@ over 250 ms mid-paint can still swap in early. Never seen in the wild,
 which is why it leaves the queue: it is a known edge with no forcing
 function, recorded here so the next person who sees an early swap has
 its name.
+
+## the audit (2026-09-04)
+
+Run while the user was away from every Mac, on tokens: four Opus
+reviewers (correctness over roster/harness, correctness over
+terminal/render/app, a twin audit, a docs-drift check), then five Opus
+verifiers told to *kill* each finding. The rule was that nothing is
+touched until a verifier confirms it with a reproduction or a traced path.
+
+### What the reviewers said and what survived
+
+| finding | verdict | fix |
+|---|---|---|
+| overlay mark: load before the roster read, save after — two marks lose one | **confirmed**, reproduced with a 400 ms stub (one of two archives gone, both exit 0) | load after the read, under `RosterOverlay.locked`; poller prune under the same lock; `twoMarksAtOnceBothSurvive` |
+| remote roster decodes strictly; one bad row freezes the host | **confirmed** — the trigger is a newer far side's enum word (`Status.waiting` arrived exactly this way) | lenient `Session.init(from:)`, `LenientElement`; `aWordFromANewerCCCDoesNotCostTheHost` |
+| `sorted` vs `rows(sortedBy:)` rank drafts differently | downgraded (consumers are the legacy `.list`, `recentFolders`) | one comparator; `sortedIsTheActivitySort` |
+| `reconnect` joins the in-flight poll on the evicted master | downgraded (reattach reads pane state, not the poll; costs one tick) | `tick(fresh:)` cancels it; `aFreshTickEndsThePollInFlight` |
+| `Git.run`/`Tailnet.scan` read pipes sequentially | downgraded — hangs at 66,000 B of stderr (measured), no git verb here says that much | `Git.Drain`; `aLoudStderrDoesNotHangTheScan` |
+| `stop()` leaves the poll in flight | downgraded (one bounded straggler) | cancelled, recorded as nothing |
+| `bases` cache never invalidated | downgraded (merge verbs build a fresh probe; the poller's does not) | trusted while it resolves, name in the key; `aRenamedDefaultBranchIsFoundAgain` |
+| control client read has no deadline | **confirmed** via `.roster(fresh:)` behind a wedged poll | 60 s idle timeout, `timedOut`; `aSilentServerTimesOutInsteadOfHanging` |
+| `presentedFrames` counts calls | downgraded (zero still means black; nonzero inflated) | counts encodes; `presentedFramesCountEncodesNotCalls` |
+| `ccc resize 0 0` | **confirmed** for the CLI; the window clamps | refused at the verb and the socket |
+| `capture` waits before reading stderr | downgraded (latent) | `Subprocess.run` |
+| glyph atlas written while frames in flight | **killed** — writes only ever land in fresh space, no eviction, `.shared` storage | `atlasRectsNeverOverlap` as the tripwire |
+
+Two things the verifiers said that the reviewers did not: the skew
+direction of "is the remote ccc older" was backwards (studio runs the
+dev loop, so the far side learns a word first), and the sequential-read
+comment in `Tailnet.scan` stated the rule the code violated.
+
+### The twin audit
+
+The CLI verb list is strings in two places (`CLI.run`'s switch and the
+hand-written usage) and no test can reach either, because the `ccc`
+target has no test target; `WindowAction` is the one grammar that is a
+type with a generated usage and a round-trip test. Gaps ranked worth
+closing, recorded on queue item 5: `ccc ask`, a mouse-button `send`,
+`hosts remove|check` in the window, an age column. `ccc list --fresh`
+is ⌘R's twin since item 4.
+
+### The docs drift
+
+Twelve items, one of them a red test (the queue at 277 lines against
+its 200 bound); all fixed in "The docs said v0.1.18 and five members".

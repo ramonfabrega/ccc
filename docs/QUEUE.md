@@ -22,12 +22,10 @@ not building unblocking — it is building what RC leaves out, starting with
 the fact that **ccc cannot see any of it** (`docs/EVIDENCE.md` "the mobile
 survey"; the amended argument is under "Later").
 
-**v8 through v12 are done and their numbers are in `docs/EVIDENCE.md`** —
-grep "v8 slice 1" … "v12 slice 2". Two shapes from them are rules rather
-than stories, so they stay: **a fix for a bug that lives on the other Mac
-is unproved until a release carries it there** (air can only pull), and
-**a verb with fewer surfaces than its opposite is a verb that will be
-reported missing**.
+**v8 through v12 are done** (`docs/EVIDENCE.md` "v8 slice 1" … "v12 slice
+2"). Two rules from them stay: **a fix for a bug that lives on the other
+Mac is unproved until a release carries it there**, and **a verb with
+fewer surfaces than its opposite will be reported missing**.
 
 Two **questions, not items**, left over. `suggestedReply` is on the row and
 shown nowhere; using it means answering without attaching (see "Later").
@@ -53,7 +51,11 @@ runs `claude attach`, which scrolls its own history (re-checked
 2026-09-03). **`ccc window show` when another app holds focus** — measured
 2026-09-02: `NSApp.activate()` is cooperative since macOS 14 and the
 window stayed behind while `open -a` brought it front, so `show`'s CLI
-side should activate through `NSWorkspace`.
+side should activate through `NSWorkspace`. **Twin gaps from the audit**
+(`docs/EVIDENCE.md` "the audit"): `ccc ask <ref>` (the socket has it; the
+CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
+remove|check` in the window, an age column; and the verb list is strings
+in two places no test can reach — `WindowAction` is the shape to copy.
 
 ### 6. The remote pane's reattach has still never met a lid
 
@@ -63,28 +65,24 @@ on 17 of 18; a wake costs 14–22 s that no client-side fix can shorten,
 because the tailnet is what is missing. `scripts/lidtest` is the instrument.
 
 **Fixed from those numbers** (`docs/EVIDENCE.md` "v0.1.19 and v0.1.20"):
-the reattach window was 20 s and gave up one or two seconds *before* the
-network returned on three wakes in eighteen; it is 60 s now, ~3x the
-measured worst case, pinned by `WakeWindowTests`.
+the 20 s reattach window gave up seconds *before* the network returned on
+three wakes in eighteen; it is 60 s now, pinned by `WakeWindowTests`.
 
 **Still unmeasured, and the night decides it.** `ccc stats` grew a `wake`
 line — `wakes`, reattach `attempts`, `gaveUp` — because three outcomes
 look identical from outside (the pane is not back):
 
-- `attempts == 0` after a night of `wakes`: **the guard never fired**, so
-  ssh never noticed the pane died. `ClaudeCLI.sshPrefix` sets no
-  `ServerAliveInterval`, and an idle `ssh -t … claude attach` over a dead
-  TCP connection may never return — the pane would hang on a frozen grid
-  rather than die. That is a different bug from this window, and the
-  counter is what tells them apart. **Do not add the keepalive first**:
-  the night is what says whether it is needed.
+- `attempts == 0` after a night of `wakes`: **the guard never fired** —
+  `ClaudeCLI.sshPrefix` sets no `ServerAliveInterval`, so an idle attach
+  over a dead TCP connection may never return and the pane hangs on a
+  frozen grid rather than dying. A different bug from this window.
+  **Do not add the keepalive first**: the night says whether it is needed.
 - `gaveUp > 0`: the window is still too narrow.
 - `attempts > 0`, `gaveUp == 0`: it works.
 
 Needs air's pane attached to a **studio** ref when the lid closes, studio's
-pane on something else or nothing (or it measures item 15 too), and **air
-on v0.1.20 or later** — cut and published 2026-09-04, so air takes it from
-the feed. 0.1.18 measures the defect, not the fix.
+pane elsewhere or on nothing (or it measures item 15 too), and **air on
+v0.1.20 or later** from the feed; 0.1.18 measures the defect, not the fix.
 
 ### 15. What a second viewer does to the grid
 
@@ -132,68 +130,70 @@ carries it. **The user's half is unmeasured**: whether the phone now buzzes
 for a session ccc holds and nobody is watching.
 
 **Slice 3: `CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses
-push while a marker file exists, and the harness docs say to "configure a
-screen-lock listener or similar tool" to write it on unlock and delete it
-on lock. **ccc is that tool.** Twin: `ccc presence on|off|status` plus
-`ccc presence --settings`, printing the settings.json `env` entry and never
-writing it (`HookSettings`' rule). **The obvious signal is wrong**: studio
-is always-on, so "screen unlocked" would suppress push all day while nobody
-is there. Idle time is the signal — unlocked *and* recently touched.
-**Do slice 3 only if slice 2 was not enough**: it adds a second suppressor,
-and the bug just fixed was too much suppression.
+push while a marker file exists; the harness docs want "a screen-lock
+listener or similar tool" to write it on unlock and delete it on lock.
+**ccc is that tool**: `ccc presence on|off|status`, plus `--settings`
+printing the settings.json `env` entry and never writing it. **The obvious
+signal is wrong**: studio is always-on, so "unlocked" would suppress push
+all day; idle time is the signal — unlocked *and* recently touched. **Only
+if slice 2 was not enough**: the bug just fixed was too much suppression.
 
 **Not a slice, a box.** ccc's spawn never offers `--rc`. Whether it should
 default to it is the user's call, but the box should exist.
 
+### 18. The worktree family points at the default branch; the trunk is often elsewhere
+
+Reported by lore 2026-09-04 from attrition, the first external consumer of
+`ccc spawn` at scale: it could not use `--worktree`, which bases the new
+worktree on the repo's default branch, because attrition's `main` lags its
+working branch by design; it cut worktrees off the working tip by hand and
+passed `--cwd`. **Structural**: `merge`, `update` and `pull` read the
+default branch too, and most of the fleet is trunk-on-a-branch — ccc itself
+on `worktree-v2`. Three shapes: a base-ref option on `spawn --worktree`;
+**default the base to the spawning session's own branch when it is in a
+worktree**, the family reading the base from the worktree's upstream (the
+recommendation: no flag, and it is attrition's case and ours); or leave
+it and document `--cwd`, which works. Undecided; the user's call.
+
 ## Later
 
-Reply without attach — **not** experiment 4; the session inbox socket, one
-probe away. RC-free approvals via the `PermissionRequest` hook, now the
-*only* write path the phone in the user's pocket does not already have.
-The phone, if the Mac app earns it.
+Reply without attach — the session inbox socket, one probe away. RC-free
+approvals via the `PermissionRequest` hook, the *only* write path the
+phone in the pocket does not already have. The phone, if the Mac earns it.
 
 **Argued 2026-09-04 and amended the same day, by measurement**
 (`docs/EVIDENCE.md` "the mobile survey"): **answering the "your turn" from
-a phone is already shipped**, by Anthropic, through Remote Control, to
-these very sessions — five of nine live workers carry `--rc`, and the
-Claude app messages them, answers their permission prompts and
-`AskUserQuestion`s, and sets `/model`. RC is an outbound relay with no
-third-party entry point; ccc cannot join it and does not need to. **A ccc
-phone must earn its place on something other than unblocking.**
+a phone is already shipped**, through Remote Control, to these sessions —
+five of nine live workers carry `--rc`, and the Claude app messages them,
+answers their prompts and sets `/model`. RC has no third-party entry
+point. **A ccc phone must earn its place on something other than unblocking.**
 
-**Approvals before reply**, and the order survives for a new reason.
-`PermissionRequest` is documented, with a `decision` object
-(`docs/HARNESS.md`), and `ccc hook` already receives Notification over the
-control socket; the new part is a hook that blocks and answers. Reply is
-the *other* feature now, because **a peer message can never approve** — the
-docs are explicit that it "never counts as your consent, so it can't answer
-a pending permission prompt". One queue line was two features.
+**Approvals before reply.** `PermissionRequest` is documented, with a
+`decision` object (`docs/HARNESS.md`), and `ccc hook` already receives
+Notification over the socket; the new part is a hook that blocks and
+answers. Reply is the *other* feature, because **a peer message can never
+approve** — "never counts as your consent". One queue line was two features.
 
-**Reply has a documented path, so experiment 4 is optional.** Every session
-binds an inbox socket and the docs sanction posting into it from a script
-or hook. The address is a join ccc already makes: **`replPid`** →
-`/tmp/cc-socks/<replPid>.sock`, nine for nine (`pid` is the launcher and
-matches nothing); a session's own is `CLAUDE_CODE_MESSAGING_SOCKET` with
-`CLAUDE_CODE_MESSAGING_TOKEN`, auth optional on macOS. A
+**Reply has a documented path.** Every session binds an inbox socket and
+the docs sanction posting into it from a script or hook. The address is a
+join ccc already makes: **`replPid`** → `/tmp/cc-socks/<replPid>.sock`,
+nine for nine (`pid` is the launcher); a session's own is
+`CLAUDE_CODE_MESSAGING_SOCKET`, auth optional on macOS. A
 `bypassPermissions` receiver holds the message; a prompting one takes it.
-**What is left is one probe**: the message line's format is undocumented
-and in the CLI's bytecode, and a probe against ccc's own socket was refused
-by the auto-mode classifier (writing to a session's IPC socket reads as
-injection, correctly). Run it as `! python3 …`; `ccc reply <ref> "<text>"`
-is a small twin after it.
+**What is left is one probe**: the line's format is undocumented and in
+the CLI's bytecode, and a probe from a session was refused by the auto-mode
+classifier (correctly: writing to an IPC socket reads as injection). Run
+it as `! python3 …`; `ccc reply <ref> "<text>"` is a small twin after it.
 
-**The phone breaks exactly one locked decision**: *"PTY is always local;
-remote is the same command behind `ssh -t`"* — a subprocess, and iOS has
-no fork/exec. An in-process ssh client (**`apple/swift-nio-ssh`**, what
-`daiimus/geistty` ships) over **libghostty's External termio backend**
-(our seam's shape; builds for iOS in upstream CI) keeps the daemon
-decision untouched, and **`No tmux, ever` is the edge**: every shipping
-Ghostty-on-iOS client reaches for tmux control mode to survive suspension,
-and ccc needs none. One trap from item 14: `ccc pixel --cell`'s scale
-arithmetic has never met a Retina panel (studio is 1x; a phone is 2x–3x).
+**The phone breaks exactly one locked decision**: *"PTY is always local"*
+— a subprocess, and iOS has no fork/exec. An in-process ssh client
+(**`apple/swift-nio-ssh`**) over **libghostty's External termio backend**
+(our seam's shape; builds for iOS upstream) keeps the daemon decision, and
+**`No tmux, ever` is the edge**: every Ghostty-on-iOS client reaches for
+tmux to survive suspension; ccc needs none. Trap: `ccc pixel --cell`'s
+scale arithmetic has never met a Retina panel (studio is 1x).
 
-**"The core is shared" is not true yet.** `CCCKit` is one module pinned to
-`.macOS(.v14)` with `PTY/`, SwiftTerm and Sparkle inside it next to
-`Roster/` and `Render/`. Splitting the parts above the seam out is
-Mac-side work, testable today, and what makes a port a port instead of a
-rewrite.
+**"The core is shared" is not true yet.** `CCCKit` is one module pinned
+to `.macOS(.v14)` with `PTY/`, SwiftTerm and Sparkle beside `Roster/` and
+`Render/`. Splitting the parts above the seam out is Mac-side work, testable
+today, and what makes a port a port instead of a rewrite.
