@@ -3,7 +3,7 @@ import Foundation
 
 /// The command face. Each verb is a click's twin.
 ///
-///   ccc hosts [add|remove|check]      the machines ccc can reach
+///   ccc hosts [add|remove|check|discover]  the machines ccc can reach
 ///   ccc list [--json]                 the roster, with the model column
 ///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
@@ -707,6 +707,18 @@ enum CLI {
             }
             let claude = stringFlag("--claude", rest) ?? probed?.claude
             guard let claude else {
+                // An unknown host key is the *first* add from a new Mac, and
+                // it is not a missing-claude problem: ccc's probe is a
+                // non-interactive ssh, which cannot show the accept-this-key
+                // prompt, so it fails before it looks for anything. Say the
+                // one command that fixes it rather than the search path that
+                // was never reached (measured 2026-09-04, adding studio by
+                // its full MagicDNS name).
+                if notes.contains(where: { $0.contains("Host key verification failed") }) {
+                    stderr("ccc: \(ssh)'s host key is not known, so ccc's non-interactive ssh was refused before it could look for claude. "
+                           + "Run `ssh \(ssh)` once, accept the key, then `ccc hosts add \(name)` again.")
+                    return 1
+                }
                 stderr("ccc: no claude found on \(name) at \(ClaudeCLI.Probe.claudeCandidates.joined(separator: ", ")); pass --claude <absolute path>"
                        + (notes.isEmpty ? "" : " (\(notes.joined(separator: "; ")))"))
                 return 1
@@ -907,9 +919,72 @@ enum CLI {
             }
             return results.allSatisfy(\.ok) ? 0 : 1
 
+        case "discover":
+            // The picker's twin (queue item 3): what Macs are on the tailnet
+            // and which of them ccc already has. It enumerates and stops
+            // there — `hosts add` is what probes over the real ssh and
+            // refuses a machine that cannot answer `claude`, so nothing here
+            // has to guess who runs an sshd. Nothing in `tailscale status`
+            // says, either (measured 2026-09-04).
+            let peers: [Tailnet.Peer]
+            do {
+                peers = try Tailnet.scan()
+            } catch {
+                stderr("ccc: \(error)")
+                return 1
+            }
+            let known = Set(loaded.config.hosts.compactMap { $0.ssh })
+            let knownNames = Set(loaded.config.hosts.map(\.name))
+            struct Row: Encodable {
+                var name: String, dnsName: String, hostName: String
+                var online: Bool, isSelf: Bool, added: Bool
+                var lastSeen: Date?
+            }
+            let rows = peers.map {
+                Row(name: $0.name, dnsName: $0.dnsName, hostName: $0.hostName,
+                    online: $0.online, isSelf: $0.isSelf,
+                    added: known.contains($0.dnsName) || known.contains($0.name) || knownNames.contains($0.name),
+                    lastSeen: $0.lastSeen)
+            }
+            if json { printJSON(rows); return 0 }
+            guard !rows.isEmpty else {
+                print("no Macs on the tailnet besides this one")
+                return 0
+            }
+            let width = rows.map(\.name.count).max() ?? 0
+            for row in rows {
+                let name = row.name.padding(toLength: width, withPad: " ", startingAt: 0)
+                var note = row.isSelf ? "  this Mac" : ""
+                if row.added { note += "  (added)" }
+                if !row.online {
+                    let when = row.lastSeen.map { "last seen \(Self.ago($0))" } ?? "offline"
+                    note += "  \(when)"
+                }
+                print("\(name)  \(row.dnsName)  \(row.hostName)\(note)")
+            }
+            // The short label, not the full MagicDNS name: known_hosts and
+            // ~/.ssh/config are keyed on what a human types, and `--ssh`
+            // defaults to the name, so there is nothing to pass.
+            print("\n`ccc hosts add <name>` to add one; it probes for claude over the real ssh before it saves")
+            return 0
+
         default:
-            stderr("ccc: unknown hosts action '\(action)' (list|add|remove|check|reconnect|mute|unmute)")
+            stderr("ccc: unknown hosts action '\(action)' (list|discover|add|remove|check|reconnect|mute|unmute)")
             return 2
+        }
+    }
+
+    /// Rough age for a `LastSeen`, in the words a listing wants. Coarse on
+    /// purpose: the question a dead peer answers is "months or minutes",
+    /// never "how many days exactly".
+    static func ago(_ date: Date) -> String {
+        let seconds = Date().timeIntervalSince(date)
+        switch seconds {
+        case ..<90: return "just now"
+        case ..<5400: return "\(Int(seconds / 60)) minutes ago"
+        case ..<172_800: return "\(Int(seconds / 3600)) hours ago"
+        case ..<5_184_000: return "\(Int(seconds / 86400)) days ago"
+        default: return "\(Int(seconds / 2_592_000)) months ago"
         }
     }
 
@@ -1482,6 +1557,7 @@ enum CLI {
         handle.write(Data("""
         usage: ccc                              open the app
                ccc hosts [list|check [<name>]]     the machines ccc can reach (check runs the real poll)
+               ccc hosts discover [--json]         Macs on the tailnet, this one included; add probes over ssh
                ccc hosts add <name> [--ssh <dest>] [--claude <path>] [--ccc <path>|--no-ccc] | remove <name>
                                                   (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)

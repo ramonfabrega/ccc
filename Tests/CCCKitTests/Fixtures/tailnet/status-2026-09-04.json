@@ -1,0 +1,89 @@
+{
+  "Version": "1.98.9-t4fb758c39-g200941d74",
+  "BackendState": "Running",
+  "Self": {
+    "HostName": "Ramon\u2019s Mac Studio",
+    "DNSName": "studio.bengal-barb.ts.net.",
+    "OS": "macOS",
+    "Online": true,
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "KeyExpiry": "2026-09-25T00:36:56Z",
+    "TailscaleIPs": [
+      "100.81.87.24",
+      "fd7a:115c:a1e0::ac01:571e"
+    ],
+    "UserID": 6902065360135719
+  },
+  "Peer": {
+    "nodekey:11e2274890363bac5a1a615caba88eea63a6f019d6d101033057d5e2ae0fcc74": {
+      "HostName": "rf-mbp",
+      "DNSName": "mbp.bengal-barb.ts.net.",
+      "OS": "macOS",
+      "Online": false,
+      "LastSeen": "2025-07-24T02:47:01.1Z",
+      "Expired": true,
+      "KeyExpiry": "2025-07-26T07:23:08Z",
+      "TailscaleIPs": [
+        "100.79.204.117",
+        "fd7a:115c:a1e0::ae01:cc76"
+      ],
+      "UserID": 6902065360135719
+    },
+    "nodekey:397dca9752623ebc781d4e9fc1938ed6f65ed711bc7a45d141b37cc27f916554": {
+      "HostName": "centaur-slackbotv2",
+      "DNSName": "centaur-slackbotv2.bengal-barb.ts.net.",
+      "OS": "linux",
+      "Online": true,
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "TailscaleIPs": [
+        "100.81.101.84",
+        "fd7a:115c:a1e0::7f33:6555"
+      ],
+      "Tags": [
+        "tag:k8s"
+      ],
+      "UserID": 386547828492034
+    },
+    "nodekey:52a6129a0746c64d9657aa4bd5d9ab0f01c3f544c9f4c3ad98c82e7205d1a102": {
+      "HostName": "tailscale-operator",
+      "DNSName": "tailscale-operator.bengal-barb.ts.net.",
+      "OS": "linux",
+      "Online": true,
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "TailscaleIPs": [
+        "100.81.161.2",
+        "fd7a:115c:a1e0::533:a103"
+      ],
+      "Tags": [
+        "tag:k8s-operator"
+      ],
+      "UserID": 386547828492034
+    },
+    "nodekey:56de4fbe75ec39ad29774b8cfcd566ece8f18bd65883d23e944e05e7238e0770": {
+      "HostName": "localhost",
+      "DNSName": "iphone.bengal-barb.ts.net.",
+      "OS": "iOS",
+      "Online": true,
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "KeyExpiry": "2027-01-28T17:40:40Z",
+      "TailscaleIPs": [
+        "100.99.246.127",
+        "fd7a:115c:a1e0::3401:f67f"
+      ],
+      "UserID": 6902065360135719
+    },
+    "nodekey:7a078dec70e326beba8c9c6e0ac78dd7f85effa5bca0a5e6c820b82fa22f0935": {
+      "HostName": "Ramon\u2019s MacBook Air",
+      "DNSName": "air.bengal-barb.ts.net.",
+      "OS": "macOS",
+      "Online": true,
+      "LastSeen": "2026-09-04T02:10:00.1Z",
+      "KeyExpiry": "2026-09-22T21:37:44Z",
+      "TailscaleIPs": [
+        "100.122.216.104",
+        "fd7a:115c:a1e0::501:d868"
+      ],
+      "UserID": 6902065360135719
+    }
+  }
+}

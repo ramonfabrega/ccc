@@ -45,7 +45,7 @@ nothing blocks it.
 
 ## Open
 
-### 3. The hop: the picker is what is left
+### 3. The hop: the picker's UI is what is left
 
 **Shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 1 — the hop is real"):
 `ccc hosts add studio --ssh studio`, `ccc hosts check studio` at 684 ms
@@ -67,16 +67,16 @@ it by name, or ask about it. Recorded here because this ground has been
 re-litigated twice (2026-09-03, 2026-09-04), both times because the rule
 is stated in enough places to read as live rather than settled.
 
-**What is left: the picker off `tailscale status --json`.** MagicDNS names
-are the ssh destinations (Bonjour never crosses the tailnet), and the
-first label of `DNSName` is both the destination and the natural
-`Host.name` — not `HostName`, which is "Ramon's Mac Studio" for studio and
-"localhost" for the iPhone. The picker's work is presenting the macOS
-peers that can answer `claude`; the tailnet carries its own liveness, so a
-long-dead peer says so (`LastSeen`) instead of needing a heuristic. The
-host list it writes to is now hot-reloaded, so the picker's add lands in
-the running app the way `ccc hosts add` does. **The direction is not the
-picker's problem** — see the note under "The hop is live" above.
+**The tailnet half shipped 2026-09-04** (docs/EVIDENCE.md "v9 slice 6"):
+`ccc hosts discover` lists the live Macs — this one included, since
+registering yourself is the loopback — off `tailscale status --json`,
+with `Tailnet.scan()` behind it. It enumerates only: nothing in that JSON
+says who runs an sshd, so `ccc hosts add`'s ssh probe stays the gate.
+
+**What is left: the menu that shows it.** `ccc hosts discover --json` is
+the shape it renders, `hosts add` is what its button calls, and the host
+list is hot-reloaded so the add lands in the running app. Nothing to work
+out; it is a view.
 
 ### 4. Debt: the blocking poll read
 

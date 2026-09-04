@@ -1617,3 +1617,74 @@ noticed 2026-09-03). It reads `ri_proc_start_abstime` off the process now,
 in both branches — a number the process cannot be wrong about, from the
 same `proc_pid_rusage` call `footprint` was already making. Nil rather
 than zero for a pid we cannot see, the roster's rule.
+
+## v9 slice 6 — item 3: the tailnet is a list you can pick from (2026-09-04)
+
+Queue item 3's last step, the data half. `hosts.json` is hand-editable and
+one line adds a Mac; this is the other half — not looking up an address.
+
+    ccc hosts discover [--json]
+    Tailnet.scan() -> [Peer]        name, dnsName, hostName, online, lastSeen, isSelf
+
+Six nodes on the tailnet, two offered:
+
+    air     air.bengal-barb.ts.net     Ramon's MacBook Air
+    studio  studio.bengal-barb.ts.net  Ramon's Mac Studio  this Mac  (added)
+
+### It enumerates; the probe still decides
+
+**The tailnet cannot say who runs an sshd.** `tailscale status --json`
+carries `HostName`, `DNSName`, `OS`, `Online`, `LastSeen`, `Expired` — and
+no host keys, no "offers SSH", nothing about port 22. A Mac with Remote
+Login off is indistinguishable from one with it on. So `discover` lists
+*candidates*, never *servers*, and `ccc hosts add` stays the gate: it
+probes over the real ssh for `claude`, `ccc` and `$HOME` and refuses what
+does not answer. Any filter cleverer than "is it a live Mac" would be a
+guess wearing a filter's clothes.
+
+Dropped, each for a reason a machine can check: the iPhone and two
+`tag:k8s` Linux boxes (not macOS), and `mbp` — whose **node key expired
+2025-07-26**, so it goes for `Expired` rather than for looking old, which
+would have been a threshold someone has to pick.
+
+### Two things the capture corrected
+
+**The name is the first label of `DNSName`, not `HostName`.** The Macs
+call themselves "Ramon's Mac Studio" and "Ramon's MacBook Air" — spaces
+and a smart apostrophe, so not legal host names — and the iPhone calls
+itself `localhost`. The MagicDNS label is the only field that is both a
+legal `Host.name` and an ssh destination.
+
+**And the *short* label is the destination, not the full name** — the
+opposite of what it looks like, found by trying it:
+
+    ccc hosts add studio --ssh studio.bengal-barb.ts.net
+    → ssh to studio failed: Host key verification failed.
+    ccc hosts add studio --ssh studio
+    → added studio (claude ~/.local/bin/claude, roster via ccc, home /Users/rf-studio)
+
+`known_hosts` and `~/.ssh/config` are keyed on what a human types; the
+full name is a different host to ssh, with no key on file and no `User`
+line. `--ssh` already defaults to the name, so the hint is `ccc hosts add
+<name>` with no flag at all.
+
+That failure is also the **first** add from any new Mac, and it was
+reported as "no claude found" — the search path was never reached. It now
+names the one command that fixes it: run `ssh <dest>` once to accept the
+key, then add.
+
+### The loopback, registered and proved
+
+`ccc hosts add studio` then `ccc hosts check`:
+
+    local   ok  157 ms  claude 20 sessions
+    studio  ok  648 ms  ccc 20 sessions, 18 with a model  ccc 0.1.16 (131)  home /Users/rf-studio
+
+Which is the shape the picker is for: register this Mac and it appears
+beside `local`; register nothing and the list is `local` alone. 648 ms
+against 157 ms is in line with v9 slice 1's 684 ms.
+
+**Not built here: the app's picker UI.** This is the data and the command
+twin; the menu that shows it is next, and it has nothing left to work out.
+Driven from a real capture (`Fixtures/tailnet/status-2026-09-04.json`,
+trimmed to the fields we read). 7 tests, 361 total.
