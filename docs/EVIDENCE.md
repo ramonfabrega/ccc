@@ -2711,3 +2711,27 @@ sentence for anyone else — drives `Tailnet.scan` in the tests. 401 pass.
 The better error message stays: it is what turned "Unexpected character 'T'"
 into a sentence a human could act on in one round trip, and it is what will
 name the next binary that answers something else.
+
+### Cut as v0.1.22
+
+Build 160, 5,083,957 bytes, notarized (`Accepted`), stapled, `spctl` says
+`source=Notarized Developer ID`, and published to both CDN keys; the live
+feed's `length=` matched the zip's real content-length, which is what
+`scripts/package` exits non-zero on. `scripts/package --ad-hoc` ran first
+against the same tree and cut a clean bundle (5,035,980 bytes, unsigned by
+Developer ID and unnotarized — the difference is the signature and the
+staple), so the notarization was spent on a bundle already known good.
+`scripts/install --dist` put the release on studio:
+
+```
+$ ccc version
+ccc 0.1.22 (160)  /Users/rf-studio/Applications/ccc.app
+$ ccc hosts discover
+air     air.bengal-barb.ts.net  Ramon’s MacBook Air
+studio  studio.bengal-barb.ts.net  Ramon’s Mac Studio  this Mac
+```
+
+Studio's answer is the control, not the measurement: it was never the Mac
+that broke, and `shellish` must leave it unchanged. **The measurement is
+air's, and it is one sentence** — Add Mac on air lists the tailnet instead
+of naming a character — which cannot be taken until air pulls this cut.
