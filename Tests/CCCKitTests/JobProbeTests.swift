@@ -106,19 +106,30 @@ import Testing
         let e = event(.blocked, name: "linear cuanto bill project", job: job)
         #expect(e.body?.hasPrefix("…prod), and do you want") == true)
         #expect(SessionEvent.looksClipped("prod), and do you") == true)
-        #expect(SessionEvent.looksClipped("and do you want") == true)
+        // Lowercase is the normal register for a `detail`, not damage —
+        // these are all real ones, and none of them is a fragment.
+        #expect(SessionEvent.looksClipped("wiki: TCC identity fix scoped") == false)
+        #expect(SessionEvent.looksClipped("detour arithmetic verified; awaiting capture (300/16 MB)") == false)
+        #expect(SessionEvent.looksClipped("keyboards (K400 Plus + K600 TV), smart plugs (Shelly)") == false)
+        #expect(SessionEvent.looksClipped("answer: Should the banner show the branch? (Yes · No)") == false)
         #expect(SessionEvent.looksClipped("Bugs 2 and 3 fixed") == false)
-        #expect(SessionEvent.looksClipped("4 files changed") == false)
-        #expect(SessionEvent.looksClipped("…already marked") == false)
+        // An unmatched *opener* is a cut tail, which is macOS's job.
+        #expect(SessionEvent.looksClipped("Carto watermark root-caused (a vendor") == false)
     }
 
-    /// `waitingFor` is the roster's own word and wins where it exists;
-    /// the job file is what answers when it does not, which is most of
-    /// the time.
-    @Test func theRostersOwnWordWinsWhenItHasOne() {
-        let job = JobInfo.decode(Data(Self.blockedJSON.utf8))
-        #expect(event(.blocked, name: "a", waitingFor: "approve rm -rf?", job: job).body == "approve rm -rf?")
+    /// The job file beats `waitingFor`, found the hard way: a fixture
+    /// blocked on `AskUserQuestion` answered `waitingFor: "input needed"`
+    /// — a placeholder — while its job file held the actual question. The
+    /// roster's word is the fallback, for a session with no job file.
+    @Test func theJobFileBeatsAPlaceholder() {
+        let asking = JobInfo(needs: "answer: Should the banner show the branch? (Yes · No)")
+        #expect(event(.blocked, name: "a", waitingFor: "input needed", job: asking).body
+                == "answer: Should the banner show the branch? (Yes · No)")
+        // No job file at all: the roster's word is all there is.
+        #expect(event(.blocked, name: "a", waitingFor: "approve rm -rf?", job: nil).body == "approve rm -rf?")
         #expect(event(.blocked, name: "a", job: nil).body == nil)
+        // An ending never borrows `waitingFor` — it is a blocked concept.
+        #expect(event(.done, name: "a", waitingFor: "input needed", job: nil).body == nil)
     }
 
     /// Mid-question is not the moment to list pull requests.
@@ -148,6 +159,34 @@ import Testing
         // waitingFor is already in the headline, so it is not said twice.
         #expect(event(.blocked, name: "a", waitingFor: "approve rm -rf?", job: nil).watchLine
                 == "a is waiting: approve rm -rf?")
+    }
+
+    // MARK: what the row says (slice 2)
+
+    private func row(_ state: Session.State?, job: JobInfo?, draft: Bool = false) -> SessionRow {
+        SessionRow(session: Session(id: "abc123", cwd: "/x", kind: .background, startedAt: Date(), state: state),
+                   host: "studio", model: nil, attached: false, draft: draft, job: job)
+    }
+
+    /// The roster row gains the field the banner could never carry:
+    /// `detail` narrates a **working** session, and working is the one
+    /// state ccc never notifies on.
+    @Test func theRowSaysWhatAWorkingSessionIsDoing() {
+        let working = JobInfo(detail: "detour arithmetic verified; awaiting capture (300/16 MB)")
+        #expect(row(.working, job: working).say == "detour arithmetic verified; awaiting capture (300/16 MB)")
+        #expect(row(.done, job: JobInfo.decode(Data(Self.doneJSON.utf8))).say
+                == "Bugs 2 and 3 fixed and shipped as PRs #4917 and #4916.")
+        #expect(row(.working, job: nil).say == nil)
+    }
+
+    /// A draft says nothing: its `needs` is the harness's own "send a
+    /// prompt to start", which the row already tells you by being a draft.
+    @Test func aDraftSaysNothing() {
+        let unprompted = JobInfo(detail: DraftProbe.needsPhrase, needs: DraftProbe.needsPhrase)
+        #expect(row(.blocked, job: unprompted, draft: true).say == nil)
+        // The same file on a row the draft reading did not claim still
+        // speaks — the suppression is about the draft, not the phrase.
+        #expect(row(.blocked, job: unprompted).say == DraftProbe.needsPhrase)
     }
 
     // MARK: the probe on disk

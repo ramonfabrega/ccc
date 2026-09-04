@@ -218,6 +218,19 @@ public struct SessionRow: Codable, Sendable, Equatable, Identifiable {
     /// on you choosing to begin, which is not a turn.
     public var isWaiting: Bool { session.state == .blocked && !draft }
 
+    /// What this row has to say for itself (v10 slice 2): the daemon's own
+    /// sentence for whatever state the roster says it is in — the live
+    /// activity while working, the question while blocked, the result once
+    /// done. The same string the banner carries, so a row and its
+    /// notification cannot disagree.
+    ///
+    /// A **draft** says nothing: its `needs` is the harness's "send a
+    /// prompt to start", which the row already tells you by being a draft.
+    public var say: String? {
+        guard !draft else { return nil }
+        return job?.say(for: session.state)
+    }
+
     /// Archived rows are out of the default list — unless the session is
     /// asking for input, which is never hidden (v4's rule: "it's your
     /// turn" beats tidiness). An archived draft folds away.

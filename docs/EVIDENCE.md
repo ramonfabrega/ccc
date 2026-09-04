@@ -1849,3 +1849,71 @@ total, from 367.
 `ccc watch` gained the same payload and now prints `event.mark`, so the
 banner and the log line cannot disagree about a symbol — its blocked
 mark moves from `⏸` to `✋`, which is the roster header's own vocabulary.
+
+## v10 slice 2 — the row says what the session is doing (2026-09-04)
+
+Slice 1 put the daemon's sentence on every local row and spent it on the
+banner. The field with the most in it never reached a banner at all:
+`detail` narrates a **working** session, and working is the one state
+ccc never notifies on. So the roster row is its only home, and the row
+had been naming everything about a session except what it was doing.
+
+`SessionRow.say` is the join's reading for whatever state the roster
+reports — the same string the banner carries, so a row and its
+notification cannot disagree. A third line under the name in the window;
+an indented `↳` line under the columns in `ccc list`, because the row
+above is a grid and a 460-character sentence would destroy it. A
+**draft** says nothing: its `needs` is the harness's own "send a prompt
+to start", which the row already tells you by being a draft.
+
+Live, on this Mac:
+
+```
+  f229e968  blocked  wait  ccc-blocked-fixture  haiku-4-5  ~/code/fun/ccc ⎇ worktree-v2 ↑1
+            ↳ answer: Should the banner show the branch? (Yes, show it · No, keep it in the roster)
+  3369359f  working  busy  linear cuanto bill   opus-5     ~/code/work/cuanto ⎇ ramon/carto-basemaps-key
+            ↳ implementing Basemap config; removing maps-sandbox; typechecking
+```
+
+### Two things a real session caught that a mock could not
+
+Both found by spawning a haiku fixture that blocks on `AskUserQuestion`
+and reading what `ccc watch --json` actually emitted.
+
+**`waitingFor` is sometimes a placeholder, and slice 1 preferred it.**
+The fixture answered `waitingFor: "input needed"` while its job file
+held `"answer: Should the banner show the branch? (Yes, show it · No,
+keep it in the roster)"`. The rule was "the roster's own word wins";
+it now reads the other way — the job file wins, `waitingFor` is the
+fallback for a session with no job file. Nothing at the boundary
+distinguishes a `waitingFor` sentence from a `waitingFor` placeholder,
+so it cannot be trusted first. Same reason both the row and `ccc list`
+now suppress `⏸ input needed` when a real sentence follows it: printing
+a placeholder directly above the question is the redundancy this whole
+version deletes.
+
+**`looksClipped` was a lowercase test, and lowercase is the normal
+register.** It fired on the fixture's `"answer: Should…"`, and would
+have fired on most honest `detail` lines — `"wiki: TCC identity fix
+scoped"`, `"detour arithmetic verified; awaiting capture"`. Replaced
+with the structural signal: **a closing bracket with no opener**, which
+is exactly what a lost prefix leaves behind (`"prod), and do you
+want…"`). Only an unmatched *closer* counts — an unmatched opener means
+the tail was cut, which is macOS's job — and only over the first 80
+characters, so a stray bracket deep in a long result cannot trip it.
+
+The general lesson, which is why this is written down: the mock proved
+the *shape* and could not have found either of these, because both are
+facts about what the daemon emits rather than about what fits on a line.
+
+### Measured
+
+384 tests, from 382. The fixtures (`ccc-banner-fixture`,
+`ccc-blocked-fixture`) were haiku, per the standing rule that a fixture
+session for a proof is not worth a frontier model, and were stopped
+after they answered.
+
+A `done` fixture that finished inside one poll interval produced **no**
+event, correctly: a new row that arrives already terminal is history,
+not news (`TransitionDetector`'s own rule). Proving the banner needs a
+session that *stays* in the state — which is what the blocked one does.

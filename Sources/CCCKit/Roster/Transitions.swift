@@ -57,14 +57,21 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     /// gives the rest back on hover, which is a better cut than any this
     /// side could compute (v10).
     ///
-    /// `waitingFor` is the roster's own word for it and wins when it is
-    /// there; measured 2026-09-04, it usually is not — the one blocked
-    /// session on studio carried none while its job file held the whole
-    /// question.
+    /// **The job file wins over `waitingFor`**, which is the opposite of
+    /// what this first did. A fixture blocked on `AskUserQuestion`
+    /// 2026-09-04 answered `waitingFor: "input needed"` — a placeholder,
+    /// and precisely the sort of constant this slice exists to delete —
+    /// while its job file held `"answer: Should the banner show the
+    /// branch? (Yes, show it · No, keep it in the roster)"`. The roster's
+    /// word is sometimes a sentence and sometimes a placeholder and
+    /// nothing distinguishes them at the boundary, so it is the fallback
+    /// for when there is no job file at all.
     public var body: String? {
-        if kind == .blocked, let waitingFor, !waitingFor.isEmpty { return waitingFor }
         let state: Session.State = kind == .blocked ? .blocked : .done
-        guard let said = job?.say(for: state) else { return nil }
+        guard let said = job?.say(for: state) else {
+            let fallback = kind == .blocked ? waitingFor : nil
+            return (fallback?.isEmpty == false) ? fallback : nil
+        }
         // The daemon's extraction is ragged — a real one began "prod), and
         // do you want fake captures…" — so a fragment gets a leading
         // ellipsis and reads as deliberate instead of broken.
@@ -113,12 +120,32 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         return line
     }
 
-    /// A sentence that starts mid-clause. Cheap and structural: a first
-    /// character that cannot open one.
+    /// A sentence whose beginning was cut off. **A closing bracket with no
+    /// opener**, which is what a lost prefix leaves behind: the real
+    /// ragged one read `"prod), and do you want fake captures…"`.
+    ///
+    /// This started as "begins with a lowercase letter" and that was
+    /// wrong — a fixture's `"answer: Should the banner show the branch?"`
+    /// tripped it, and so would most honest `detail` lines, which are
+    /// terse by nature (`"wiki: TCC identity fix scoped"`, `"detour
+    /// arithmetic verified; awaiting capture"`). Lowercase is the normal
+    /// register here, not damage.
+    ///
+    /// Only an unmatched *closer* counts. An unmatched opener means the
+    /// tail was cut, which is macOS's job and not a fragment. Scanned over
+    /// the opening only, where a lost prefix shows up, so a stray bracket
+    /// deep in a 460-character result cannot trip it.
     static func looksClipped(_ text: String) -> Bool {
-        guard let first = text.first else { return false }
-        if first.isUppercase || first.isNumber { return false }
-        return first.isLetter || ")]},;:".contains(first)
+        var depth: [Character: Int] = ["(": 0, "[": 0, "{": 0]
+        let openerFor: [Character: Character] = [")": "(", "]": "[", "}": "{"]
+        for character in text.prefix(80) {
+            if depth[character] != nil { depth[character]! += 1 }
+            if let opener = openerFor[character] {
+                if depth[opener]! == 0 { return true }
+                depth[opener]! -= 1
+            }
+        }
+        return false
     }
 }
 

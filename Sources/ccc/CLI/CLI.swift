@@ -1428,7 +1428,12 @@ enum CLI {
             let state = row.draft ? "draft" : (s.state?.rawValue ?? (s.kind == .interactive ? "interactive" : "-"))
             let live = row.draft ? "" : (s.pid != nil ? (s.status?.rawValue ?? "live") : "")
             let name = (s.name ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
-            let waiting = s.waitingFor.map { " ⏸ \($0)" } ?? ""
+            // Only when nothing better follows on the ↳ line: `waitingFor`
+            // is often the placeholder "input needed", and printing that
+            // directly above the actual question is the redundancy this
+            // slice deletes. Same rule as the window's row.
+            let say = row.say.flatMap { $0 == s.waitingFor ? nil : $0 }
+            let waiting = say == nil ? (s.waitingFor.map { " ⏸ \($0)" } ?? "") : ""
             let archived = row.archived ? " (archived)" : ""
             let model = row.model.map { shortModel($0) } ?? "-"
             // The worktree (v6): the repository, then the branch and its
@@ -1436,8 +1441,24 @@ enum CLI {
             let cwd = hosts.shortCwd(row.worktree?.repo ?? s.cwd, host: row.host) + (row.worktree?.baseMark.map { " \($0)" } ?? "")
             let worktree = row.worktree.map { " ⎇ \($0.summary)" } ?? ""
             print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
+            // What the session has to say for itself (v10 slice 2), on its
+            // own indented line: the row above is columns, and a sentence
+            // of up to 460 characters would destroy them. `--json` carries
+            // it whole; this is the reading, cut to one terminal line.
+            if let say {
+                print("  \(host.isEmpty ? "" : String(repeating: " ", count: hostWidth + 2))\(String(repeating: " ", count: 10))↳ \(ellipsized(say, to: 96))")
+            }
         }
         }
+    }
+
+    /// One line's worth, cut at the tail with the ellipsis that says so.
+    /// Counts Characters, so an emoji or an accent is one column-ish and
+    /// never half a scalar.
+    static func ellipsized(_ text: String, to limit: Int) -> String {
+        let flat = text.replacingOccurrences(of: "\n", with: " ")
+        guard flat.count > limit else { return flat }
+        return String(flat.prefix(limit - 1)) + "…"
     }
 
     static func shortModel(_ model: String) -> String {

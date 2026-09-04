@@ -17,11 +17,14 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**Item 16**, and it is half done. v10 slice 1 put the daemon's own
-sentence — what a session is asking, or what it did — on every local row
-and spent it on the notification, which had been four lines carrying one
-word (`docs/EVIDENCE.md` "v10 slice 1"). The roster row is the other
-consumer of the same field and has not been touched.
+**There isn't one again.** v10 is done in two slices: the daemon's own
+sentence — what a session is asking, what it is doing, what it did — now
+reaches both the notification, which had been four lines carrying one
+word, and the roster row, which had named everything about a session
+except what it was doing (`docs/EVIDENCE.md` "v10 slice 1", "v10 slice
+2"). What is left of it is a **question, not an item**: `suggestedReply`
+is on the row and shown nowhere, and using it means answering a session
+without attaching — which is under "Later" and has never been argued.
 
 Before it: v8 and v9 are done — the theme, the attach transition, the
 colour oracle, the hop, colour (item 12), the hand (item 13) and the
@@ -34,7 +37,7 @@ terminal with Screen Recording permission** — a sitting, not a session.
 Items 4, 5 and 7 are debt, leftovers and housekeeping, none with a
 forcing function.
 
-After 16 the next thing is a **direction**, not an item. Whatever it is, the
+So the next thing is a **direction**, not an item. Whatever it is, the
 client is still read-only plus attach (CLAUDE.md's thesis), and the
 things that would change that — peek/reply without attach, RC-free
 approvals, the phone — are under "Later" and have never been argued.
@@ -134,24 +137,3 @@ be picked.
 
 Peek/reply without attach (experiment 4). RC-free approvals via the
 PermissionRequest hook. The phone, if the Mac app earns it.
-
-### 16. The roster row does not say what the session is doing
-
-Slice 1 put the daemon's own sentence on every local row (`JobInfo`,
-docs/EVIDENCE.md "v10 slice 1") and spent it on the banner alone. The
-roster row still shows name, model, state, branch and cwd — nothing
-about *what is happening*. The field with the most in it is the one
-nobody sees: `detail` narrates a **working** session, and working is the
-state ccc never notifies on. Watched live, one row read `"PR #50 ready
-to merge; awaiting go-ahead"`, then `"Reading the MIME table"` ten
-minutes later.
-
-The data is already on the row and already crosses the hop, so this is
-view work: a secondary line under the name, truncated to the column, and
-the same string in `ccc list`'s text output for the twin. The cost was
-answered in slice 1 — warm 0.218 ms per tick against a 201 ms poll — so
-nothing is owed but the layout.
-
-Open: whether the line replaces the cwd (which is the least-read thing
-in the row) or is added under it, and whether a `done` row keeps showing
-its result or falls back to quiet.

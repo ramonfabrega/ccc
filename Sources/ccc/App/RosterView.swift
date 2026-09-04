@@ -413,6 +413,14 @@ struct RosterRow: View {
     /// The host stopped answering; this row is its last known state.
     var stale: Bool = false
 
+    /// The row's sentence, unless line two already carries it: the
+    /// roster's own `waitingFor` is rendered up there, and saying the same
+    /// thing twice is worse than saying it once.
+    private var say: String? {
+        guard let say = row.say else { return nil }
+        return say == row.session.waitingFor ? nil : say
+    }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8).padding(.top, 2)
@@ -434,7 +442,11 @@ struct RosterRow: View {
                 }
                 HStack(spacing: 6) {
                     Text(stateText).font(.caption).foregroundStyle(color).fixedSize()
-                    if let waiting = row.session.waitingFor {
+                    // Only when nothing better is going below it: the
+                    // roster's `waitingFor` is often the placeholder
+                    // "input needed", and printing that beside the actual
+                    // question is the redundancy this slice deletes.
+                    if let waiting = row.session.waitingFor, say == nil {
                         Text(waiting).font(.caption).foregroundStyle(.orange).lineLimit(1)
                     }
                     if row.archived {
@@ -470,6 +482,22 @@ struct RosterRow: View {
                         if let mark = row.worktree?.baseMark { Text(mark).foregroundStyle(.orange).help(row.worktree!.standing) }
                     }
                     .font(.caption.monospaced())
+                }
+                // What the session has to say for itself (v10 slice 2).
+                // The row used to name everything about a session except
+                // what it was doing: the field with the most in it,
+                // `detail`, narrates a *working* session, and working is
+                // the one state ccc never notifies on — so the banner
+                // could never have carried it and the row is its only
+                // home. Orange while blocked, matching `waitingFor` above,
+                // so "your turn" and the question read as one thing.
+                if let say, !say.isEmpty {
+                    Text(say)
+                        .font(.caption)
+                        .foregroundStyle(row.isWaiting ? Color.orange : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(say)
                 }
             }
         }
