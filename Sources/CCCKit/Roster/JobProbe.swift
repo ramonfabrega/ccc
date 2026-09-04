@@ -40,9 +40,14 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// A reply the daemon proposes to `needs`. Rare (2 of 20), and worth
     /// showing when it is there rather than building anything for.
     public var suggestedReply: String?
-    /// What the session produced: pull requests, published artifacts.
-    /// Present in 14 of 20 jobs, and the reason a finished banner can say
-    /// "there are two PRs waiting" instead of only "done".
+    /// What the session produced: published artifacts, pull requests.
+    /// Present in 14 of 20 jobs, and the reason a finished banner can name
+    /// the thing that came out instead of only saying "done".
+    ///
+    /// Kept **whole**, the way every field at this boundary is: the
+    /// harness appends here across the job's whole life and never prunes,
+    /// so this is an archive and `receipt` is the one that decides what
+    /// a line has room to say.
     public var children: [Link]
 
     public struct Link: Codable, Sendable, Equatable {
@@ -57,10 +62,13 @@ public struct JobInfo: Codable, Sendable, Equatable {
             self.title = title
         }
 
-        /// The link as one token in a receipt line: `#4916` for a pull
-        /// request, its title for anything that has one, else the id.
+        /// Whether this link can be *named* in one token. A pull request
+        /// cannot — the argument is on `receipt`.
+        public var isNameable: Bool { kind != "pr" }
+
+        /// The link as one token in a receipt line: its title when it has
+        /// one, else the id. Only ever asked of a nameable link.
         public var token: String {
-            if kind == "pr" { return "#\(id)" }
             if let title, !title.isEmpty { return title }
             return id
         }
@@ -101,13 +109,35 @@ public struct JobInfo: Codable, Sendable, Equatable {
     }
 
     /// The receipt: what came out, as one line. `nil` when the session
-    /// produced nothing. Capped at four tokens — a banner has one line for
-    /// this and a session with eleven PRs would spend the whole width on
-    /// a list nobody reads to the end.
+    /// produced nothing *nameable*.
+    ///
+    /// **A pull request is not nameable, and the number is dropped.**
+    /// Measured 2026-09-04 over every PR ccc has ever had to draw — 171
+    /// unique, across the 11 jobs whose `children` carry one (the command
+    /// is in `docs/EVIDENCE.md`, "the PR half"). 84% are merged and 8%
+    /// closed; at the instant the banner drew one, only 25% was still
+    /// open. Recency cannot move that number — taking the newest four
+    /// instead of the oldest four only reads 21% — because a background
+    /// session usually finishes *by* landing the thing, so `done` fires
+    /// minutes after the merge, not before it. And `#25` is not even an
+    /// address: `children` spans repos, so one job drew `#1 · #1 · #2 · #3`
+    /// for four different PRs in three of them.
+    ///
+    /// Where a PR *is* the deliverable, the daemon's own sentence already
+    /// names it with the context the number lacks ("PR #4899 reshaped from
+    /// 183 to 62 files") — that is `say(for:)`, the line directly below
+    /// this one in the banner. The number goes; the sentence keeps it.
+    ///
+    /// What is left is the artifact: a title rather than a number, which
+    /// never merges, never closes, and reads without a lookup.
+    ///
+    /// Capped at four tokens — a banner has one line for this, and the
+    /// `+N` counts only what was eligible, never the dropped PRs.
     public var receipt: String? {
-        guard !children.isEmpty else { return nil }
-        let tokens = children.prefix(4).map(\.token)
-        let more = children.count - tokens.count
+        let nameable = children.filter(\.isNameable)
+        guard !nameable.isEmpty else { return nil }
+        let tokens = nameable.prefix(4).map(\.token)
+        let more = nameable.count - tokens.count
         return tokens.joined(separator: " · ") + (more > 0 ? " +\(more)" : "")
     }
 

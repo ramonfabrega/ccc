@@ -53,17 +53,44 @@ import Testing
         #expect(job?.say(for: .working) == "a stale progress line")
     }
 
-    @Test func theReceiptNamesPRsByNumberAndFramesByTitle() {
+    @Test func theReceiptNamesFramesByTitleAndNeverAPR() {
         let job = JobInfo.decode(Data(Self.doneJSON.utf8))
-        #expect(job?.receipt == "#4916 · #4917 · Life After Carto")
+        // The two PRs are in `children` and out of the line — and the
+        // sentence below it still names them, with the context a bare
+        // number lacks.
+        #expect(job?.children.count == 3)
+        #expect(job?.receipt == "Life After Carto")
+        #expect(job?.say(for: .done)?.contains("#4917") == true)
     }
 
-    /// A session with eleven pull requests must not spend the whole line
-    /// on a list nobody reads to the end.
-    @Test func theReceiptStopsAtFourAndCountsTheRest() {
-        let many = (1...7).map { JobInfo.Link(id: "\($0)", kind: "pr") }
-        #expect(JobInfo(children: many).receipt == "#1 · #2 · #3 · #4 +3")
+    /// The number is dropped, not merely deprioritised. Measured
+    /// 2026-09-04 across every PR ccc has ever had to draw (171 of them):
+    /// 84% merged, 8% closed, and only 25% still open at the instant the
+    /// banner drew it — 21% if the *newest* four are taken instead, which
+    /// is why recency was not the fix. `children` also spans repos, so the
+    /// token was never an address: this is the real `centaur cuanto`
+    /// shape, four different PRs in three repos.
+    @Test func aPullRequestIsNeverDrawn() {
+        let acrossRepos = ["1", "1", "2", "3"].map { JobInfo.Link(id: $0, kind: "pr") }
+        #expect(JobInfo(children: acrossRepos).receipt == nil)
         #expect(JobInfo().receipt == nil)
+    }
+
+    /// A session with eleven artifacts must not spend the whole line on a
+    /// list nobody reads to the end — and the `+N` counts what was
+    /// eligible, never the PRs that were dropped before the cap.
+    @Test func theReceiptStopsAtFourAndCountsTheRest() {
+        let frames = (1...7).map { JobInfo.Link(id: "f\($0)", kind: "frame", title: "Frame \($0)") }
+        #expect(JobInfo(children: frames).receipt == "Frame 1 · Frame 2 · Frame 3 · Frame 4 +3")
+        let buried = (1...40).map { JobInfo.Link(id: "\($0)", kind: "pr") } + frames.prefix(5)
+        #expect(JobInfo(children: buried).receipt == "Frame 1 · Frame 2 · Frame 3 · Frame 4 +1")
+    }
+
+    /// An unknown kind is not a PR, so it passes through — the boundary
+    /// stays lenient in the direction of showing what it was given.
+    @Test func anUnknownKindStillGetsNamed() {
+        #expect(JobInfo(children: [.init(id: "deploy-7", kind: "release")]).receipt == "deploy-7")
+        #expect(JobInfo(children: [.init(id: "x", kind: nil, title: "Untyped")]).receipt == "Untyped")
     }
 
     /// The boundary rule (CLAUDE.md): a wrong type is a dropped field, not
@@ -85,10 +112,13 @@ import Testing
         #expect(JobInfo.decode(Data(#"{"detail": "   "}"#.utf8)) == nil)
     }
 
-    /// A PR id arrives as a number in some shapes; both spellings count.
-    @Test func aNumericChildIdStillCounts() {
+    /// A PR id arrives as a number in some shapes; both spellings decode.
+    /// It is not drawn either way, but a dropped *field* and a dropped
+    /// *number* are different failures and only one of them is intended.
+    @Test func aNumericChildIdStillDecodes() {
         let job = JobInfo.decode(Data(#"{"children": [{"id": 4899, "kind": "pr"}]}"#.utf8))
-        #expect(job?.receipt == "#4899")
+        #expect(job?.children == [.init(id: "4899", kind: "pr")])
+        #expect(job?.receipt == nil)
     }
 
     // MARK: what the banner says
@@ -132,12 +162,12 @@ import Testing
         #expect(event(.done, name: "a", waitingFor: "input needed", job: nil).body == nil)
     }
 
-    /// Mid-question is not the moment to list pull requests.
+    /// Mid-question is not the moment to list what came out.
     @Test func theReceiptIsForEndingsOnly() {
         let job = JobInfo.decode(Data(Self.blockedJSON.utf8))
         #expect(event(.blocked, name: "a", job: job).receipt == nil)
         #expect(event(.done, name: "a", job: JobInfo.decode(Data(Self.doneJSON.utf8))).receipt
-                == "#4916 · #4917 · Life After Carto")
+                == "Life After Carto")
     }
 
     /// The host goes last so the ellipsis eats it and not the name, and it
@@ -152,10 +182,14 @@ import Testing
     /// `ccc watch` keeps its sentence — its `kind` column makes the verb
     /// redundant, but a log line reads as prose — and gains the payload
     /// without repeating what the sentence already carried.
+    /// This line is what named the cost: the old bracket read
+    /// `[#4916 · #4917 · Life After Carto]` under a sentence that had
+    /// **already** said #4917 and #4916, so the test's own title was the
+    /// argument against it.
     @Test func theWatchLineSaysEachThingOnce() {
         let job = JobInfo.decode(Data(Self.doneJSON.utf8))
         #expect(event(.done, name: "debug cuanto", job: job).watchLine
-                == "debug cuanto finished — Bugs 2 and 3 fixed and shipped as PRs #4917 and #4916.  [#4916 · #4917 · Life After Carto]")
+                == "debug cuanto finished — Bugs 2 and 3 fixed and shipped as PRs #4917 and #4916.  [Life After Carto]")
         // waitingFor is already in the headline, so it is not said twice.
         #expect(event(.blocked, name: "a", waitingFor: "approve rm -rf?", job: nil).watchLine
                 == "a is waiting: approve rm -rf?")
@@ -199,7 +233,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let probe = JobProbe(jobsDirectory: dir)
-        #expect(probe.info(forJob: "abc123")?.receipt == "#4916 · #4917 · Life After Carto")
+        #expect(probe.info(forJob: "abc123")?.receipt == "Life After Carto")
         #expect(probe.stats == JobProbe.Counters(reads: 1, hits: 0, misses: 0))
         for _ in 0..<5 { _ = probe.info(forJob: "abc123") }
         #expect(probe.stats == JobProbe.Counters(reads: 1, hits: 5, misses: 0))
@@ -234,7 +268,10 @@ import Testing
         encoder.dateEncodingStrategy = .iso8601
         let back = try JSONDecoder.roster.decode(SessionRow.self, from: encoder.encode(row))
         #expect(back.job?.suggestedReply == "yes go ahead, include the fake capture piece")
-        #expect(back.job?.receipt == "#4908 · #4909")
+        // `children` crosses whole — it is the archive, and what the far
+        // side draws from it is the near side's decision, not the wire's.
+        #expect(back.job?.children.count == 2)
+        #expect(back.job?.receipt == nil)
 
         // An older ccc on the far side sends the same row without the key.
         var older = try #require(try JSONSerialization.jsonObject(with: encoder.encode(row)) as? [String: Any])

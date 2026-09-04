@@ -2096,3 +2096,115 @@ relaunch      window 9204  250,150  1100x700pt  roster 480pt
 The window resize between them left `ccc.rosterWidth` at 480 while the
 roster was on screen at 351: the preference outlived the squeeze, which
 is the whole point of the third try.
+
+## v11 slice 3 — the PR half of the receipt (2026-09-04)
+
+v10 slice 1 gave the banner a receipt line: what came out of the session,
+drawn from the job file's `children`. Two nights later a real banner read
+
+```
+✓ lore · studio
+#1 · #2 · #3 · #73 +43
+proposal logged as dated subsection under Proposals from lore; …
+```
+
+and the question was whether those four PRs were open. **None of them
+were.** lore#1 and lore#2 merged on 2026-07-17, lore#3 was *closed
+unmerged*, mux#73 merged the same day — seven weeks before the banner drew
+them.
+
+### `children` is an archive, not a receipt
+
+The daemon appends to `children` for the life of the **job**, never
+prunes, and stamps nothing. That `lore` job was created 2026-07-17 and
+carried 47 entries across five repositories. `JobInfo.receipt` took
+`prefix(4)` — the *oldest* four.
+
+### The PR half, measured
+
+Every PR ccc has ever had available to draw: 171 unique, across the 11
+jobs whose `children` carry one, resolved in one GraphQL round trip and
+replayed against each job file's mtime, which is when its banner fired.
+
+```
+$ python3 collect.py                     # 171 PRs out of ~/.claude/jobs/*/state.json
+$ gh api graphql -F query=@q.graphql      # number, state, createdAt, mergedAt, closedAt
+$ python3 refine.py
+prefix4 (shipped)    open when drawn  7/28 (25%)   median age  11.2d   max  87.7d
+suffix4 (proposed)   open when drawn  6/28 (21%)   median age   2.0d   max  15.2d
+
+all 171:  MERGED 143 (84%)   CLOSED 14 (8%)   OPEN 14 (8%)
+```
+
+**Recency was not the fix**, which is the number that settled it. Taking
+the newest four instead of the oldest four moves the age (11.2d → 2.0d)
+and leaves the point untouched: three quarters of the slots still name
+something already landed. The cause is structural — a background session
+usually finishes *by* landing the thing, so `done` fires after the merge,
+not before. The best case in the set proves it rather than escaping it:
+`debug cuanto` drew `#4916 · #4917`, merged 25 and 4 minutes earlier.
+
+### And the token was never an address
+
+`children` spans repositories, so the number alone does not identify a PR.
+
+```
+centaur cuanto   drew  #1 · #1 · #2 · #3   — 4 PRs in 3 repos
+lore             drew  #1 · #2 · #3 · #73  — spans lore, mux, disk, dotfiles, osrs
+```
+
+### Where a PR is the deliverable, the sentence already names it
+
+Of the 11 jobs, 5 name a PR in the daemon's own line — and those 5 are
+exactly the ones where the PR *was* the work. The other 6 are stopped
+sessions, a docs proposal, a diagnosis. The sentence carries the context
+the number cannot:
+
+```
+YES annotate    PR #4899 reshaped from 183 to 62 files — position move reverted…
+YES sentry      Sentry stack delivered as 3 stacked draft PRs — #4876 params scrub…
+no  lore        proposal logged as dated subsection under Proposals from lore…
+```
+
+So the number goes and the line below keeps it. `ccc watch` made the same
+case on its own: its test is named `theWatchLineSaysEachThingOnce` and its
+expectation had been
+
+```
+debug cuanto finished — …shipped as PRs #4917 and #4916.  [#4916 · #4917 · Life After Carto]
+```
+
+### What is left is the artifact
+
+A title, not a number: it never merges, never closes, and reads without a
+lookup. 20 of the 191 children are frames. Over the live job files:
+
+```
+lore          was  #1 · #2 · #3 · #73 +43
+              now  Panamá — Mapa de Fuentes de Gasto Público · RuneLite Recon · lore · … +10
+debug cuanto  was  #4916 · #4917 · Life After Carto
+              now  Life After Carto
+annotate      was  #4899
+              now  (no receipt line at all)
+```
+
+Six of ten banners keep a receipt; four lose the line entirely, which is
+CLAUDE.md's rule about a line carrying payload or not being drawn.
+
+### Left open
+
+**The frame half has the same lifetime problem, minus the harm.** `lore`'s
+new line is four artifacts from July under a sentence about tonight's wiki
+proposal, and `+10` is still a lifetime count. An artifact link never goes
+stale the way a PR does — it stays openable and stays true — so this is
+width and relevance, not correctness. `suffix(4)` is the one-word answer
+whenever it is worth taking; it was not folded in here because dropping a
+kind and re-ordering the rest are two decisions, and only the first was
+asked for.
+
+### Measured
+
+393 tests, from 391. The 171-PR resolution ran once, out of band, and
+**nothing in ccc calls `gh`**: liveness was considered and rejected — a
+network call per notification, and 8% of the corpus is open, so even a
+correct liveness check would draw nothing three times in four.

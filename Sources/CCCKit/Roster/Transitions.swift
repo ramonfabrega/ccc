@@ -79,8 +79,9 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     }
 
     /// What came out of it: the receipt line, for a session that ended
-    /// having produced something. `nil` while blocked — mid-question is
-    /// not the moment to list pull requests.
+    /// having produced something *nameable* — artifacts, never a PR
+    /// number (`JobInfo.receipt` carries the measurement). `nil` while
+    /// blocked: mid-question is not the moment to list what came out.
     public var receipt: String? {
         guard kind != .blocked else { return nil }
         return job?.receipt
