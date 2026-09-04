@@ -2200,7 +2200,8 @@ stale the way a PR does — it stays openable and stays true — so this is
 width and relevance, not correctness. `suffix(4)` is the one-word answer
 whenever it is worth taking; it was not folded in here because dropping a
 kind and re-ordering the rest are two decisions, and only the first was
-asked for.
+asked for. **Closed the same night by slice 4, which measured how often
+*any* of it is this run's work and deleted the line.**
 
 ### Measured
 
@@ -2208,3 +2209,83 @@ asked for.
 **nothing in ccc calls `gh`**: liveness was considered and rejected — a
 network call per notification, and 8% of the corpus is open, so even a
 correct liveness check would draw nothing three times in four.
+
+## v11 slice 4 — a banner is a title and a sentence (2026-09-04)
+
+Slice 3 dropped the PR numbers and left the artifacts, on the reasoning
+that a title never merges and never closes. It does not — but it does
+something the PR number also did, which slice 3 measured for one kind and
+not the other: **it stays on the banner long after the run that made it.**
+
+The receipt only changes when the job publishes something new. Every
+banner between one artifact and the next repeats the last one. So the
+question is not "is this title accurate" but "how often is it *this run's
+work*", and the index can count the denominator.
+
+### Fresh at most 6%
+
+`lore jobs --json` gives sessions per job; the job file gives artifacts.
+
+```
+job         sessions   artifacts   fresh
+attrition        202           1      0%
+ccc               24           3     12%
+lore              68          14     21%
+total            294          18     ≤6%
+```
+
+`attrition` is the pure case: one artifact, 202 sessions, so "Attrition
+Atlas" would ride on effectively every banner that job ever posts. And 6%
+is an **upper** bound — a session blocks and finishes several times, and
+each posts a banner, so the true rate is lower still.
+
+### The slot was wrong too
+
+The receipt went to `content.subtitle`, which macOS gives **one hard-
+truncated line**; `content.body` gets two and the rest back on hover.
+Half the receipt lines overran it, and `suffix(4)` did not help:
+
+```
+lore        90 chars  CUT      storefront  60 chars  CUT
+ccc         57 chars  CUT      migrate     55 chars  CUT
+polish      21 chars  fits     attrition   15 chars  fits
+```
+
+Naming only the newest fixed the width — all eight titles fit, longest 39
+— and moved the freshness number not at all, which is what settled it.
+
+### The one argument for keeping it, and why it loses
+
+Unlike the PR number, the sentence does *not* already carry the artifact:
+of 8 jobs with one, only `polish` names it ("Published a verification
+board artifact (https://…)"). So deleting the line does lose something
+real — on 6% of banners, a name you cannot click.
+
+The fix that would work is the run-delta: hold each job's link count when
+it enters `working`, draw only what appeared since. It is ~20 lines and
+correct every time. It is **not built**, because its own measurement says
+it would draw an empty line on nineteen banners in twenty. That is a
+reason to wait for the itch, not to pre-empt it: the artifact is in the
+pane, `ccc links` and ⌘-click open it, and the banner simply stops being
+where it is announced.
+
+### What is left
+
+`blocked` banners never had a receipt — v10 ruled that mid-question is
+not the moment to list what came out. Slice 4 deletes the exception
+rather than the rule, so every banner is now the same two lines:
+
+```
+✋ ccc · studio
+delete the receipt line, or implement run-delta tracking?
+```
+
+`children` left the type entirely rather than sitting decoded and unread;
+`state.json` is on disk and one `JSONSerialization` away if the delta
+ever earns itself. `ccc watch` lost the same bracket in the same commit —
+one definition, many surfaces — and its test had been the tell all along,
+`theWatchLineSaysEachThingOnce` expecting a line that said #4916 twice.
+
+### Measured
+
+388 tests, from 393: the five that went were the receipt's own.

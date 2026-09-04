@@ -40,53 +40,37 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// A reply the daemon proposes to `needs`. Rare (2 of 20), and worth
     /// showing when it is there rather than building anything for.
     public var suggestedReply: String?
-    /// What the session produced: published artifacts, pull requests.
-    /// Present in 14 of 20 jobs, and the reason a finished banner can name
-    /// the thing that came out instead of only saying "done".
-    ///
-    /// Kept **whole**, the way every field at this boundary is: the
-    /// harness appends here across the job's whole life and never prunes,
-    /// so this is an archive and `receipt` is the one that decides what
-    /// a line has room to say.
-    public var children: [Link]
-
-    public struct Link: Codable, Sendable, Equatable {
-        public var id: String
-        /// `pr`, `frame`, … Unknown kinds pass through untouched.
-        public var kind: String?
-        public var title: String?
-
-        public init(id: String, kind: String? = nil, title: String? = nil) {
-            self.id = id
-            self.kind = kind
-            self.title = title
-        }
-
-        /// Whether this link can be *named* in one token. A pull request
-        /// cannot — the argument is on `receipt`.
-        public var isNameable: Bool { kind != "pr" }
-
-        /// The link as one token in a receipt line: its title when it has
-        /// one, else the id. Only ever asked of a nameable link.
-        public var token: String {
-            if let title, !title.isEmpty { return title }
-            return id
-        }
-    }
+    // `children` — the job's pull requests and published artifacts — is
+    // **not read**. It was, for a day: v11 slice 3 dropped the PR half of
+    // the banner's receipt line and slice 4 dropped the rest, because the
+    // field is appended for the life of the *job* and never pruned, so
+    // what it names is almost never what the run in front of you just
+    // did. Measured across the three jobs the index can count sessions
+    // for: 294 sessions, 18 artifacts between them — a receipt line was
+    // fresh at most 6% of the time, and `attrition` is the pure case at
+    // one artifact over 202 sessions.
+    //
+    // `docs/EVIDENCE.md` "Fresh at most 6%" carries those numbers and the
+    // argument for the run-delta that would fix it — not built, because
+    // its own measurement says it would draw an empty line nineteen
+    // banners in twenty.
+    //
+    // It stays out of the type rather than decoded-and-unused: the file
+    // is on disk and one `JSONSerialization` away whenever the delta
+    // earns itself.
 
     public init(detail: String? = nil, needs: String? = nil, result: String? = nil,
-                suggestedReply: String? = nil, children: [Link] = []) {
+                suggestedReply: String? = nil) {
         self.detail = detail
         self.needs = needs
         self.result = result
         self.suggestedReply = suggestedReply
-        self.children = children
     }
 
     /// Nothing worth carrying. The join yields `nil` rather than an empty
     /// reading, so a row's `job` is present only when it says something.
     public var isEmpty: Bool {
-        detail == nil && needs == nil && result == nil && suggestedReply == nil && children.isEmpty
+        detail == nil && needs == nil && result == nil && suggestedReply == nil
     }
 
     /// What this session has to say for itself, given what the roster says
@@ -108,39 +92,6 @@ public struct JobInfo: Codable, Sendable, Equatable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// The receipt: what came out, as one line. `nil` when the session
-    /// produced nothing *nameable*.
-    ///
-    /// **A pull request is not nameable, and the number is dropped.**
-    /// Measured 2026-09-04 over every PR ccc has ever had to draw — 171
-    /// unique, across the 11 jobs whose `children` carry one (the command
-    /// is in `docs/EVIDENCE.md`, "the PR half"). 84% are merged and 8%
-    /// closed; at the instant the banner drew one, only 25% was still
-    /// open. Recency cannot move that number — taking the newest four
-    /// instead of the oldest four only reads 21% — because a background
-    /// session usually finishes *by* landing the thing, so `done` fires
-    /// minutes after the merge, not before it. And `#25` is not even an
-    /// address: `children` spans repos, so one job drew `#1 · #1 · #2 · #3`
-    /// for four different PRs in three of them.
-    ///
-    /// Where a PR *is* the deliverable, the daemon's own sentence already
-    /// names it with the context the number lacks ("PR #4899 reshaped from
-    /// 183 to 62 files") — that is `say(for:)`, the line directly below
-    /// this one in the banner. The number goes; the sentence keeps it.
-    ///
-    /// What is left is the artifact: a title rather than a number, which
-    /// never merges, never closes, and reads without a lookup.
-    ///
-    /// Capped at four tokens — a banner has one line for this, and the
-    /// `+N` counts only what was eligible, never the dropped PRs.
-    public var receipt: String? {
-        let nameable = children.filter(\.isNameable)
-        guard !nameable.isEmpty else { return nil }
-        let tokens = nameable.prefix(4).map(\.token)
-        let more = nameable.count - tokens.count
-        return tokens.joined(separator: " · ") + (more > 0 ? " +\(more)" : "")
-    }
-
     /// Lenient by hand: this is the harness's boundary, so a wrong type is
     /// a dropped field and never a thrown error.
     public static func decode(_ data: Data) -> JobInfo? {
@@ -150,16 +101,9 @@ public struct JobInfo: Codable, Sendable, Equatable {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
-        var links: [Link] = []
-        for case let child as [String: Any] in (object["children"] as? [Any]) ?? [] {
-            // An id can arrive as a PR number; accept both spellings.
-            let id = (child["id"] as? String) ?? (child["id"] as? Int).map(String.init)
-            guard let id, !id.isEmpty else { continue }
-            links.append(Link(id: id, kind: string("kind", in: child), title: string("title", in: child)))
-        }
         let info = JobInfo(detail: string("detail"), needs: string("needs"),
                            result: string("result", in: (object["output"] as? [String: Any]) ?? [:]),
-                           suggestedReply: string("suggestedReply"), children: links)
+                           suggestedReply: string("suggestedReply"))
         return info.isEmpty ? nil : info
     }
 }

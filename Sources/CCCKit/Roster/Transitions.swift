@@ -78,14 +78,12 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         return Self.looksClipped(said) ? "…\(said)" : said
     }
 
-    /// What came out of it: the receipt line, for a session that ended
-    /// having produced something *nameable* — artifacts, never a PR
-    /// number (`JobInfo.receipt` carries the measurement). `nil` while
-    /// blocked: mid-question is not the moment to list what came out.
-    public var receipt: String? {
-        guard kind != .blocked else { return nil }
-        return job?.receipt
-    }
+    // There is no receipt line. v10 gave the banner one — what came out
+    // of the session, from the job file's `children` — and it never had
+    // a `blocked` half, because mid-question is not the moment to list
+    // what came out. v11 slice 4 deleted the exception rather than the
+    // rule: a `done` banner is a title and a sentence too. `JobInfo`
+    // carries why, and `docs/EVIDENCE.md` "Fresh at most 6%" the numbers.
 
     /// One character for the kind, so the banner's title need not spend a
     /// third of its width on a word. `✋` is the roster's own vocabulary —
@@ -117,7 +115,6 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     public var watchLine: String {
         var line = headline
         if let body, !headline.hasSuffix(body) { line += " — \(body)" }
-        if let receipt { line += "  [\(receipt)]" }
         return line
     }
 

@@ -106,9 +106,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // was three constants and a name: everything that notifies is
         // waiting, there is one host, and the click has always attached.
         content.title = event.title(showingHost: fleetIsPlural)
-        // The receipt, for a session that ended having produced something:
-        // "done" and "done, and there are two PRs" are different decisions.
-        if let receipt = event.receipt { content.subtitle = receipt }
+        // No subtitle. It held the receipt — what the session produced —
+        // until v11 slice 4 measured how often that was *this run's* work
+        // and got 6%. The slot is also the wrong one for it: macOS gives
+        // the subtitle a single hard-truncated line where `body` gets two
+        // and the rest back on hover, and half the receipts overran it.
+        // A banner is the title and the sentence.
         // Whole and untruncated — macOS clamps it to two lines and gives
         // the rest back on hover, a better cut than any computed here.
         content.body = event.body ?? event.ref.description
