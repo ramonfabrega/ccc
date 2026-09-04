@@ -111,8 +111,8 @@ look identical from outside (the pane is not back):
 
 Needs air's pane attached to a **studio** ref when the lid closes, studio's
 pane on something else or nothing (or it measures item 15 too), and **air
-on a build that has this** — which means a release, since air only ever
-takes notarized zips.
+on v0.1.20 or later** — cut and published 2026-09-04, so air takes it from
+the feed. 0.1.18 measures the defect, not the fix.
 
 ### 7. Housekeeping: four branches to delete
 

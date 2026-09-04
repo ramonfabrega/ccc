@@ -2445,3 +2445,53 @@ And air's clock reads **one hour ahead of studio's**, so the two logs of
 the same night do not line up until one is shifted. `scripts/lidtest`
 stamps local time with no offset, which is what made it invisible; the
 correlation above is with air −1h.
+
+## v0.1.19 and v0.1.20 — the wake window, cut twice (2026-09-04)
+
+**v0.1.19, build 151**, notarized and published: `spctl` accepted as
+Notarized Developer ID, one `<item>` in the appcast, the live check agreed
+with the zip at 5,075,312 bytes. It carried the widened reattach window
+(20 s → 60) and `ccc stats`' `wake` line.
+
+**And it was wrong on the line it existed for.** Run on studio with
+nothing attached, one `ccc hosts reconnect` produced
+
+```
+wake    1 wakes  reattach attempts 0  ⚠ no reattach ever fired — ssh did not notice a pane die across a wake
+```
+
+`attempts == 0` is true of every wake on a Mac with no pane, which is the
+everyday case — so the warning fired at the absence of a bug. Caught by
+running the thing rather than by reading it, on a build already published.
+
+**v0.1.20, build 152**, same night, 5,076,486 bytes, feed `ok`. The gate is
+`withRemotePane`, counted at the wake: only a wake with a remote ref in
+play could have produced a reattach, so only those make silence a finding.
+Verified on the failing case — `ccc hosts reconnect`, nothing attached,
+`wake 1 wakes  reattach attempts 0`, no warning.
+
+The field is optional for a reason that is not the usual convention:
+**v0.1.19 is published and sends `WakeStats` without this key**, so a
+0.1.20 `ccc stats` meets a 0.1.19 server that has every other field and not
+this one. Non-optional would fail the whole `StatsInfo` decode rather than
+one field. `wakeStatsFromV0119StillDecode` pins it by name.
+
+Studio moved onto the released bytes with `scripts/install --dist` —
+`ccc 0.1.20 (152)`, no `dev` marker.
+
+### The release notes have drifted, and the flow is prose
+
+Surveyed at the same time, since two cuts in one night made it visible.
+RELEASES.md step 4 names one command — `gh release create <tag> <zip>
+--generate-notes` — which titles the release with the bare tag and writes
+a compare link as the body. **14 of 16 releases match it. Two do not:**
+`v0.1.11` and `v0.1.19` carry a hand-written `ccc vX.Y.Z` title and prose
+notes, each written by a session that had the doc open.
+
+That is the same failure `DocsGuardTests` was built for and says out loud:
+*a rule that is only prose is a rule a tired afternoon defeats.* Step 4 is
+prose, and it has now been defeated twice. Recorded, not fixed — the
+standard itself is worth arguing before it is enforced, since
+`--generate-notes` on a repo with no pull requests produces a compare link
+and nothing else, while this repo's actual changelog is its commit
+subjects.
