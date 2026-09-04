@@ -60,7 +60,12 @@ read before the host list grows. No forcing function yet.
 ### 5. Small leftovers
 
 A sort by model. The Session menu's archive/pin items (the context menu
-has them). `ccc window show` when another app holds focus — measured
+has them). **`ccc stats`' first line says `uptime` next to `pid` and
+`memory`, which are the app's, but the number is the attached *pane's* —
+`PaneController.handle(.stats)` passes `uptimeSeconds: 0` whenever nothing
+is attached, so a week-old app reads "uptime 0s" the moment you detach
+(noticed 2026-09-03). Either label it, or make it the app's.** `ccc window
+show` when another app holds focus — measured
 2026-09-02 with a Wine window in front: `NSApp.activate()` is cooperative
 since macOS 14 and the window stayed behind while `open -a` brought it
 front, so `show`'s CLI side should activate through `NSWorkspace`.
