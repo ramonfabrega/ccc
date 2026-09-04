@@ -56,10 +56,13 @@ ccc select <c> <r> <c> <r> [--rect] | --clear
 ccc select --word <c> <r> | --line <c> <r>
                                     # the double- and triple-click's twins
 ccc copy                            # ⌘C's twin: the selected text, onto the pasteboard
-ccc geometry [--json]               # the window id screencapture wants, the pane's rect, the cell size
+ccc geometry [--json]               # the window id screencapture wants, where the window is (top-left
+                                    # down, what `ccc window move` takes), whether it is visible, the
+                                    # roster's width, the pane's rect, the cell size
 ccc theme [--json]                  # the pane's colours: 16 ANSI + 6 specials, with a swatch per row
                                     # --json is the shape CCC_THEME reads; 16-255 are the xterm cube, not a choice
-ccc window show|hide|close|resize <c> <r>
+ccc window show|hide|close|minimize|zoom|fullscreen|center
+ccc window move <x> <y> | resize <w> <h> | frame <x> <y> <w> <h> | split <w>
 ccc replay <bytes> [--bytes N] [--core X]  # render a recording headlessly (the golden-test oracle)
 ccc bench <bytes> [--repeat N]      # throughput, snapshot cost, footprint delta, grid digest
 scripts/record-attach <id>          # record a real `claude attach` as the replay fixture

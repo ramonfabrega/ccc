@@ -1997,3 +1997,102 @@ no screen and no permission.
 384 tests, unchanged in count — `geometryCrossesTheWire` grew the origin
 assertion rather than gaining a neighbour, since the wire either carries
 the frame or does not.
+
+## v11 slice 2 — every window gesture has a verb (2026-09-04)
+
+Slice 1 gave `ccc geometry` an x and a y so the restored frame could be
+checked. That exposed the real gap: **the window was the one surface where
+the parity rule had been half-kept.** The title bar had seven gestures and
+the socket had three verbs, so the gesture whose persistence slice 1 fixed
+— the drag — was one an agent could not perform.
+
+| gesture | verb |
+| --- | --- |
+| drag the title bar | `ccc window move X Y` |
+| drag the corner | `ccc window resize W H` |
+| both at once | `ccc window frame X Y W H` |
+| the yellow button | `ccc window minimize` |
+| the green button | `ccc window zoom` |
+| its other reading | `ccc window fullscreen` |
+| drag the roster's divider | `ccc window split W` |
+| — | `ccc window center` |
+
+`center` is the one that ran the other way: the command wanted to exist —
+it is the way back from a window restored onto a display that is gone —
+so the **menu** gained it, along with Zoom and Enter Full Screen, which
+were commands with no menu item. The rule reads in both directions.
+
+### The verb list was in three places, so it became a type
+
+`WindowAction` in CCCKit is now the only definition: the CLI parses with
+it, the socket carries its `text`, the window switches over it
+**exhaustively** — a new gesture stops compiling until the window answers
+it — and the refusal an unknown verb gets is generated from its grammar.
+Adding a case adds the verb, its arity, its usage line and its error, in
+one edit. Seven of the twelve tests in `WindowActionTests` exist because
+`move 100` must be a typo rather than a shorter gesture.
+
+Coordinates are the one thing the two faces could disagree about, so the
+flip lives in `WindowGeometry` (`topLeftY`/`appKitY`) with a test that
+composes them: AppKit measures up from the primary screen's bottom-left,
+everything on this socket measures down from its top-left. A `geometry`
+read pastes straight into a `move`.
+
+### What the numbers would not say
+
+`ccc geometry` answered with a frame for a window nobody could see. It
+now carries `visible`, `minimized`, `zoomed`, `fullScreen` and the
+roster's width, and the text form prints the state only when it is not
+the ordinary one:
+
+```
+window 9141  320,93  1280x800pt  @1.0x  hidden minimized
+window 9141  0,30  1920x1050pt  @1.0x  zoomed
+window 9141  0,0  1920x1080pt  @1.0x  full screen
+roster 480pt wide
+```
+
+### A squeeze is not a preference
+
+The roster's divider was set to 420 on every launch, so a drag on it
+survived exactly as long as the process. Remembering it took one line and
+then took three tries, because the obvious hook is wrong:
+
+- `splitViewDidResizeSubviews` fires for a **window** resize too.
+  `ccc window resize 900 600` pins the roster at its 320pt minimum, and
+  saving that made one narrow window permanent — measured, it wrote 320,
+  then 351.
+- `NSSplitViewDividerIndex` in the notification's user info does not
+  separate them: since macOS 12 it is there for resize and layout passes
+  as well (AppKit's own header says so).
+- Comparing the split's own width across passes does not either: a
+  resize posts several, and one of them has the width the pass before it
+  settled on.
+
+`splitView(_:constrainSplitPosition:ofSubviewAt:)` is called **only while
+a divider is being dragged**, so it does not have to separate anything.
+It is also on the path `setPosition` takes — instrumented, the launch's
+restore and `ccc window split 500` both came through it — which is what
+made the drag hook verifiable without a hand on the mouse, and what made
+one more flag necessary: restoring is not choosing, or the first launch
+would write the default back as a preference and a later default would
+reach nobody.
+
+### Measured
+
+391 tests, from 384. Driven against a real window the whole way: a second
+instance on its own socket (`CCC_CONTROL_SOCKET`), which an unbundled
+binary keeps out of the installed app's defaults domain by having none of
+its own — the dev domain is plain `ccc`.
+
+```
+first launch  window 9141  320,93  1280x800pt   roster 420pt   (centred; nothing saved)
+              window frame 200 120 1100 700 → window split 480 → window move 250 150
+quit          "NSWindow Frame ccc.main" = "250 230 1100 700 0 0 1920 1050"
+              "ccc.rosterWidth" = 480
+relaunch      window 9204  250,150  1100x700pt  roster 480pt
+```
+
+The window resize between them left `ccc.rosterWidth` at 480 while the
+roster was on screen at 351: the preference outlived the squeeze, which
+is the whole point of the third try.

@@ -74,6 +74,21 @@ final class MainWindowController: NSWindowController {
     /// The defaults key the frame is saved under (`NSWindow Frame ccc.main`).
     /// Renaming it forgets every Mac's window position once.
     static let frameName = "ccc.main"
+    /// The two dividers, remembered the way the frame is. AppKit's own
+    /// `NSSplitView.autosaveName` is not used: it restores after layout and
+    /// this window sets both dividers itself — the roster on the first
+    /// pass, the shell's every time one opens — so the two would race and
+    /// the loser would be whichever ran last. Ours are read where those
+    /// positions are already being set.
+    private static let rosterWidthKey = "ccc.rosterWidth"
+    private static let shellHeightKey = "ccc.shellHeight"
+    static let defaultRosterWidth: CGFloat = 420
+    static let defaultShellHeight: CGFloat = 260
+
+    private static func savedLength(_ key: String, default fallback: CGFloat) -> CGFloat {
+        guard let saved = UserDefaults.standard.object(forKey: key) as? Double, saved > 0 else { return fallback }
+        return CGFloat(saved)
+    }
 
     /// Points between the pane's edges and the grid, the way every terminal
     /// leaves a gutter (Ghostty's `window-padding-x/y`): without it the
@@ -174,7 +189,20 @@ final class MainWindowController: NSWindowController {
         split.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         roster.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
         paneSplit.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
-        DispatchQueue.main.async { [split] in split.setPosition(420, ofDividerAt: 0) }
+        split.delegate = self
+        let rosterWidth = Self.savedLength(Self.rosterWidthKey, default: Self.defaultRosterWidth)
+        // Restoring is not choosing: `setPosition` runs through the same
+        // delegate hook a drag does (measured — the launch and the command
+        // both logged a `constrainSplitPosition`), so without the flag the
+        // first launch would write the default back as if it had been
+        // picked, and a later change to `defaultRosterWidth` would reach
+        // nobody.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            restoringRosterWidth = true
+            split.setPosition(rosterWidth, ofDividerAt: 0)
+            restoringRosterWidth = false
+        }
     }
 
     /// A sentence over the pane. An answer ("installed …", "archived a1b2")
@@ -249,10 +277,14 @@ final class MainWindowController: NSWindowController {
         window?.makeFirstResponder(view)
     }
 
-    private var shellHeight: CGFloat = 260
+    private var shellHeight = MainWindowController.savedLength(MainWindowController.shellHeightKey,
+                                                               default: MainWindowController.defaultShellHeight)
 
     private func unmountShell() {
-        if !shellContainer.isHidden { shellHeight = max(80, shellContainer.bounds.height) }
+        if !shellContainer.isHidden {
+            shellHeight = max(80, shellContainer.bounds.height)
+            UserDefaults.standard.set(Double(shellHeight), forKey: Self.shellHeightKey)
+        }
         for view in shellContainer.subviews { view.removeFromSuperview() }
         shellContainer.isHidden = true
         // The keyboard goes back to the session, if one is on screen.
@@ -638,38 +670,98 @@ final class MainWindowController: NSWindowController {
 
     @objc func showAction(_ sender: Any?) {
         showWindow(nil)
+        // A miniaturized window answers `makeKeyAndOrderFront` by staying in
+        // the Dock, so the menubar item and `ccc window show` would both
+        // look broken on the one state a person cannot click their way out
+        // of from here.
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
     }
 
-    /// The socket's window verbs; `close` is literally ⌘W, `resize W H`
-    /// is the user dragging the corner (check 5's twin: the pane and the
-    /// child must follow the new grid).
+    /// The recovery gesture, and the one the first launch performs: a window
+    /// that came back from a display that is gone, or was moved somewhere
+    /// its title bar cannot be grabbed, is one command or one menu item away
+    /// from the middle of the screen.
+    @objc func centerAction(_ sender: Any?) {
+        window?.center()
+    }
+
+    /// The desktop's top edge in AppKit's coordinates. Every window
+    /// coordinate that crosses the socket — read or written — is measured
+    /// down from here, because that is the space `screencapture -R` and
+    /// CGWindow use and the pane's rect was already in. AppKit's own is the
+    /// other way up; the conversion lives here and nowhere else.
+    private static var desktopTop: Double { Double(NSScreen.screens.first?.frame.maxY ?? 0) }
+
+    private static func frame(topLeft x: Double, _ y: Double, size: NSSize) -> NSRect {
+        NSRect(x: x,
+               y: WindowGeometry.appKitY(topLeftY: y, height: size.height, desktopTop: desktopTop),
+               width: size.width, height: size.height)
+    }
+
+    private static func topLeft(of window: NSWindow) -> (x: Double, y: Double) {
+        (Double(window.frame.minX),
+         WindowGeometry.topLeftY(frameMaxY: window.frame.maxY, desktopTop: desktopTop))
+    }
+
+    /// The socket's window verbs: **one per gesture the title bar has**.
+    /// `close` is literally ⌘W, `minimize` the yellow button, `zoom` the
+    /// green one, `fullscreen` its other reading, `move` a drag on the bar,
+    /// `resize` a drag on the corner (check 5's twin: the pane and the child
+    /// must follow the new grid), `frame` the two at once, `split` a drag on
+    /// the roster's divider. They land where `ccc geometry` reads — same
+    /// numbers, same space — and the four that place something are kept
+    /// across a relaunch, because neither the autosave nor the divider's
+    /// delegate cares whose hand moved it.
     func windowAction(_ action: String) -> Bool {
-        let parts = action.split(separator: " ").map(String.init)
-        switch parts.first {
-        case "show": showAction(nil)
-        case "hide": window?.orderOut(nil)
-        case "close": window?.performClose(nil)
+        guard let window, let action = WindowAction(action) else { return false }
+        switch action {
+        case .show: showAction(nil)
+        case .hide: window.orderOut(nil)
+        case .close: window.performClose(nil)
+        case .minimize: window.miniaturize(nil)
+        case .zoom: window.zoom(nil)
+        case .fullScreen: window.toggleFullScreen(nil)
+        case .center: centerAction(nil)
         // The picker's twin for *opening* it. The picker's own work already
         // has twins (`ccc hosts discover`, `ccc hosts add`); this is what
         // lets `ccc peek` see the sheet, which is the only way to judge a
         // window from a machine with no screen.
-        case "add-host": addHostAction(nil)
+        case .addHost: addHostAction(nil)
         // Its gestures already have twins (`ccc spawn` runs what Start
         // runs); this opens the sheet so `peek` can see it, which since
         // sheets are composited is the only way to judge one with no screen.
-        case "new-session": newSessionAction(nil)
-        case "resize":
-            guard parts.count == 3, let w = Double(parts[1]), let h = Double(parts[2]), let window else { return false }
-            var frame = window.frame
-            frame.origin.y += frame.height - h
-            frame.size = NSSize(width: w, height: h)
-            window.setFrame(frame, display: true, animate: false)
-        default: return false
+        case .newSession: newSessionAction(nil)
+        case .move(let x, let y):
+            window.setFrame(Self.frame(topLeft: x, y, size: window.frame.size), display: true, animate: false)
+        case .resize(let width, let height):
+            // The top-left stays put, which is what dragging the bottom-right
+            // corner does — and what makes `resize` composable with `move`.
+            let corner = Self.topLeft(of: window)
+            window.setFrame(Self.frame(topLeft: corner.x, corner.y, size: NSSize(width: width, height: height)),
+                            display: true, animate: false)
+        case .frame(let x, let y, let width, let height):
+            window.setFrame(Self.frame(topLeft: x, y, size: NSSize(width: width, height: height)),
+                            display: true, animate: false)
+        case .split(let width):
+            split.setPosition(CGFloat(width), ofDividerAt: 0)
+            rememberRosterWidth(CGFloat(width))
         }
         return true
     }
+
+    /// The width the divider was put at, saved. The drag's delegate and
+    /// `ccc window split` both come through here, so the gesture and its
+    /// twin cannot disagree about what is remembered.
+    /// True only while the launch is putting the divider back where it was.
+    private var restoringRosterWidth = false
+
+    private func rememberRosterWidth(_ width: CGFloat) {
+        guard width >= 320 else { return }
+        UserDefaults.standard.set(Double(width), forKey: Self.rosterWidthKey)
+    }
+
 
     @objc func refreshAction(_ sender: Any?) {
         Task { await controller.poller.tick() }
@@ -703,14 +795,14 @@ final class MainWindowController: NSWindowController {
                 cols: size.cols, rows: size.rows,
                 cellWidth: metrics.width, cellHeight: metrics.height)
         }
-        // AppKit measures the desktop up from the primary screen's bottom
-        // left; CoreGraphics — `screencapture`, CGWindow — down from its top
-        // left, and that is the space every other rect here is in.
-        let desktopTop = NSScreen.screens.first?.frame.maxY ?? frame.maxY
+        let desktopTop = Double(Self.desktopTop)
         return WindowGeometry(
             windowID: window.windowNumber, scale: window.backingScaleFactor,
-            x: frame.minX, y: desktopTop - frame.maxY,
-            width: frame.width, height: frame.height, pane: pane)
+            x: frame.minX, y: WindowGeometry.topLeftY(frameMaxY: frame.maxY, desktopTop: desktopTop),
+            width: frame.width, height: frame.height,
+            visible: window.isVisible, minimized: window.isMiniaturized,
+            zoomed: window.isZoomed, fullScreen: window.styleMask.contains(.fullScreen),
+            rosterWidth: Double(split.arrangedSubviews.first?.frame.width ?? 0), pane: pane)
     }
 
     func peek() -> Data? {
@@ -757,5 +849,32 @@ final class MainWindowController: NSWindowController {
             NSGraphicsContext.restoreGraphicsState()
         }
         return rep.representation(using: .png, properties: [:])
+    }
+}
+
+extension MainWindowController: NSSplitViewDelegate {
+    /// A drag on the roster's divider is kept the way a drag on the window's
+    /// edge is — the same gesture, so the same promise.
+    ///
+    /// **A squeeze is not a preference**, which is why this is the hook and
+    /// `splitViewDidResizeSubviews` is not. That notification fires for a
+    /// window resize too, and narrowing the window pins the roster at its
+    /// 320pt minimum: saved, one small window would make a narrow roster
+    /// permanent (measured — `ccc window resize 900 600` wrote 320, then
+    /// 351). Neither `NSSplitViewDividerIndex` nor the split's own width
+    /// separates the two: since macOS 12 the key is in the user info of
+    /// both, and a resize posts several passes, one of which has the width
+    /// the pass before it settled on. This method is called *only while a
+    /// divider is being dragged*, so it does not have to separate anything.
+    /// The position is returned untouched — the constraint is not ours, the
+    /// arranged subviews' minimum widths already hold the line.
+    ///
+    /// What the window takes away it gives back: the remembered width is
+    /// re-applied at the next launch, and squeezed again only if it still
+    /// has to be.
+    func splitView(_ splitView: NSSplitView, constrainSplitPosition proposedPosition: CGFloat,
+                   ofSubviewAt dividerIndex: Int) -> CGFloat {
+        if splitView === split, dividerIndex == 0, !restoringRosterWidth { rememberRosterWidth(proposedPosition) }
+        return proposedPosition
     }
 }

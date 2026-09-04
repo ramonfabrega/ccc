@@ -206,12 +206,12 @@ enum CLI {
                 return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
                                        repeats: intFlag("--repeat", rest) ?? 200, core: stringFlag("--core", rest), json: json)
             case "window":
-                guard let action = rest.first, ["show", "hide", "close", "resize", "add-host", "new-session"].contains(action) else { return usage() }
-                if action == "resize" {
-                    guard rest.count == 3, Int(rest[1]) != nil, Int(rest[2]) != nil else { return usage() }
-                    return try request(.window(action: "resize \(rest[1]) \(rest[2])"), json: json)
-                }
-                return try request(.window(action: action), json: json)
+                // The grammar is `WindowAction`'s, not a second copy of it:
+                // a gesture that is added there is accepted here the same
+                // day, with the same arity and the same refusal.
+                let words = rest.filter { !$0.hasPrefix("--") }
+                guard let action = WindowAction(words.joined(separator: " ")) else { return usage() }
+                return try request(.window(action: action.text), json: json)
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
@@ -1380,7 +1380,12 @@ enum CLI {
             if json { printJSON(stats) } else { printStats(stats) }
         case .geometry(let geometry):
             if json { printJSON(geometry) } else {
-                print("window \(geometry.windowID)  \(Int(geometry.x)),\(Int(geometry.y))  \(Int(geometry.width))x\(Int(geometry.height))pt  @\(geometry.scale)x")
+                // The state first when it is not the ordinary one: a frame
+                // for a window nobody can see is a number that lies.
+                let state = [geometry.visible ? nil : "hidden", geometry.minimized ? "minimized" : nil,
+                             geometry.fullScreen ? "full screen" : (geometry.zoomed ? "zoomed" : nil)].compactMap { $0 }
+                print("window \(geometry.windowID)  \(Int(geometry.x)),\(Int(geometry.y))  \(Int(geometry.width))x\(Int(geometry.height))pt  @\(geometry.scale)x\(state.isEmpty ? "" : "  " + state.joined(separator: " "))")
+                print("roster \(Int(geometry.rosterWidth))pt wide")
                 if let pane = geometry.pane {
                     print("pane   \(Int(pane.x)),\(Int(pane.y))  \(Int(pane.width))x\(Int(pane.height))pt  \(pane.cols)x\(pane.rows) cells  cell \(pane.cellWidth)x\(pane.cellHeight)pt")
                 } else {
@@ -1636,11 +1641,20 @@ enum CLI {
                                                   the double- and triple-click's twins: the word or the
                                                   line at one point (a second point drags the grain)
                ccc copy [--json]                  ⌘C's twin: the selected text, onto the pasteboard
-               ccc geometry [--json]              where the window and its pane are, and the cell size
+               ccc geometry [--json]              where the window and its pane are, the roster's width, the
+                                                  cell size, and whether anyone can see any of it. x and y
+                                                  are the desktop's top-left down — what `ccc window move`
+                                                  takes back
                ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
-               ccc window show|hide|close|add-host|new-session|resize W H
-                                          the window's own gestures (close = Cmd-W); add-host and
-                                          new-session open their sheets, which `ccc peek` composites
+               ccc window show|hide|close|minimize|zoom|fullscreen|center
+               ccc window move X Y | resize W H | frame X Y W H | split W
+               ccc window add-host|new-session
+                                                  the window's own gestures, one verb each: close is Cmd-W,
+                                                  minimize/zoom/fullscreen are the three buttons, move and
+                                                  resize are the two drags (and frame is both), split is the
+                                                  roster's divider. move, resize, frame and split are remembered
+                                                  across a relaunch, the same as the drags they stand for.
+                                                  add-host and new-session open their sheets, which `ccc peek` composites
                ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json] [--color]
                ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
                ccc version [--json]               this build (version, build number, bundle)

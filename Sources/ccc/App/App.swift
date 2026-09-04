@@ -266,6 +266,15 @@ enum App {
         show.target = self
         windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        // Zoom, full screen and Center exist here because their commands do:
+        // the rule runs both ways, and a verb `ccc window` can say that the
+        // menu cannot is half a twin. Center is also the way back from a
+        // window restored onto a display that has since gone.
+        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        let full = windowMenu.addItem(withTitle: "Enter Full Screen",
+                                      action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        full.keyEquivalentModifierMask = [.control, .command]
+        windowMenu.addItem(withTitle: "Center", action: #selector(MainWindowController.centerAction(_:)), keyEquivalent: "")
         let windowItem = NSMenuItem()
         windowItem.submenu = windowMenu
         main.addItem(windowItem)

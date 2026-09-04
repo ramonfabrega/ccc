@@ -121,7 +121,8 @@ import UniformTypeIdentifiers
     /// of a hop is not what this protects — a request it has never heard of
     /// is an error, not a decode failure.
     @Test func geometryCrossesTheWire() throws {
-        let sent = WindowGeometry(windowID: 8864, scale: 1, x: 120, y: 64, width: 1280, height: 800, pane: pane)
+        let sent = WindowGeometry(windowID: 8864, scale: 1, x: 120, y: 64, width: 1280, height: 800,
+                                  rosterWidth: 420, pane: pane)
         let data = try JSONEncoder().encode(ControlResponse.geometry(sent))
         guard case .geometry(let back) = try JSONDecoder().decode(ControlResponse.self, from: data) else {
             Issue.record("not a geometry response")
@@ -132,8 +133,34 @@ import UniformTypeIdentifiers
         // Where the window sits crosses too: it is what says a restored
         // frame is the frame that was saved.
         #expect((back.x, back.y) == (120, 64))
+        // And what a person would see before reading a number.
+        #expect(back.visible && !back.minimized && !back.fullScreen)
+        #expect(back.rosterWidth == 420)
         let request = try JSONEncoder().encode(ControlRequest.geometry)
         #expect(String(decoding: request, as: UTF8.self).contains("geometry"))
+    }
+
+    /// The read and the write that undoes it. `ccc geometry` prints y down
+    /// from the desktop's top-left and `ccc window move` takes it back, so
+    /// the two conversions have to compose to nothing — a sign error here
+    /// would send a window one screen-height off, which is the kind of bug
+    /// only a real screen would otherwise catch.
+    @Test func theFlipIsItsOwnInverse() {
+        for desktopTop in [1050.0, 1440.0, 2234.0] {
+            for (maxY, height) in [(900.0, 800.0), (1050.0, 1050.0), (128.5, 100.0)] {
+                let y = WindowGeometry.topLeftY(frameMaxY: maxY, desktopTop: desktopTop)
+                let back = WindowGeometry.appKitY(topLeftY: y, height: height, desktopTop: desktopTop)
+                #expect(back == maxY - height, "the frame's origin moved on a round trip")
+            }
+        }
+    }
+
+    /// A window at the very top of the primary screen reads as y = 0, not as
+    /// the screen's height: the menu bar is not an offset the socket knows
+    /// about, and 0 is what a person would type back.
+    @Test func theTopOfTheScreenIsZero() {
+        #expect(WindowGeometry.topLeftY(frameMaxY: 1050, desktopTop: 1050) == 0)
+        #expect(WindowGeometry.appKitY(topLeftY: 0, height: 800, desktopTop: 1050) == 250)
     }
 
     /// A window with nothing attached still answers — the id is what

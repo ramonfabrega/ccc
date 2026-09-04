@@ -136,6 +136,20 @@ public struct WindowGeometry: Codable, Sendable, Equatable {
     /// where I left it": quit, relaunch, compare.
     public var x: Double
     public var y: Double
+    /// What a person sees before they read a number: whether the window is
+    /// on screen at all, and which of the four sizes it is in. A frame is
+    /// reported whether or not anyone can see it — a hidden or miniaturized
+    /// window keeps the one it will come back to — so without these an
+    /// agent reads coordinates for a window that is not there.
+    public var visible: Bool
+    public var minimized: Bool
+    public var zoomed: Bool
+    public var fullScreen: Bool
+    /// The roster's width in points: the divider a drag moves. The pane's
+    /// rect cannot answer it — the divider and the pane's gutter sit
+    /// between the two — and it is half of what "the window opens the way
+    /// I left it" means.
+    public var rosterWidth: Double
     /// The attached pane, when one is mounted.
     public var pane: Pane?
 
@@ -175,15 +189,130 @@ public struct WindowGeometry: Codable, Sendable, Equatable {
         }
     }
 
+    /// AppKit measures the desktop **up** from the primary screen's
+    /// bottom-left; everything that crosses this socket measures **down**
+    /// from its top-left, because that is the space `screencapture -R` and
+    /// CGWindow use and the pane's rect was already in. Both directions of
+    /// the flip live here, next to the numbers they produce, so a read and
+    /// the write that undoes it cannot disagree about the sign.
+    public static func topLeftY(frameMaxY: Double, desktopTop: Double) -> Double {
+        desktopTop - frameMaxY
+    }
+
+    public static func appKitY(topLeftY: Double, height: Double, desktopTop: Double) -> Double {
+        desktopTop - topLeftY - height
+    }
+
     public init(windowID: Int, scale: Double, x: Double, y: Double,
-                width: Double, height: Double, pane: Pane? = nil) {
+                width: Double, height: Double,
+                visible: Bool = true, minimized: Bool = false,
+                zoomed: Bool = false, fullScreen: Bool = false,
+                rosterWidth: Double = 0, pane: Pane? = nil) {
         self.windowID = windowID
         self.scale = scale
         self.x = x
         self.y = y
         self.width = width
         self.height = height
+        self.visible = visible
+        self.minimized = minimized
+        self.zoomed = zoomed
+        self.fullScreen = fullScreen
+        self.rosterWidth = rosterWidth
         self.pane = pane
+    }
+}
+
+/// The window's gestures as the socket carries them — **one case per gesture
+/// the title bar has**, parsed in one place so the CLI's grammar, the app's
+/// switch and the sentence a wrong verb gets cannot drift apart. The wire
+/// still carries a string (`window(action:)`); this is what both ends read it
+/// with, and `text` is what they write back, so a round trip is the test.
+///
+/// Coordinates are the desktop's **top-left down**, the space `ccc geometry`
+/// prints and `screencapture -R` takes: a geometry read pastes straight into
+/// a move. AppKit's own is the other way up and the flip lives in the window.
+public enum WindowAction: Equatable, Sendable {
+    case show, hide, close, minimize, zoom, fullScreen, center, addHost, newSession
+    case move(x: Double, y: Double)
+    case resize(width: Double, height: Double)
+    case frame(x: Double, y: Double, width: Double, height: Double)
+    case split(width: Double)
+
+    /// Verb → how many numbers it takes. The order is the order `ccc window`
+    /// and the error message list them in: the plain gestures, then the ones
+    /// that take a measurement, then the two that open a sheet.
+    public static let grammar: [(verb: String, arguments: Int)] = [
+        ("show", 0), ("hide", 0), ("close", 0), ("minimize", 0), ("zoom", 0),
+        ("fullscreen", 0), ("center", 0),
+        ("move", 2), ("resize", 2), ("frame", 4), ("split", 1),
+        ("add-host", 0), ("new-session", 0),
+    ]
+
+    /// Strict: the verb must be known and carry exactly its own numbers.
+    /// A missing argument is not a shorter gesture, it is a typo.
+    public init?(_ text: String) {
+        let parts = text.split(separator: " ").map(String.init)
+        guard let verb = parts.first,
+              let takes = Self.grammar.first(where: { $0.verb == verb })?.arguments,
+              parts.count == takes + 1 else { return nil }
+        let n = parts.dropFirst().compactMap(Double.init)
+        guard n.count == takes else { return nil }
+        switch verb {
+        case "show": self = .show
+        case "hide": self = .hide
+        case "close": self = .close
+        case "minimize": self = .minimize
+        case "zoom": self = .zoom
+        case "fullscreen": self = .fullScreen
+        case "center": self = .center
+        case "add-host": self = .addHost
+        case "new-session": self = .newSession
+        case "move": self = .move(x: n[0], y: n[1])
+        case "resize": self = .resize(width: n[0], height: n[1])
+        case "frame": self = .frame(x: n[0], y: n[1], width: n[2], height: n[3])
+        case "split": self = .split(width: n[0])
+        default: return nil
+        }
+    }
+
+    /// What crosses the socket. Whole numbers print as whole numbers: the
+    /// wire says `move 120 64`, which is what a person would have typed.
+    public var text: String {
+        func number(_ value: Double) -> String {
+            value == value.rounded() ? String(Int(value)) : String(value)
+        }
+        switch self {
+        case .show: return "show"
+        case .hide: return "hide"
+        case .close: return "close"
+        case .minimize: return "minimize"
+        case .zoom: return "zoom"
+        case .fullScreen: return "fullscreen"
+        case .center: return "center"
+        case .addHost: return "add-host"
+        case .newSession: return "new-session"
+        case .move(let x, let y): return "move \(number(x)) \(number(y))"
+        case .resize(let w, let h): return "resize \(number(w)) \(number(h))"
+        case .frame(let x, let y, let w, let h): return "frame \(number(x)) \(number(y)) \(number(w)) \(number(h))"
+        case .split(let w): return "split \(number(w))"
+        }
+    }
+
+    /// Every verb with its shape, for the CLI's usage and the socket's
+    /// refusal — generated from the grammar, so a new gesture appears in
+    /// both without anyone remembering to add it.
+    public static var usage: String {
+        grammar.map { verb, arguments in
+            switch (verb, arguments) {
+            case (_, 0): return verb
+            case ("move", _): return "move X Y"
+            case ("resize", _): return "resize W H"
+            case ("frame", _): return "frame X Y W H"
+            case ("split", _): return "split W"
+            default: return verb
+            }
+        }.joined(separator: "|")
     }
 }
 
