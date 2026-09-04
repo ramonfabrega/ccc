@@ -164,6 +164,37 @@ import Testing
     }
 }
 
+/// A server that never answers must not hold the command forever (found
+/// 2026-09-04: a handler that awaits a poll rides an ssh with no keepalive,
+/// and the client's read had no deadline). It times out and says so —
+/// never "malformed".
+@Suite struct ControlTimeoutTests {
+    @Test @MainActor func aSilentServerTimesOutInsteadOfHanging() async throws {
+        let path = NSTemporaryDirectory() + "ccc-t-\(UUID().uuidString.prefix(8)).sock"
+        let server = ControlServer(path: path) { _ in
+            try? await Task.sleep(for: .seconds(30))
+            return .ok("late")
+        }
+        try server.start()
+        defer { server.stop() }
+        // The listener comes up asynchronously; a send before it is
+        // bound is `unreachable`, which is a different answer.
+        for _ in 0..<40 where !ControlClient(path: path).isReachable() {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let started = ContinuousClock.now
+        let result = await Task.detached {
+            Result { try ControlClient(path: path, timeout: 1).send(.stats) }
+        }.value
+        #expect(started.duration(to: .now) < .seconds(5))
+        guard case .failure(let error) = result, case ControlClient.Error.timedOut = error else {
+            Issue.record("expected timedOut, got \(result)")
+            return
+        }
+        #expect("\(error)".contains("did not answer within 1 s"))
+    }
+}
+
 /// `ccc stats`' first line is the app's — `pid`, `memory`, `uptime`. The
 /// third of those was the attached *pane's* age until 2026-09-03, and `0`
 /// whenever nothing was attached, so a week-old app read "uptime 0s" the

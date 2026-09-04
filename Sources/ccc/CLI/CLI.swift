@@ -69,7 +69,8 @@ enum CLI {
                     return 2
                 }
                 if rest.contains("--headless") {
-                    return Headless.run(ref: ref, cols: intFlag("--cols", rest) ?? 120, rows: intFlag("--rows", rest) ?? 40)
+                    guard let grid = gridFlags(rest, cols: 120, rows: 40) else { return 2 }
+                    return Headless.run(ref: ref, cols: grid.cols, rows: grid.rows)
                 }
                 return try request(.attach(id: ref), json: json)
             case "rm":
@@ -167,6 +168,10 @@ enum CLI {
                 return try request(.detach, json: json)
             case "resize":
                 guard let cols = rest.first.flatMap({ Int($0) }), let rows = rest.dropFirst().first.flatMap({ Int($0) }) else { return usage() }
+                guard cols >= 1, rows >= 1 else {
+                    stderr("ccc: cols and rows must be at least 1 (got \(cols)x\(rows))")
+                    return 2
+                }
                 return try request(.resize(cols: cols, rows: rows), json: json)
             case "select":
                 // `ccc select COL ROW COL ROW [--rect]`, both ends inclusive;
@@ -198,14 +203,15 @@ enum CLI {
             case "geometry":
                 return try request(.geometry, json: json)
             case "capture":
-                return try capture(to: rest.first(where: { !$0.hasPrefix("--") }), json: json)
+                return try await capture(to: rest.first(where: { !$0.hasPrefix("--") }), json: json)
             case "pixel":
                 return try pixel(rest, json: json)
             case "theme":
                 return theme(json: json)
             case "bench":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
-                return try await bench(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
+                guard let grid = gridFlags(rest, cols: 100, rows: 30) else { return 2 }
+                return try await bench(path: path, cols: grid.cols, rows: grid.rows,
                                        repeats: intFlag("--repeat", rest) ?? 200, core: stringFlag("--core", rest), json: json)
             case "window":
                 // The grammar is `WindowAction`'s, not a second copy of it:
@@ -227,7 +233,8 @@ enum CLI {
                 }
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
-                return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
+                guard let grid = gridFlags(rest, cols: 100, rows: 30) else { return 2 }
+                return try await replay(path: path, cols: grid.cols, rows: grid.rows,
                                         bytes: intFlag("--bytes", rest), core: stringFlag("--core", rest) ?? "ghostty", json: json,
                                         colors: rest.contains("--color"))
             default:
@@ -891,10 +898,18 @@ enum CLI {
                     let reading = try await cli.rosterJSON()
                     let ms = elapsedMs(since: started)
                     if cli.rosterSource == .ccc {
-                        let rows = try JSONDecoder.roster.decode([SessionRow].self, from: reading.data)
+                        // Element-wise, as the poller reads it: a row this
+                        // build cannot read is counted and named, not fatal.
+                        let elements = try JSONDecoder.roster.decode([LenientElement<SessionRow>].self, from: reading.data)
+                        let rows = elements.compactMap(\.value)
+                        let unread = elements.compactMap(\.error)
+                        var said = reading.warning
+                        if !unread.isEmpty {
+                            said = ((said.map { $0 + "; " }) ?? "") + "\(unread.count) row\(unread.count == 1 ? "" : "s") this build cannot read (\(unread[0]))"
+                        }
                         var check = Check(host: host.name, ok: true, ms: ms, reader: reader,
                                           sessions: rows.count, models: rows.count { $0.model != nil },
-                                          home: home, error: reading.warning)
+                                          home: home, error: said)
                         // The roster worked, so the hop is warm: one more
                         // round trip says which build answered it.
                         if !host.isLocal {
@@ -1118,7 +1133,7 @@ enum CLI {
     /// that prompt forever, including for `peek`, which needs no permission
     /// at all. The split is the point: `peek` always works, `capture`
     /// tells the truth.
-    static func capture(to path: String?, json: Bool) throws -> Int32 {
+    static func capture(to path: String?, json: Bool) async throws -> Int32 {
         let response = try ControlClient().send(.geometry)
         guard case .geometry(let geometry) = response else {
             if case .error(let message) = response { stderr("ccc: \(message)") } else {
@@ -1129,16 +1144,12 @@ enum CLI {
         let out = path ?? NSTemporaryDirectory() + "ccc-capture-\(Int(Date().timeIntervalSince1970)).png"
         // -l one window, -o no shadow (the shadow is not the window and
         // would offset every pixel in it), -x no shutter sound.
-        let task = Process()
-        task.executableURL = URL(filePath: "/usr/sbin/screencapture")
-        task.arguments = ["-l", "\(geometry.windowID)", "-o", "-x", out]
-        let errors = Pipe()
-        task.standardError = errors
-        try task.run()
-        task.waitUntilExit()
-        let said = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard task.terminationStatus == 0, FileManager.default.fileExists(atPath: out) else {
+        // Through `Subprocess`, which drains both pipes before waiting;
+        // the old shape waited first and read stderr after, which hangs
+        // the day the child says more than a pipe holds.
+        let shot = try await Subprocess.run(["/usr/sbin/screencapture", "-l", "\(geometry.windowID)", "-o", "-x", out])
+        let said = String(decoding: shot.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard shot.status == 0, FileManager.default.fileExists(atPath: out) else {
             stderr("""
                 ccc: screencapture failed\(said.isEmpty ? "" : " (\(said))"); \
                 window \(geometry.windowID). Screen Recording permission belongs to \
@@ -1629,6 +1640,19 @@ enum CLI {
     static func intFlag(_ name: String, _ args: [String]) -> Int? {
         guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
         return Int(args[i + 1])
+    }
+
+    /// `--cols N --rows N` as a grid, refused below 1×1. The vt core
+    /// rejects a zero axis (and the result was discarded) while the PTY
+    /// forks at whatever it is given, so `--cols 0` used to make a host
+    /// that answered every snapshot 0×0 behind an "attached (0x0)".
+    static func gridFlags(_ args: [String], cols: Int, rows: Int) -> (cols: Int, rows: Int)? {
+        let c = intFlag("--cols", args) ?? cols, r = intFlag("--rows", args) ?? rows
+        guard c >= 1, r >= 1 else {
+            stderr("ccc: --cols and --rows must be at least 1 (got \(c)x\(r))")
+            return nil
+        }
+        return (c, r)
     }
 
     static func stringFlag(_ name: String, _ args: [String]) -> String? {

@@ -176,23 +176,38 @@ public final class HostPoller {
         }
     }
 
+    /// Stops the loop and ends any poll in flight: a host dropped from
+    /// `hosts.json` mid-`ConnectTimeout` does not get to finish its ssh
+    /// and write into a slot nothing shows any more. `poll` treats the
+    /// cancellation as nothing to record — not a failed hop, so the
+    /// master is not evicted over it.
     public func stop() {
         loop?.cancel()
         loop = nil
+        inFlight?.cancel()
+        inFlight = nil
     }
 
     /// One poll. If one is already running, waits for *that* one instead
-    /// of starting another — so `ccc list` and the wake re-poll get a fresh
-    /// answer without ever doubling up on a slow host.
-    public func tick() async {
+    /// of starting another — so `ccc list` gets a fresh answer without
+    /// ever doubling up on a slow host. `fresh` is for the caller that has
+    /// just changed what a poll would see — `reconnect`, after evicting
+    /// the ssh master: the in-flight poll opened its ssh before that and
+    /// rides the old master, so it is cancelled (its child terminated)
+    /// and a new one started. Still one in flight per host, ever.
+    public func tick(fresh: Bool = false) async {
         if let inFlight {
+            if fresh { inFlight.cancel() }
             await inFlight.value
-            return
+            if !fresh { return }
         }
         let task = Task { await self.poll() }
         inFlight = task
         await task.value
-        inFlight = nil
+        // Only the tick that started this task may clear it: a cancelled
+        // predecessor's caller resumes here too, after the fresh one has
+        // already taken the slot.
+        if inFlight == task { inFlight = nil }
     }
 
     /// Unlink this host's ssh master socket. The next invocation makes a
@@ -215,6 +230,9 @@ public final class HostPoller {
         let reading: ClaudeCLI.RosterReading
         do {
             reading = try await cli.rosterJSON()
+        } catch is CancellationError {
+            // A fresh tick superseded this one; it records the answer.
+            return
         } catch {
             // A failed hop leaves nothing worth keeping on the socket: if
             // the master is dead, ssh already ignored it; if it is wedged,
@@ -234,20 +252,36 @@ public final class HostPoller {
             let hostName = state.host
             let attached = attachedRef
             do {
-                let remote = try JSONDecoder.roster.decode([SessionRow].self, from: data)
-                state.rows = remote.map { row in
-                    var row = row
+                // Element by element (`LenientElement`), the same rule the
+                // local path has had since v1: one row the other build
+                // wrote and this one cannot read is a banner line, never a
+                // frozen host. Found 2026-09-04: the strict `[SessionRow]`
+                // decode threw on the first bad element and left the whole
+                // host stale behind "is the remote ccc older", which is the
+                // wrong direction — studio runs the dev loop, so the far
+                // side is the one that learns a new enum value first.
+                let elements = try JSONDecoder.roster.decode([LenientElement<SessionRow>].self, from: data)
+                var rows: [SessionRow] = []
+                var issues = remoteIssues
+                for (index, element) in elements.enumerated() {
+                    guard var row = element.value else {
+                        issues.append(RosterShapeIssue(index: index, message: element.error ?? "row did not decode"))
+                        continue
+                    }
                     row.host = hostName
                     row.attached = SessionRef(host: hostName, id: row.session.id) == attached
-                    return row
+                    rows.append(row)
                 }
-                state.issues = remoteIssues
+                state.rows = rows
+                state.issues = issues
                 succeed(started)
             } catch {
-                // Do not silently fall back to the harness reader: that would
-                // trade the model column for a slower tick without saying so.
-                fail("\(hostName): could not read `ccc list --json` (\(error.localizedDescription)); "
-                     + "is the remote ccc older than this one? `ccc hosts add \(hostName) --no-ccc` falls back to the harness",
+                // Not an array at all. Do not silently fall back to the
+                // harness reader: that would trade the model column for a
+                // slower tick without saying so.
+                fail("\(hostName): could not read `ccc list --json` (\(LenientElement<SessionRow>.describe(error))); "
+                     + "the two builds of ccc disagree (`ccc hosts check \(hostName)` says which is older); "
+                     + "`ccc hosts add \(hostName) --no-ccc` falls back to the harness",
                      started: started)
             }
             return
@@ -319,11 +353,20 @@ public final class HostPoller {
                 rows[i].pinned = mark?.pinned != nil
             }
             // A good roster is the moment to forget marks on sessions that
-            // left it long ago. Written only when something was dropped.
+            // left it long ago. Written only when something was dropped,
+            // and then under the overlay's lock against a fresh read — a
+            // `ccc archive` from a shell may have written since this tick
+            // read the file (`RosterOverlay.locked`).
             var pruned = marks
-            if pruned.prune(keeping: Set(rows.map(\.session.id))), (try? pruned.save(path: overlayPath)) != nil {
-                overlay = pruned
-                overlayModifiedAt = RosterOverlay.modificationDate(path: overlayPath)
+            let live = Set(rows.map(\.session.id))
+            if pruned.prune(keeping: live) {
+                try? RosterOverlay.locked(path: overlayPath) {
+                    var fresh = RosterOverlay.load(path: overlayPath).overlay
+                    guard fresh.prune(keeping: live) else { return }
+                    try fresh.save(path: overlayPath)
+                    overlay = fresh
+                    overlayModifiedAt = RosterOverlay.modificationDate(path: overlayPath)
+                }
             }
         }
         state.rows = rows

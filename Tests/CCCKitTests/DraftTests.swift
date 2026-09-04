@@ -102,6 +102,23 @@ import Testing
         #expect(sections[2].rows.map(\.session.id) == ["d"])
     }
 
+    /// One comparator. `sorted` (the legacy `.list` reply, the New Session
+    /// folder list) had its own until 2026-09-04, ranking a draft as the
+    /// `blocked` row the harness says it is — first — while the activity
+    /// sort the window and `--json` use ranks it below live work.
+    @Test func sortedIsTheActivitySort() {
+        let draft = SessionRow(session: session(id: "d"), model: nil, attached: false, draft: true)
+        let question = SessionRow(session: session(id: "q"), model: nil, attached: false)
+        let working = SessionRow(session: session(.working, status: .busy, id: "w"), model: nil, attached: false)
+        let done = SessionRow(session: session(.done, id: "f"), model: nil, attached: false)
+        var poll = HostPoll(host: Host.localName)
+        poll.rows = [done, draft, working, question]
+        poll.pollCount = 1
+        let state = RosterPoller.State(hosts: [poll])
+        #expect(state.sorted.map(\.session.id) == state.rows(sortedBy: .activity).map(\.session.id))
+        #expect(state.sorted.map(\.session.id) == ["q", "w", "d", "f"])
+    }
+
     /// The flag rides `ccc list --json` like the model and the marks, and
     /// an older far side that has never heard of it reads as no draft.
     @Test func theFlagCrossesTheHopAndDefaultsOff() throws {

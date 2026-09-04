@@ -834,6 +834,11 @@ final class PaneController {
             return .ok(text)
         case .resize(let cols, let rows):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
+            // The core refuses a zero axis and the PTY does not (the kernel
+            // takes a 0×0 winsize and the child reads it back), so the two
+            // would disagree until the grid next changed. Refused here so
+            // any client is safe, not only the CLI that validates.
+            guard cols >= 1, rows >= 1 else { return .error("cols and rows must be at least 1 (got \(cols)x\(rows))") }
             session.resize(cols: cols, rows: rows)
             return .ok("resized to \(cols)x\(rows)")
         case .peek:

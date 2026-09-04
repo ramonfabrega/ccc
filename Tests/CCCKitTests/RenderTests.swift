@@ -408,6 +408,67 @@ struct RenderTests {
         #expect(image.height == Int(metrics.heightPixels) * 3)
     }
 
+    /// `presentedFrames` is the black-pane oracle (CLAUDE.md), and it
+    /// counted draw *calls*: a frame the renderer declined — nothing dirty,
+    /// already on screen — still counted, so a window dragged by a pixel
+    /// "presented" hundreds of frames it never encoded. It counts encodes.
+    @Test(.enabled(if: hasMetalDevice))
+    func presentedFramesCountEncodesNotCalls() throws {
+        let metrics = CellMetrics(scale: 2)
+        var frame = demoFrame()
+        let view = MetalPaneView(
+            frame: NSRect(x: 0, y: 0, width: metrics.width * 10, height: metrics.height * 3),
+            metrics: metrics
+        )
+        view.render(frame)
+        #expect(view.presentedFrames == 1)
+        frame.dirty = .none
+        view.render(frame)
+        view.render(frame)
+        #expect(view.presentedFrames == 1, "a clean frame the renderer declined was not presented")
+        frame.dirty = .partial
+        view.render(frame)
+        #expect(view.presentedFrames == 2)
+    }
+
+    /// Why the atlas may be written while frames are still on the GPU:
+    /// it only ever writes fresh space. Every rect is disjoint from every
+    /// other and inside the page, so a frame in flight samples nothing a
+    /// later raster touches (verified 2026-09-04 against the `.shared`
+    /// texture and the monotone shelf packer). The day eviction or a
+    /// repack arrives this fails, and that is the day `replace(region:)`
+    /// needs a staging blit inside the frame's own command buffer.
+    @Test(.enabled(if: hasMetalDevice))
+    func atlasRectsNeverOverlap() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let atlas = GlyphAtlas(device: device, metrics: CellMetrics(scale: 2))
+        // Distinct rects: two characters that shape to one glyph share an
+        // entry, and a shared entry is a cache hit, not an overlap.
+        var seen = Set<[Int]>()
+        var rects: [CGRect] = []
+        for scalar in 0x21...0x17E {
+            guard let unicode = UnicodeScalar(scalar) else { continue }
+            for glyph in atlas.shape(String(unicode)) {
+                for bucket in 0..<3 {
+                    guard let entry = atlas.entry(for: glyph, subpixel: bucket) else { continue }
+                    let r = entry.rect
+                    if seen.insert([Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)]).inserted { rects.append(r) }
+                }
+            }
+        }
+        #expect(rects.count > 300)
+        let page = CGRect(x: 0, y: 0, width: GlyphAtlas.alphaPageSize, height: GlyphAtlas.alphaPageSize)
+        #expect(rects.allSatisfy { page.contains($0) })
+        var overlap: (CGRect, CGRect)?
+        outer: for i in rects.indices {
+            for j in rects.indices where j > i && rects[i].intersects(rects[j]) {
+                overlap = (rects[i], rects[j])
+                break outer
+            }
+        }
+        #expect(overlap == nil, "\(String(describing: overlap)) share texels")
+    }
+
     @Test(.enabled(if: hasMetalDevice))
     func resizeOnlyReportsWhenTheGridChanges() {
         let metrics = CellMetrics(scale: 2)

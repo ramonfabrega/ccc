@@ -56,17 +56,14 @@ public final class RosterPoller {
 
         public func host(_ name: String) -> HostPoll? { hosts.first { $0.host == name } }
 
-        /// Presentation order: pinned first, then live and blocked, then by
-        /// most recent start, across hosts. Every row, archived included —
-        /// this is what `--json` carries and what the far side reads.
-        public var sorted: [SessionRow] {
-            rows.sorted { a, b in
-                if a.pinned != b.pinned { return a.pinned }
-                let ra = a.session.rank, rb = b.session.rank
-                if ra != rb { return ra < rb }
-                return a.session.startedAt > b.session.startedAt
-            }
-        }
+        /// The default order — `rows(sortedBy: .activity)`, every row,
+        /// archived included. One comparator, not two: until 2026-09-04
+        /// this had its own, which ranked a draft as `blocked` (a draft
+        /// *is* a blocked row in the harness's eyes) while the sort the
+        /// window and `--json` use ranks it below live work, so the
+        /// legacy `.list` reply and the New Session folder list disagreed
+        /// with the roster over the same rows.
+        public var sorted: [SessionRow] { rows(sortedBy: .activity) }
 
         /// What the roster shows by default: `sorted` without the archived
         /// rows (`SessionRow.isHidden` — a blocked one is never hidden).
@@ -210,9 +207,12 @@ public final class RosterPoller {
     public func reconnect(host name: String? = nil) async -> [HostPoll] {
         let targets = pollers.filter { name == nil || $0.hostName == name }
         for poller in targets { poller.evictControlMaster() }
+        // `fresh`: a poll already in flight opened its ssh before the
+        // eviction and rides the wedged master, so joining it would hand
+        // the wake gesture the pre-eviction answer (found 2026-09-04).
         await withTaskGroup(of: Void.self) { group in
             for poller in targets {
-                group.addTask { await poller.tick() }
+                group.addTask { await poller.tick(fresh: true) }
             }
         }
         return targets.map(\.state)

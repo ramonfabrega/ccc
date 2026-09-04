@@ -92,6 +92,30 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
         try encoder.encode(self).write(to: url, options: .atomic)
     }
 
+    /// Run `body` holding an exclusive lock on the file's `.lock` sibling,
+    /// so a load → change → save is one act against every other writer:
+    /// the app's poller pruning, a `ccc archive` from a shell, two marks
+    /// from the keyboard. `save` is atomic and always was; what the lock
+    /// adds is that nobody saves over a load they did not make. Hold it
+    /// around synchronous work only — never across an `await`.
+    public static func locked<T>(path: String = defaultPath, _ body: () throws -> T) throws -> T {
+        let url = URL(filePath: path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fd = open(path + ".lock", O_RDWR | O_CREAT, 0o600)
+        guard fd >= 0 else { throw LockError(errno: errno) }
+        defer { close(fd) }
+        while flock(fd, LOCK_EX) != 0 {
+            guard errno == EINTR else { throw LockError(errno: errno) }
+        }
+        defer { flock(fd, LOCK_UN) }
+        return try body()
+    }
+
+    public struct LockError: Error, CustomStringConvertible {
+        public var errno: Int32
+        public var description: String { "could not lock the overlay: \(String(cString: strerror(errno)))" }
+    }
+
     /// The mark for a row, if one applies: same short id, and the uuid
     /// agrees when both sides have one.
     public func mark(for id: String, sessionId: String?) -> SessionMark? {
@@ -159,7 +183,6 @@ extension ClaudeCLI {
     /// verb on the far side, its answer passed through.
     public func mark(_ change: MarkChange, id: String, overlayPath: String = RosterOverlay.defaultPath) async throws -> String {
         if host.isLocal {
-            var overlay = RosterOverlay.load(path: overlayPath).overlay
             var sessionId: String?
             switch change {
             case .archive, .pin:
@@ -169,11 +192,24 @@ extension ClaudeCLI {
                 }
                 sessionId = row.sessionId
             case .unarchive, .unpin:
-                guard overlay.marks[id] != nil else { return "\(id) was not \(change == .unarchive ? "archived" : "pinned")" }
+                break
             }
-            overlay.set(change, id: id, sessionId: sessionId)
-            try overlay.save(path: overlayPath)
-            return "\(change.pastTense) \(id)"
+            // Load, change and save as one stretch under the file's lock,
+            // and only after the roster read above. Until 2026-09-04 the
+            // load came first, so two marks a few hundred ms apart — `a`
+            // then `p` down the list, or two `ccc archive`s from a shell —
+            // each loaded the same file, waited on `claude agents`, and
+            // the second save silently dropped the first mark (reproduced
+            // with a 400 ms stub: one of two archives gone, both exit 0).
+            return try RosterOverlay.locked(path: overlayPath) {
+                var overlay = RosterOverlay.load(path: overlayPath).overlay
+                if change == .unarchive || change == .unpin, overlay.marks[id] == nil {
+                    return "\(id) was not \(change == .unarchive ? "archived" : "pinned")"
+                }
+                overlay.set(change, id: id, sessionId: sessionId)
+                try overlay.save(path: overlayPath)
+                return "\(change.pastTense) \(id)"
+            }
         }
         guard let argv = markArgv(change, id: id) else { throw MarkError.noRemoteCCC(host.name) }
         try prepareControlDirectory()

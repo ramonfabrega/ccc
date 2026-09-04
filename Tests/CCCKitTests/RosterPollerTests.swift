@@ -32,6 +32,37 @@ import Testing
         try await body(dir)
     }
 
+    /// `reconnect` evicts the ssh master, then polls. A poll already in
+    /// flight opened its ssh before the eviction and rides the old master,
+    /// so joining it would hand the wake gesture the pre-eviction answer
+    /// (found 2026-09-04): a fresh tick ends that poll and runs its own,
+    /// and the ended one records nothing — not a failure, not a count.
+    @Test @MainActor func aFreshTickEndsThePollInFlight() async throws {
+        try await withTempDir { dir in
+            let counter = dir.appending(path: "runs").path
+            let path = dir.appending(path: "claude").path
+            let script = "#!/bin/sh\necho run >> '\(counter)'\nsleep 1\ncat <<'EOF'\n\(Self.roster)\nEOF\n"
+            try Data(script.utf8).write(to: URL(filePath: path))
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+            let poller = HostPoller(cli: ClaudeCLI(executable: path, host: .local))
+            async let first: Void = poller.tick()
+            // The script's first line writes the counter: once it exists,
+            // that poll is in flight and the fresh tick has something to end.
+            for _ in 0..<60 where !FileManager.default.fileExists(atPath: counter) {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            #expect(FileManager.default.fileExists(atPath: counter), "the first poll never started")
+            await poller.tick(fresh: true)
+            _ = await first
+            let runs = try String(contentsOfFile: counter, encoding: .utf8).split(separator: "\n").count
+            #expect(runs == 2, "the fresh tick ran its own poll")
+            #expect(poller.state.pollCount == 1, "the ended poll recorded nothing")
+            #expect(poller.state.failures == 0)
+            #expect(poller.state.error == nil)
+            #expect(poller.state.rows.count == 2)
+        }
+    }
+
     @Test @MainActor func oneBrokenHostNeverBlanksTheOthers() async throws {
         try await withTempDir { dir in
             let good = HostPoller(cli: ClaudeCLI(executable: try fakeClaude(in: dir), host: .local))

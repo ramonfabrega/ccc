@@ -115,9 +115,18 @@ public final class MetalPaneView: NSView {
         // One drawable per pass, and never a stall: if the pool is empty the
         // frame is dropped and the next call draws the same state.
         guard let drawable = metalLayer.nextDrawable() else { return }
+        // Counted only when the renderer actually encoded and presented:
+        // it declines a clean frame, a starved instance pool, a failed
+        // buffer, and none of those reached the screen. This number is
+        // the black-pane oracle (CLAUDE.md), and until 2026-09-04 it
+        // counted *calls* — a window dragged by a pixel "presented"
+        // hundreds of frames it never drew.
+        let encoded = renderer.encodedFrames
         renderer.draw(frame: frame, into: drawable, size: size, metrics: metrics)
-        presentedFrames += 1
-        lastPresentedAt = Date()
+        if renderer.encodedFrames > encoded {
+            presentedFrames += 1
+            lastPresentedAt = Date()
+        }
     }
 
     // MARK: - Geometry

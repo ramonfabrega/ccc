@@ -406,6 +406,21 @@ import Testing
         }
     }
 
+    /// The poller's probe lives as long as the app. A default branch
+    /// renamed under it kept the old name cached, and the column blanked
+    /// for every worktree of that repo until relaunch (found 2026-09-04):
+    /// a cached name is trusted only while it still resolves.
+    @Test func aRenamedDefaultBranchIsFoundAgain() throws {
+        try withOrigin { root, wt, git in
+            let probe = WorktreeProbe()
+            #expect(try #require(probe.info(forCwd: wt.path)).base == "master")
+            _ = try git("branch -m master main", root)
+            _ = try git("push -q -u origin main", root)
+            _ = try git("symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main", root)
+            #expect(try #require(probe.info(forCwd: wt.path)).base == "main")
+        }
+    }
+
     @Test func aSliceOneRowStillDecodes() throws {
         let data = Data(#"{"branch":"worktree-v2","base":"master","ahead":3,"behind":0,"repo":"/x"}"#.utf8)
         let info = try JSONDecoder().decode(WorktreeInfo.self, from: data)

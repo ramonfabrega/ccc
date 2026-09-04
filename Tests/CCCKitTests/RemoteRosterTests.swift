@@ -77,6 +77,30 @@ import Testing
         #expect(rows[0].model == "claude-opus-5")
     }
 
+    /// The far side is the build that learns a new word first (studio runs
+    /// the dev loop; air pulls releases). A `status` this build has never
+    /// heard of parks in `extra` and the row stands; a row with no `id`
+    /// costs that row and names itself; the rest of the array arrives.
+    /// Until 2026-09-04 either threw the whole host away as stale.
+    @Test func aWordFromANewerCCCDoesNotCostTheHost() throws {
+        let json = """
+        [{"session":{"id":"a1b2","cwd":"/Users/x","kind":"background","startedAt":"2026-09-02T07:20:04Z",
+          "status":"parked"}},
+         {"session":{"cwd":"/Users/y","kind":"background","startedAt":"2026-09-02T07:20:04Z","extra":{}}},
+         {"session":{"id":"c3d4","cwd":"/Users/z","kind":"background","startedAt":"2026-09-02T07:20:04Z",
+          "state":"working","extra":{}},"model":"claude-opus-5"}]
+        """
+        let elements = try JSONDecoder.roster.decode([LenientElement<SessionRow>].self, from: Data(json.utf8))
+        #expect(elements.count == 3)
+        let first = try #require(elements[0].value)
+        #expect(first.session.status == nil)
+        #expect(first.session.extra["status"] == .string("parked"))
+        #expect(elements[1].value == nil)
+        #expect(elements[1].error?.contains("id") == true, "the reason names the field: \(elements[1].error ?? "")")
+        #expect(elements[2].value?.model == "claude-opus-5")
+        #expect(elements[2].value?.session.state == .working)
+    }
+
     /// A remote row is addressed by the host that answered, never by the
     /// `local` the far side wrote about itself.
     @Test func theHostIsRestampedByWhoeverAsked() throws {

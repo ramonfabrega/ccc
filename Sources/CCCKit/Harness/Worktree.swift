@@ -251,10 +251,19 @@ public final class WorktreeProbe: @unchecked Sendable {
         guard let layout = Self.layout(of: cwd), let branch = layout.branch else { return nil }
         let base: String
         lock.lock()
-        if let known = bases[layout.repo] {
+        // A cached name is trusted only while it still resolves: after
+        // `git branch -m master main` the old name has no ref, and a probe
+        // that lives as long as the app (the poller's) would otherwise
+        // blank the column for every worktree of that repo until relaunch
+        // (found 2026-09-04). One ref read per row per tick buys the check.
+        if let known = bases[layout.repo], Self.sha(of: known, commonDir: layout.commonDir) != nil {
             base = known
         } else {
-            guard let found = Self.defaultBranch(commonDir: layout.commonDir) else { lock.unlock(); return nil }
+            guard let found = Self.defaultBranch(commonDir: layout.commonDir) else {
+                bases[layout.repo] = nil
+                lock.unlock()
+                return nil
+            }
             bases[layout.repo] = found
             base = found
         }
@@ -267,7 +276,10 @@ public final class WorktreeProbe: @unchecked Sendable {
         let origin = Self.hasOrigin(commonDir: layout.commonDir)
         let originBranch = origin ? Self.remoteSHA(of: branch, commonDir: layout.commonDir) ?? "-" : "none"
         let originBase = origin ? Self.remoteSHA(of: base, commonDir: layout.commonDir) ?? "-" : "none"
-        let key = "\(branchSHA)/\(baseSHA)/\(originBranch)/\(originBase)"
+        // The base's *name* is in the key: a rename leaves every sha where
+        // it was, and a key of shas alone handed back the entry that still
+        // said `master`.
+        let key = "\(branchSHA)/\(base)@\(baseSHA)/\(originBranch)/\(originBase)"
         lock.lock()
         if let entry = cache[cwd], entry.key == key {
             lock.unlock()
@@ -643,6 +655,27 @@ public enum Git {
         public var stderr: String
     }
 
+    /// One pipe read to EOF on a background thread, for the synchronous
+    /// runners (`Git.run`, `Tailnet.scan`) that block on the other pipe.
+    /// `data` waits for EOF. The async runners use `Subprocess` instead.
+    public final class Drain: @unchecked Sendable {
+        private var collected = Data()
+        private let done = DispatchSemaphore(value: 0)
+
+        public init(_ handle: FileHandle) {
+            DispatchQueue.global(qos: .utility).async {
+                self.collected = handle.readDataToEndOfFile()
+                self.done.signal()
+            }
+        }
+
+        public var data: Data {
+            done.wait()
+            done.signal()   // stays consumed-once for any later reader too
+            return collected
+        }
+    }
+
     public struct Failure: Error, CustomStringConvertible {
         public var status: Int32
         public var stderr: String
@@ -668,10 +701,16 @@ public enum Git {
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
         try process.run()
+        // stderr drains on its own thread while this one reads stdout to
+        // EOF: read one after the other and a child that fills the 64 KiB
+        // stderr pipe before closing stdout blocks in write(2) forever,
+        // and so does this (measured 2026-09-04: fine at 65,536 bytes,
+        // a permanent hang at 66,000). No git command run here says that
+        // much on stderr today; the shape was wrong regardless.
+        let stderr = Drain(err.fileHandleForReading)
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
-        let stderr = err.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        let result = Result(stdout: String(decoding: stdout, as: UTF8.self), stderr: String(decoding: stderr, as: UTF8.self))
+        let result = Result(stdout: String(decoding: stdout, as: UTF8.self), stderr: String(decoding: stderr.data, as: UTF8.self))
         guard process.terminationStatus == 0 else {
             throw Failure(status: process.terminationStatus, stderr: result.stderr + result.stdout)
         }

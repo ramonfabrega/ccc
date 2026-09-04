@@ -200,11 +200,13 @@ public enum Tailnet {
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
         do { try process.run() } catch { throw Unreachable(reason: "\(error)") }
-        // Both pipes to EOF before waiting, or a full one deadlocks
-        // (`ClaudeCLI.run`'s lesson). stderr is read rather than discarded
-        // because it is where a binary that will not answer explains itself.
+        // Both pipes drained at once before waiting, or a full one
+        // deadlocks (`Git.run`'s comment says why). stderr is read rather
+        // than discarded because it is where a binary that will not
+        // answer explains itself.
+        let drained = Git.Drain(err.fileHandleForReading)
         let data = out.fileHandleForReading.readDataToEndOfFile()
-        let errors = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let errors = String(decoding: drained.data, as: UTF8.self)
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             let said = firstLine(errors, or: String(decoding: data, as: UTF8.self))

@@ -172,6 +172,19 @@ import Testing
         #expect(try Tailnet.scan(binary: path).map(\.name) == (try peers().map(\.name)))
     }
 
+    /// A binary that says 200 KB on stderr before it answers. The two pipes
+    /// were read one after the other here, under a comment that said the
+    /// opposite, and that hangs for good once stderr passes what a pipe
+    /// holds (measured 2026-09-04: fine at 65,536 bytes, never returns at
+    /// 66,000). stderr drains on its own thread now.
+    @Test func aLoudStderrDoesNotHangTheScan() throws {
+        let json = try Fixtures.data("tailnet/status-2026-09-04.json")
+        let file = URL.temporaryDirectory.appending(path: "tailnet-\(UUID().uuidString).json")
+        try json.write(to: file)
+        let path = try stub("#!/bin/sh\nhead -c 200000 /dev/zero | tr '\\0' x >&2\ncat '\(file.path)'\n")
+        #expect(try Tailnet.scan(binary: path).map(\.name) == (try peers().map(\.name)))
+    }
+
     /// The cause, not the symptom. Tailscale's macOS bundle is the GUI and
     /// the CLI in one binary and picks by smelling for a shell: no `TERM`
     /// and no `SHLVL` means double-clicked, so it prints the GUI's failure

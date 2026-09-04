@@ -15,6 +15,34 @@ import Testing
         try body(dir.appending(path: "roster.json").path)
     }
 
+    /// Two marks a few hundred ms apart — `a` then `p` down the list, or
+    /// two `ccc archive`s from a shell — each loaded the file *before* its
+    /// roster read and saved after, so the second save dropped the first
+    /// mark while both reported success (reproduced 2026-09-04 with a
+    /// 400 ms stub). The load now follows the read, under the file's lock.
+    @Test func twoMarksAtOnceBothSurvive() async throws {
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-mark-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let overlayPath = dir.appending(path: "roster.json").path
+        let claude = dir.appending(path: "claude").path
+        let roster = """
+        [{"id":"a1b2","cwd":"/x","kind":"background","startedAt":1756800000000,"state":"done"},
+         {"id":"c3d4","cwd":"/y","kind":"background","startedAt":1756800000000,"state":"done"}]
+        """
+        try Data("#!/bin/sh\nsleep 0.3\ncat <<'EOF'\n\(roster)\nEOF\n".utf8).write(to: URL(filePath: claude))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claude)
+        let cli = ClaudeCLI(executable: claude, host: .local)
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask { try await cli.mark(.archive, id: "a1b2", overlayPath: overlayPath) }
+            group.addTask { try await cli.mark(.pin, id: "c3d4", overlayPath: overlayPath) }
+            for try await _ in group {}
+        }
+        let marks = RosterOverlay.load(path: overlayPath).overlay
+        #expect(marks.mark(for: "a1b2", sessionId: nil)?.archived != nil)
+        #expect(marks.mark(for: "c3d4", sessionId: nil)?.pinned != nil)
+    }
+
     @Test func noFileIsNoMarks() throws {
         try withTempPath { path in
             let loaded = RosterOverlay.load(path: path)
