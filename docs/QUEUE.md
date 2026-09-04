@@ -17,10 +17,31 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**v12 slice 1** is the shell pane's way out, and it came from the user
-asking whether there was one. There were three, all unfindable: the row
-menu only ever said "Open in Terminal", so the mouse had no close at all,
-and ⇧⌘T was named in the two refusals and nowhere else. The row's item now
+**v12 slice 2** is air's picker, and it is not finished until air runs it.
+**Add Mac** on air showed a raw `DecodingError` naming the character `T` and
+nothing about why, because stderr went to `nullDevice` and `peers(from:)` is
+handed bytes with no memory of which binary produced them. The cause, once
+the error could carry it: Tailscale's macOS bundle is the GUI and the CLI in
+one binary and picks by smelling for a shell — with neither `TERM` nor
+`SHLVL` set it decides it was double-clicked and prints "The Tailscale GUI
+failed to start: …" on stdout, exit 0. A GUI process has neither, so ccc.app
+could not be told apart from a double-click and `ccc hosts discover` in a
+terminal could never reproduce it: **the twins disagreed because the
+environments did**, which is the one way two surfaces of one definition can
+still diverge. `Tailnet.shellish` supplies both variables; the better error
+message stays, because it is what will name the next binary that answers
+something else (`docs/EVIDENCE.md` "the picker's error names a character, not
+a cause").
+
+Both halves are asserted on studio, against studio's copy of the same binary,
+and **neither has met air** — where the bug lives and where the fix can only
+arrive by pull. So the act that closes this slice is a **cut**, and the
+measurement is one sentence: Add Mac on air lists the tailnet.
+
+Before it, **v12 slice 1** was the shell pane's way out, and it came from
+the user asking whether there was one. There were three, all unfindable:
+the row menu only ever said "Open in Terminal", so the mouse had no close
+at all, and ⇧⌘T was named in the two refusals and nowhere else. The row's item now
 flips to **Close Terminal** while its shell is up (`t` with it), and the
 open sentence names the shortcut (`docs/EVIDENCE.md` "v12 slice 1"). The
 count in that entry is the general shape to watch: **a verb with fewer
