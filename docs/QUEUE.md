@@ -41,9 +41,9 @@ measurement is one sentence: Add Mac on air lists the tailnet.
 Before it, **v12 slice 1** was the shell pane's way out, and it came from
 the user asking whether there was one. There were three, all unfindable:
 the row menu only ever said "Open in Terminal", so the mouse had no close
-at all, and ⇧⌘T was named in the two refusals and nowhere else. The row's item now
-flips to **Close Terminal** while its shell is up (`t` with it), and the
-open sentence names the shortcut (`docs/EVIDENCE.md` "v12 slice 1"). The
+at all, and ⇧⌘T was named in the two refusals and nowhere else. The row's
+item now flips to **Close Terminal** while its shell is up (`t` with it),
+and the open sentence names the shortcut (`docs/EVIDENCE.md` "v12 slice 1"). The
 count in that entry is the general shape to watch: **a verb with fewer
 surfaces than its opposite is a verb that will be reported missing.**
 
@@ -71,8 +71,10 @@ numbers.
 What is left below is not a frontier. **Item 6 is air's** and happens on
 its own the next time the lid closes overnight. **Item 14 needs a
 terminal with Screen Recording permission** — a sitting, not a session.
-Items 4, 5 and 7 are debt, leftovers and housekeeping, none with a
-forcing function.
+Items 4 and 5 are debt and leftovers, neither with a
+forcing function. **Item 7 has left** — origin carries `master` and
+`worktree-v2` and nothing else (`docs/EVIDENCE.md` "the four branches, and
+the sha is the undo").
 
 So the next thing is a **direction**, not an item. Whatever it is, the
 client is still read-only plus attach (CLAUDE.md's thesis), and the
@@ -143,16 +145,6 @@ Needs air's pane attached to a **studio** ref when the lid closes, studio's
 pane on something else or nothing (or it measures item 15 too), and **air
 on v0.1.20 or later** — cut and published 2026-09-04, so air takes it from
 the feed. 0.1.18 measures the defect, not the fix.
-
-### 7. Housekeeping: four branches to delete
-
-Re-checked 2026-09-04 against `branch -a --merged origin/master`, which
-this item asks for: `hotfix-gridbuilder`, `worktree-v0`, `worktree-v1`
-and `worktree-icon` are all merged into master and safe to delete on
-origin. **`worktree-icon` joined the list on that re-check** — the entry
-carved it out on 2026-09-03 as unmerged, and it had in fact landed at
-37cdae5, the merge tagged v0.1.6. `worktree-v2` is the live branch and
-stays.
 
 ### 9. The attach transition: one end left
 

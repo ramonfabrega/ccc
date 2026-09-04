@@ -2735,3 +2735,32 @@ Studio's answer is the control, not the measurement: it was never the Mac
 that broke, and `shellish` must leave it unchanged. **The measurement is
 air's, and it is one sentence** — Add Mac on air lists the tailnet instead
 of naming a character — which cannot be taken until air pulls this cut.
+
+## the four branches, and the sha is the undo (2026-09-04)
+
+Item 7 closed. `origin` now carries `master` and `worktree-v2` and nothing
+else. What was deleted, verified merged the way the item asked —
+`git merge-base origin/master origin/<b>` equal to the branch's own tip, so
+master already contains every commit:
+
+```
+9f57ca4  hotfix-gridbuilder
+9e977d7  worktree-v0
+11eeb4a  worktree-v1
+7d535e6  worktree-icon
+```
+
+Recorded because **a deleted branch is a name, not a loss**: each sha is
+still reachable from master, and `git branch <name> <sha>` puts any of them
+back. That is the whole reason the shas were taken before the push rather
+than after.
+
+`worktree-icon` is the one the item got wrong once: carved out on
+2026-09-03 as unmerged, it had in fact landed at 37cdae5, the merge tagged
+v0.1.6. The 2026-09-04 re-check is what found it, which is why the item
+asked for `--merged origin/master` every time rather than trusting its own
+earlier list.
+
+ccc could not run the delete itself — `git push origin --delete` is refused
+by the auto-mode classifier, both for four branches at once and narrowed to
+one. The user ran it. Worth knowing before a session plans around doing it.
