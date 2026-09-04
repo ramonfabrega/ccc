@@ -188,8 +188,10 @@ question reads as "yes", so an attached ccc pane could only ever
 *over*-suppress the user's phone, structurally. `TerminalHost.setFocused`
 is the seam's sixth member, `ccc focus [in|out]` the twin, proved against a
 live `claude attach` (`docs/EVIDENCE.md` "the pane that could not say it
-had looked away"). **The user's half is unmeasured**: whether the phone now
-buzzes for a session ccc holds and nobody is watching.
+had looked away"). **Cut as v0.1.23 the same day** — the damage was ongoing,
+so it did not wait for a batch — and air pulls it from the feed
+(`docs/EVIDENCE.md` "Cut as v0.1.23"). **The user's half is unmeasured**:
+whether the phone now buzzes for a session ccc holds and nobody is watching.
 
 **Slice 3: `CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses
 push while a marker file exists, and the harness docs say to "configure a

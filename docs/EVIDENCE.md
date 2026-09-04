@@ -3060,3 +3060,42 @@ three sentences: sent, `(already)`, and the mode-off one.
 **Not measured here, and it is the user's to close:** whether the phone
 now buzzes for a session ccc holds and nobody is watching. That needs the
 phone, a blocked session and a walk away from the Mac.
+
+## Cut as v0.1.23 (2026-09-04)
+
+Item 17's two slices, released the same day they were built, because the
+second one is a **bug fix whose damage was ongoing**: until the app on
+studio carried it, every session ccc held was still telling the harness
+someone was watching, and still suppressing the user's phone
+(`docs/EVIDENCE.md` "the pane that could not say it had looked away").
+
+The four steps, unchanged (`RELEASES.md`): `VERSION` → tag → `scripts/package`
+→ `scripts/install --dist`. Notarization `Accepted`, staple validated,
+`spctl` accepted as `Notarized Developer ID`, one `<item>` asserted, both
+CDN keys overwritten zip-first, and the live feed's `length=` matched the
+zip's real `content-length`:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 170 length 5091967
+cut ccc v0.1.23 (5091967 bytes), published
+ota verify --feed ccc  →  ok: … version 170 length 5091967
+```
+
+Verified on studio against the **released** build, not the dev one:
+
+```
+ccc version  →  ccc 0.1.23 (170)  /Users/rf-studio/Applications/ccc.app
+ccc stats    →  ccc 0.1.23 (170)  pid 21093 …
+ccc list     →  the `rc` column, marking lore, attrition and ccc
+```
+
+**Air is where this one is measured**, and by the rule v12 left behind: a
+fix for a bug that lives on the other Mac is unproved until a release
+carries it there. Air pulls this from the feed. The half nobody can assert
+from a terminal is the phone — whether a push now arrives for a session ccc
+holds while nobody is at the Mac.
+
+One thing to know when reading `ccc focus` right after a cut:
+`scripts/install --dist` relaunches the app, which makes its window key, so
+the first reading is `focus in` and that is correct rather than stuck. It
+flips on the next key change.
