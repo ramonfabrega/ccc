@@ -143,17 +143,17 @@ default to it is the user's call, but the box should exist.
 
 ### 18. The worktree family points at the default branch; the trunk is often elsewhere
 
-Reported by lore 2026-09-04 from attrition, the first external consumer of
-`ccc spawn` at scale: it could not use `--worktree`, which bases the new
-worktree on the repo's default branch, because attrition's `main` lags its
-working branch by design; it cut worktrees off the working tip by hand and
-passed `--cwd`. **Structural**: `merge`, `update` and `pull` read the
-default branch too, and most of the fleet is trunk-on-a-branch — ccc itself
-on `worktree-v2`. Three shapes: a base-ref option on `spawn --worktree`;
-**default the base to the spawning session's own branch when it is in a
-worktree**, the family reading the base from the worktree's upstream (the
-recommendation: no flag, and it is attrition's case and ours); or leave
-it and document `--cwd`, which works. Undecided; the user's call.
+Two consumers in one day, 2026-09-04: attrition (via lore) and
+storefront-launch (cuanto's trunk is `storefront`, 590 ahead of master).
+Neither could use `--worktree`, which bases on the repo's default branch;
+both cut worktrees by hand and passed `--cwd`. **Structural**: `merge`,
+`update` and `pull` read the default branch too, and **the column shows a
+wrong number** — storefront's rows say `base: master`, `behind: 24`, measured
+against a branch nobody lands on. Three shapes: `--base <branch>` on
+`spawn --worktree`; **default the base to the spawning session's own
+branch when it is in a worktree**, the family and the column reading the
+base from the worktree's upstream (the recommendation: no flag, and it is
+every reporter's case and ours); or document `--cwd`. The user's call.
 
 ## Later
 
