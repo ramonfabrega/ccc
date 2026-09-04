@@ -52,12 +52,42 @@ public protocol TerminalHost: AnyObject {
     /// false when this host cannot paste or nothing was written.
     @discardableResult
     func paste(_ text: String) -> Bool
+    /// Tell the child the terminal gained or lost focus — DEC mode 1004,
+    /// which **every session the harness runs turns on** (measured
+    /// 2026-09-04: `decModes` in the daemon's roster carries 1004 for
+    /// 8 of 8 workers). Sent only when the child asked for it; a child
+    /// with 1004 off gets nothing and this returns false.
+    ///
+    /// This is not cosmetic, and it is the one seam member that exists for
+    /// something outside the window. The harness pulses "the user is at
+    /// this terminal" to Anthropic and **suppresses the user's phone push
+    /// while that is true**; its own guard skips the pulse only when focus
+    /// is explicitly `false`, so a terminal that never reports focus is
+    /// treated as present forever. ccc reported none until now, which
+    /// means an attached ccc pane could only ever *over*-suppress the
+    /// phone (`docs/EVIDENCE.md` "the pane that could not say it had
+    /// looked away").
+    @discardableResult
+    func setFocused(_ focused: Bool) -> Bool
 }
 
 extension TerminalHost {
     /// Hosts without a screen (the headless replay host, SwiftTerm's stock
     /// view which draws through AppKit and needs no count) report nothing.
     public var presentation: (frames: Int, lastAt: Date?)? { nil }
+
+    /// A host that does not implement focus reports nothing rather than
+    /// lying in either direction — the replay host and the SwiftTerm
+    /// stand-in behind `CCC_CORE=swiftterm`.
+    ///
+    /// **Not** `ccc attach --headless`, which builds the same `GhosttyPane`
+    /// off-screen and so does report. That is deliberate and is the useful
+    /// case, not an accident of the factory: a headless attach is nobody
+    /// looking, it says so, and the harness stops suppressing the phone
+    /// for a pane with no eyes on it. It is also what makes this whole
+    /// mechanism testable from a script.
+    @discardableResult
+    public func setFocused(_ focused: Bool) -> Bool { false }
 }
 
 /// A region of the viewport to select (item 12b), in the coordinates every

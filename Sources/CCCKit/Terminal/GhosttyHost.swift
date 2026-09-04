@@ -15,6 +15,11 @@ public final class GhosttyHost: TerminalHost {
     /// touches the raw handle.
     private(set) var terminal: GhosttyTerminal?
     private var keys: GhosttyKeys?
+    /// What the window last said (nil until anyone says anything) and what
+    /// was actually written to the child. They differ while the child has
+    /// not yet enabled mode 1004 — see `setFocused`.
+    private var desiredFocus: Bool?
+    private var lastFocusReported: Bool?
     private var cellSize: (width: UInt32, height: UInt32) = (8, 17)
 
     public var onOutput: ((Data) -> Void)?
@@ -117,6 +122,11 @@ public final class GhosttyHost: TerminalHost {
             ghostty_terminal_vt_write(terminal, raw.baseAddress!.assumingMemoryBound(to: UInt8.self), raw.count)
         }
         generation &+= 1
+        // The chunk that just landed may be the one that turned mode 1004
+        // on — the TUI negotiates its modes in its first writes — so a
+        // focus report the window asked for before the child was listening
+        // goes out now. One Bool compare when there is nothing pending.
+        flushFocus()
     }
 
     public func resize(cols: Int, rows: Int) {
@@ -300,6 +310,62 @@ public final class GhosttyHost: TerminalHost {
         }
         needsFullRedraw = needsFullRedraw || done
         return done
+    }
+
+    /// DEC 1004 focus reporting: `CSI I` on focus in, `CSI O` on focus out,
+    /// and **only when the child has turned the mode on**. The mode is read
+    /// from the core rather than remembered here, so a child that enables
+    /// or disables 1004 mid-session is answered correctly on the next
+    /// change — the same discipline `paste` follows for 2004.
+    ///
+    /// The last state sent is held so a redundant report is not written.
+    /// AppKit is generous with key-window notifications (a sheet, a menu, a
+    /// space switch), the harness pulses presence *on* focus-gained, and a
+    /// duplicated "focused" would be a duplicated pulse.
+    ///
+    /// These two sequences are hand-written, which CLAUDE.md forbids for
+    /// keys — "keys are the core's job" — and the exemption is narrow and
+    /// worth naming. Mode 1004 has no encoder in libghostty-vt at the
+    /// pinned commit (`modes.h` defines `GHOSTTY_MODE_FOCUS_EVENT` and
+    /// nothing writes it), and unlike a key these two sequences carry no
+    /// state: no modifiers, no kitty variant, no application-cursor form.
+    /// `CSI I` and `CSI O` are the whole protocol. If the core grows a
+    /// focus writer on a later pin, this becomes a call to it.
+    /// What the window says is remembered separately from what has been
+    /// written, and the gap between them is the attach case. At the moment
+    /// a pane mounts, the child has not started and 1004 is off, so the
+    /// report cannot be sent — and that is exactly the case that matters,
+    /// because a session attached while nobody is looking must be able to
+    /// say so. The desire is therefore held and `flushFocus` retries it
+    /// after every chunk the child writes, so it lands on the same read
+    /// that negotiates the mode. No timer, and nothing for the owner to
+    /// remember to call twice.
+    @discardableResult
+    public func setFocused(_ focused: Bool) -> Bool {
+        desiredFocus = focused
+        return flushFocus()
+    }
+
+    /// Write the pending focus report if there is one and the child is
+    /// listening. Ordered cheapest-first: in the steady state this is one
+    /// optional comparison and no call into the core.
+    @discardableResult
+    private func flushFocus() -> Bool {
+        guard let desiredFocus, desiredFocus != lastFocusReported else { return false }
+        guard terminal != nil, mode(1004) else { return false }
+        lastFocusReported = desiredFocus
+        onOutput?(Data(desiredFocus ? [0x1b, 0x5b, 0x49] : [0x1b, 0x5b, 0x4f]))
+        return true
+    }
+
+    /// Read one DEC mode, the same in/out shape `GhosttyMouse.mode` uses —
+    /// `GHOSTTY_MODE_*` are macros Swift cannot see, so the mode is built
+    /// with `ghostty_mode_new`.
+    func mode(_ number: UInt16, dec: Bool = true) -> Bool {
+        guard let terminal else { return false }
+        var config = GhosttyTerminalModeConfig(mode: ghostty_mode_new(number, !dec), value: false)
+        guard ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_MODE, &config) == GHOSTTY_SUCCESS else { return false }
+        return config.value
     }
 
     /// Whether anything is selected right now.

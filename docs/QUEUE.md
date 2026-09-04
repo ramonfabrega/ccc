@@ -180,22 +180,27 @@ candidates are wrong and were measured before building — `claude agents
 `bridgeSessionId` is on **every** job (it is the claude.ai session id, not
 a mark of RC). Drawn only when true, per the v11 rule.
 
-**Slice 2: `CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses
-mobile push while a marker file exists, and the harness docs say to
-"configure a screen-lock listener or similar tool" to write it on unlock
-and delete it on lock. **ccc is that tool.** Twin: `ccc presence
-on|off|status` plus `ccc presence --settings`, which prints the
-settings.json `env` entry and never writes it (`HookSettings`' rule).
-**The obvious signal is wrong**: studio is always-on, so "screen unlocked"
-would suppress push all day while nobody is there. Idle time is the
-signal — present means unlocked *and* recently touched.
+**Slice 2 is done, and it was a bug of ours.** The harness turns **DEC 1004
+focus reporting** on for every session (8 of 8 workers' `decModes`), and
+ccc answered it with nothing — while the harness's presence guard skips its
+"the user is here" pulse **only on an explicit blur**. An unanswered
+question reads as "yes", so an attached ccc pane could only ever
+*over*-suppress the user's phone, structurally. `TerminalHost.setFocused`
+is the seam's sixth member, `ccc focus [in|out]` the twin, proved against a
+live `claude attach` (`docs/EVIDENCE.md` "the pane that could not say it
+had looked away"). **The user's half is unmeasured**: whether the phone now
+buzzes for a session ccc holds and nobody is watching.
 
-**Slice 3, a measurement, and it may be a bug of ours.** The harness skips
-push "while you are typing in or focused on the connected terminal" — and
-ccc's pane **is** a connected terminal. The user reports missing phone
-pushes and guessed focus. So: does an attached-but-unfocused ccc pane
-suppress the user's own phone, and does detaching restore it? That decides
-whether the presence twin needs an inverse.
+**Slice 3: `CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses
+push while a marker file exists, and the harness docs say to "configure a
+screen-lock listener or similar tool" to write it on unlock and delete it
+on lock. **ccc is that tool.** Twin: `ccc presence on|off|status` plus
+`ccc presence --settings`, printing the settings.json `env` entry and never
+writing it (`HookSettings`' rule). **The obvious signal is wrong**: studio
+is always-on, so "screen unlocked" would suppress push all day while nobody
+is there. Idle time is the signal — unlocked *and* recently touched.
+**Do slice 3 only if slice 2 was not enough**: it adds a second suppressor,
+and the bug just fixed was too much suppression.
 
 **Not a slice, a box.** ccc's spawn never offers `--rc`. Whether it should
 default to it is the user's call, but the box should exist.

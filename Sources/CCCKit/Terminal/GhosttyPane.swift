@@ -100,6 +100,13 @@ public final class GhosttyPane: TerminalHost {
 
     public func paste(_ text: String) -> Bool { core.paste(text) }
 
+    /// DEC 1004, straight through to the core, which decides whether the
+    /// child asked for it. The pane does not observe focus itself: an
+    /// `NSView` learns about key-window changes late and through several
+    /// paths, and the owner (`PaneController`) already watches the window.
+    @discardableResult
+    public func setFocused(_ focused: Bool) -> Bool { core.setFocused(focused) }
+
     /// Pixels of the pane as drawn — `ccc peek` composites this over the
     /// window capture, since a Metal layer is invisible to cacheDisplay.
     public func snapshotImage() -> CGImage? {

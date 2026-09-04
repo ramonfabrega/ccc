@@ -2961,3 +2961,102 @@ tool** — it is a menubar-resident app that already knows window focus — and
 today it does not know the variable exists. That is a twin-shaped feature
 against a documented surface, on the Mac, with the phone already in the
 user's pocket.
+
+## the pane that could not say it had looked away (2026-09-04)
+
+Item 17 slice 2, and it started as a user report — missing phone pushes,
+guessed to be focus suppression. It is, and the cause was ours.
+
+**Three measurements, in the order that makes the fourth follow.**
+
+Every session the harness runs turns **DEC 1004 focus reporting** on:
+
+```
+python3 -c 'import json,os; d=json.load(open(os.path.expanduser("~/.claude/daemon/roster.json")));
+[print(k, v.get("decModes")) for k,v in d["workers"].items()]'
+```
+
+`1004` is in `decModes` for **8 of 8** workers, alongside 1000/1002/1003
+(mouse), 1006 (SGR), 2004 (bracketed paste) and 2031. The harness is asking
+the terminal to tell it when the human looks away.
+
+**ccc never answered.** `grep -rn "1004\|focusIn\|focusOut\|windowDidBecomeKey\|
+resignKey" Sources/` returned **nothing** — no focus reporting of any kind,
+in either core, in the window or headless.
+
+**And an unanswered question is read as "yes".** The presence module ships
+as readable JS in the CLI (`strings` over
+`~/.local/share/claude/versions/2.1.260`, chunk at offset 179545366 — this
+one is not bytecode). It POSTs
+`/v1/code/sessions/<id>/client/presence` with `client_id` and
+`connected_at` every 5 s while the user is at the terminal, and the phone's
+push is suppressed while that is live. The guard is one line:
+
+```js
+h=()=>{if(EQ()===!1){t(`${r} pulse skipped (terminal blurred)`);return}…}
+```
+
+`EQ()` is the focus state and is `undefined` when nothing has reported.
+The skip fires **only on an explicit `false`**. So a terminal that reports
+nothing is treated as present, forever, and `teardown` is the only thing
+that ever clears it.
+
+**Which makes the conclusion arithmetic rather than a theory:** an attached
+ccc pane could only ever *over*-suppress the user's phone. Not sometimes —
+structurally, because ccc owned the one signal that turns suppression off
+and never sent it.
+
+**The fix, and why it is in the seam.** `TerminalHost.setFocused` is the
+sixth member, `GhosttyHost` writes `CSI I` / `CSI O`, and the window feeds
+it from `NSWindow.didBecomeKeyNotification` scoped to the window.
+Two decisions worth keeping:
+
+- **The desire is held, not dropped.** A pane mounts *before* its child
+  exists, so the first report cannot be written — and that is exactly the
+  case that matters, since a session attached while the window is not key
+  must be able to say nobody is watching. `flushFocus` retries after every
+  chunk the child writes, so the report lands on the same read that
+  negotiates the mode. No timer.
+- **The signal is the window being key, not first responder.** A stricter
+  reading would call the session pane blurred while the user works in the
+  shell pane under it. Two panes in one window are not two windows, and the
+  question the mode is really being asked is whether to buzz a phone.
+
+`CSI I` / `CSI O` are hand-written, which CLAUDE.md forbids for keys. The
+exemption is narrow and stated at the call site: mode 1004 has no encoder
+in libghostty-vt at the pinned commit (`modes.h` defines
+`GHOSTTY_MODE_FOCUS_EVENT` and nothing writes it), and unlike a key these
+carry no state — no modifiers, no kitty variant, no application-cursor
+form. Two sequences are the whole protocol.
+
+**Proved against a live `claude attach`**, not only in tests. A haiku
+fixture (`ccc spawn --name ccc-focus-fixture --model haiku`), attached
+headless on its own socket so the running app kept ours
+(`CCC_CONTROL_SOCKET=…`, which is how a second server is possible at all):
+
+```
+read:  focus out        ← the attach declared itself unwatched on install
+in:    focus in         ← reached the real TUI, so 1004 really is on
+again: focus in (already)
+out:   focus out
+```
+
+The first line is the whole fix in one word: before this, ccc said nothing
+there and the harness assumed a person. Headless reports too, deliberately
+— it builds the same `GhosttyPane` off-screen, nobody is looking at it, and
+it now says so.
+
+`ccc focus [in|out]` is the twin, and it exists because **the state is
+invisible on this Mac and visible on a phone**: asserting it from a script
+and reading the bytes on the other side of the PTY is the only way to prove
+ccc reports blur at all. `FocusReportTests` drives the real core for the
+six cases, the attach case included.
+
+**One wording bug, caught live and worth the line.** The refusal for a
+repeat first read "(not reported — no attached pane has DEC 1004 on)",
+which sends the reader hunting a mode that is in fact on. Three outcomes,
+three sentences: sent, `(already)`, and the mode-off one.
+
+**Not measured here, and it is the user's to close:** whether the phone
+now buzzes for a session ccc holds and nobody is watching. That needs the
+phone, a blocked session and a walk away from the Mac.

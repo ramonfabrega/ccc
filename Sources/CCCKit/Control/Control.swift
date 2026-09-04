@@ -43,6 +43,16 @@ public enum ControlRequest: Codable, Sendable {
     /// `show` brings the window forward, `hide` orders it out, `close` is
     /// exactly ⌘W (so the reopen path can be exercised without a hand).
     case window(action: String)
+    /// DEC 1004 focus, the window's twin (item 17 slice 2). `nil` reads
+    /// what the window last said; a value asserts it, exactly as making
+    /// the window key or ordering it back would.
+    ///
+    /// It has a command twin because it must be *testable*: the state it
+    /// drives is invisible on this Mac — it decides whether the harness
+    /// suppresses a push on a phone — so the only way to prove ccc reports
+    /// blur at all is to assert it from a script and read the bytes on the
+    /// other side of the PTY.
+    case focus(focused: Bool? = nil)
     /// The wake-up gesture's twin (docs/DESIGN.md §4b): drop the ssh
     /// master of every remote host — or of `host` — and poll again now.
     /// The app does this itself on `NSWorkspace.didWakeNotification`; this

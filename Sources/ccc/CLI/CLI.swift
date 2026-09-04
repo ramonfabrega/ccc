@@ -14,6 +14,8 @@ import Foundation
 ///   ccc snapshot [--json]             the pane's grid as text
 ///   ccc send <text> | --key <name>… | --paste <text>   type into the pane
 ///   ccc detach                        detach the pane
+///   ccc focus [in|out]                DEC 1004 focus, the window's twin — what decides
+///                                     whether the harness suppresses your phone's push
 ///   ccc stats [--json]                memory, poll latency, PTY throughput
 ///   ccc replay <bytes> [--cols N --rows N]   render recorded bytes headlessly
 ///   ccc version                       which build this is (the bundle's)
@@ -212,6 +214,17 @@ enum CLI {
                 let words = rest.filter { !$0.hasPrefix("--") }
                 guard let action = WindowAction(words.joined(separator: " ")) else { return usage() }
                 return try request(.window(action: action.text), json: json)
+            case "focus":
+                // `ccc focus` reads, `ccc focus in|out` asserts. The verb
+                // exists because the state it drives is invisible here and
+                // visible on a phone (item 17 slice 2).
+                let words = rest.filter { !$0.hasPrefix("--") }
+                switch words.first {
+                case nil: return try request(.focus(), json: json)
+                case "in": return try request(.focus(focused: true), json: json)
+                case "out": return try request(.focus(focused: false), json: json)
+                default: return usage()
+                }
             case "replay":
                 guard let path = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 return try await replay(path: path, cols: intFlag("--cols", rest) ?? 100, rows: intFlag("--rows", rest) ?? 30,
@@ -1623,6 +1636,9 @@ enum CLI {
                ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
                                                               (N>0 scrolls up; --paste frames as a paste, - reads stdin)
                ccc detach
+               ccc focus [in|out]                 what the window last told the child about focus (DEC 1004),
+                                                  or assert it. The harness suppresses your phone's push while
+                                                  a terminal reports focus, so `out` is what says nobody is here
                ccc spawn [--host <name>] [--cwd <dir>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
                          [--effort <e>] [--worktree[=<name>]] [--from <ref>] [--attach] [--json] [<prompt>... | -]
                                                   `claude --bg` on a host (cwd: here, or the far side's home); the

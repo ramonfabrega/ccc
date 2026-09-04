@@ -66,6 +66,33 @@ final class PaneController {
     /// answers with what it did. `nil` headless.
     var hookSink: (@MainActor (HookEvent) -> String)?
 
+    /// Whether the human is looking at ccc — DEC 1004, forwarded to both
+    /// panes, which each pass it to the child only if that child turned
+    /// mode 1004 on. Item 17 slice 2.
+    ///
+    /// **The signal is the window being key**, not which pane holds first
+    /// responder. A stricter reading would report the session pane blurred
+    /// while the user works in the shell pane under it, and that is the
+    /// wrong answer to the question the mode is actually being asked here:
+    /// the harness turns 1004 on to decide whether to suppress the *phone*,
+    /// and someone typing in ccc's shell pane is at this Mac. Two panes in
+    /// one window are not two windows.
+    ///
+    /// Idempotent downstream — the host drops a repeat — so AppKit's
+    /// generosity with key-window notifications costs nothing.
+    private(set) var paneFocused = false
+
+    @discardableResult
+    func setPaneFocus(_ focused: Bool) -> Bool {
+        paneFocused = focused
+        // Both, and `||` rather than `&&`: "something was told" is the
+        // answer, and a shell that never enabled 1004 must not make the
+        // session's report look unsent.
+        let toSession = session?.host.setFocused(focused) ?? false
+        let toShell = shell?.host.setFocused(focused) ?? false
+        return toSession || toShell
+    }
+
     /// The hosts ccc knows about, and why any were dropped. Re-read when
     /// hosts.json's mtime moves, so `ccc hosts add studio` from a shell
     /// reaches a running app on the next tick — the same rule the roster
@@ -257,6 +284,14 @@ final class PaneController {
             UserDefaults.standard.set(ref.description, forKey: Self.rememberedRefKey)
         }
         poller.attachedRef = ref
+        // Tell the new child straight away whether anyone is looking. It
+        // has not negotiated mode 1004 yet and cannot hear this, which is
+        // why the host holds the answer and re-sends it on the read that
+        // turns the mode on. The case this exists for is a session
+        // attached while the window is *not* key: with no report, the
+        // harness treats unknown focus as present and suppresses the
+        // user's phone for a pane nobody is watching.
+        setPaneFocus(paneFocused)
         onSessionStarted?(session)
     }
 
@@ -809,6 +844,26 @@ final class PaneController {
         case .window(let action):
             guard let windowAction else { return .error("no window (headless)") }
             return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (\(WindowAction.usage))")
+        case .focus(let focused):
+            // A read says what the window last reported; a write asserts
+            // it and says whether the child was actually told. "not
+            // reported" is the honest answer, not a failure: it is what a
+            // child with mode 1004 off looks like, and a shell pane at a
+            // bare prompt is exactly that.
+            guard let focused else {
+                return .ok("focus \(paneFocused ? "in" : "out")")
+            }
+            // Three outcomes, and they must not be spelled the same. A
+            // repeat is silent because the child already knows; a pane
+            // with mode 1004 off is silent because it never asked. Saying
+            // "no pane has 1004 on" for a repeat sends the reader hunting
+            // a mode that is in fact on — which it did, once, live.
+            let repeated = paneFocused == focused
+            let sent = setPaneFocus(focused)
+            let word = focused ? "in" : "out"
+            if sent { return .ok("focus \(word)") }
+            if repeated { return .ok("focus \(word) (already)") }
+            return .ok("focus \(word) (not reported — no attached pane has DEC 1004 on)")
         case .stats:
             var stats: StatsInfo
             if let session {

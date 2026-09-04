@@ -65,6 +65,30 @@ final class MainWindowController: NSWindowController {
         controller.onShellStarted = { [weak self] shell in self?.mountShell(shell) }
         controller.onShellEnded = { [weak self] in self?.unmountShell() }
         controller.defaultSize = gridSize()
+        observeKeyWindow(window)
+    }
+
+    /// DEC 1004 focus reporting (item 17 slice 2), from AppKit to the
+    /// child. Notifications rather than `NSWindowDelegate`, because this
+    /// controller is not the window's delegate and making it one to catch
+    /// two events would put every other delegate callback in its path.
+    /// Scoped to this window by `object:`, so another ccc window — or a
+    /// panel — cannot answer for the pane.
+    ///
+    /// Seeded with the window's current state, since a window that is
+    /// already key when this runs will send no notification to say so.
+    private func observeKeyWindow(_ window: NSWindow) {
+        let center = NotificationCenter.default
+        for (name, focused) in [(NSWindow.didBecomeKeyNotification, true),
+                                (NSWindow.didResignKeyNotification, false)] {
+            center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.controller.setPaneFocus(focused)
+                }
+            }
+        }
+        controller.setPaneFocus(window.isKeyWindow)
     }
 
     required init?(coder: NSCoder) { fatalError() }
