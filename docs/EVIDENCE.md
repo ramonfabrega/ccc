@@ -1917,3 +1917,20 @@ A `done` fixture that finished inside one poll interval produced **no**
 event, correctly: a new row that arrives already terminal is history,
 not news (`TransitionDetector`'s own rule). Proving the banner needs a
 session that *stays* in the state — which is what the blocked one does.
+
+### Cut
+
+**v0.1.17, build 139**, notarized and published to the feed the same day:
+`spctl` accepted as Notarized Developer ID, one `<item>` in the appcast,
+and the live check agreed with the zip at 5,068,153 bytes. Studio was
+moved onto the released bytes with `scripts/install --dist`, and the
+first ticks of the new join reported themselves:
+
+```
+model join   last 8 ms  mean 107 ms  reads 19  cached 32  gone 0
+job join     reads 20  cached 37  none 0  65% cached
+```
+
+65% is three ticks in, not the steady state — the cached share climbs as
+terminal sessions stop changing, which is the whole reason the cache is
+keyed on (size, mtime).
