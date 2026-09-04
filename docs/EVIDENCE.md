@@ -1520,3 +1520,100 @@ Not done: **autoscroll**. The core ships an autoscroll tick event and
 reports a direction, and the pane has no scrollback UI to tick against —
 a drag that leaves the grid stops at the edge. Nor a deep-press, nor
 ⌘A for select-all (`ghostty_terminal_select_all` exists).
+
+## v9 slice 5 — 12c: bold is bright, and the index that was never lost (2026-09-03)
+
+Queue item 12c, the last of item 12. **A bold cell wearing ANSI colour
+0–7 paints colour n+8** — iTerm's "Use Bright Bold", on in the profile
+ccc's sixteen were read out of, so the pane had been one policy short of
+the terminal it was measured against since v8 slice 1.
+
+### The blocker did not exist
+
+The item, and `Theme.swift`'s own comment, recorded this as needing work
+across the seam first: the core resolves palette indices to RGB before a
+cell reaches us (`render.h`, `..._DATA_FG_COLOR`: "Bold color handling is
+not applied"), so there is no *n* left to add 8 to, and the fix was
+either "carry the index across the seam or resolve the palette ourselves".
+
+Both halves of that were wrong, and one probe against the real core said
+so. `..._DATA_FG_COLOR` is flattened, yes — but `GhosttyStyle.fg_color`
+is a **tagged union** (`style.h`), and `FrameReader` was already reading
+that struct every cell, for `bold` itself, and throwing the colour half
+on the floor. Four SGR runs, read out of the style rather than the
+resolved colour:
+
+    [1;31m           bold=true   tag=1 PALETTE  slot=1     resolvedFg=204,102,102
+    [31m             bold=false  tag=1 PALETTE  slot=1     resolvedFg=204,102,102
+    [1;38;2;10;20;30m bold=true  tag=2 RGB                 resolvedFg=10,20,30
+    [1m              bold=true   tag=0 NONE                resolvedFg=none
+
+The index survives, and it distinguishes itself from truecolor and from
+the default foreground — which is exactly the three-way answer the policy
+needs. Nothing new crosses the seam; the reader stopped discarding it
+(`Frame.Cell.fgPalette`, one `if` in a call already being made).
+
+The second half — "or resolve the palette ourselves" — is unnecessary
+too. Only slots 0–7 promote, and 8–15 are `theme.ansi[n+8]`, which ccc
+already owns and already seeded the core with (`GhosttyHost.install`).
+The core's 256-entry palette never has to cross anything, and the theme
+and the core cannot disagree about the eight because one made the other.
+
+### Resolved where selection is, for selection's reason
+
+The promotion is a **policy**, not a colour, so `Frame` still carries only
+what the core said — the unpromoted colour *and* the slot — and
+`RunMerge.resolvedColors` turns the two into one answer, the same shared
+function the renderer and the colour oracle both go through (12a's rule).
+`ccc pixel` and `ccc snapshot --color` therefore cannot come apart on it.
+
+Three rules, each a `nil` rather than a special case: a cell with no slot
+keeps its colour (truecolor, and the default foreground — inventing an
+*n* there would mean deciding "bold" means "white", a second policy
+wearing this one's name); slots 8–15 are already bright; slots 16–255 are
+the xterm cube, where +8 is a different colour rather than a brighter one.
+And the promotion applies **before** `inverse` — it decides what the cell
+is wearing, inversion decides which side wears it.
+
+`Theme.boldIsBright` is the knob, default true, `decodeIfPresent ?? true`
+so a `CCC_THEME` file written before today keeps rendering as it did.
+`ccc theme` says it in words, because it is the only theme value that is
+a policy and otherwise an unexplained difference between that table and
+the screen.
+
+### Measured
+
+Through the shipped CLI, `ccc replay --color --json` on `[31mplain[0m
+[1;31mbold[0m`:
+
+    0+5   #B43C2A on #15191F     ANSI red, slot 1
+    6+4   #DD7975 on #15191F     the same SGR, bold — slot 9
+
+And through the **real Metal renderer** into an offscreen texture, read
+back as pixels the way `ccc pixel --cell` aims: two cells identical but
+for the `1`, under `inverse` so the promoted colour lands as a solid quad
+rather than antialiased glyph ink, centre-sampled at 2x —
+`#DD7975` and `#B43C2A`. SGR bytes to GPU pixels, spelled the way
+`ccc pixel --expect` takes them.
+
+`allEightSlotsPromoteToTheirOwnBright` walks all eight rather than
+trusting red: an off-by-one in the slot arithmetic passes for red and
+fails for six of the eight. 12 tests in the suite, 352 total.
+
+**Not re-run today, again**: `ccc capture` still refuses for want of
+Screen Recording permission on this job's terminal (v8 slice 3, and 12a
+and 12b before it). The offscreen render is the closest available stand-in
+and it is not the same oracle. Comparing ccc's bold red against iTerm's
+side by side, from a terminal that has the permission, is still owed —
+now for three slices rather than two.
+
+### And one leftover, since it was one line away
+
+`ccc stats`' first line is the app's — `pid`, `memory`, `uptime` — and the
+third was the attached **pane's** age, `AttachSession.startedAt`, with
+`PaneController` passing a literal `0` whenever nothing was attached. A
+week-old app read "uptime 0s" the moment you detached (queue item 5,
+noticed 2026-09-03). It reads `ri_proc_start_abstime` off the process now,
+in both branches — a number the process cannot be wrong about, from the
+same `proc_pid_rusage` call `footprint` was already making. Nil rather
+than zero for a pid we cannot see, the roster's rule.

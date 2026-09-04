@@ -733,7 +733,8 @@ final class PaneController {
                                   childFootprintBytes: nil, lastPollMs: state.lastPollMs,
                                   meanPollMs: state.meanPollMs, pollCount: state.pollCount,
                                   modelJoin: state.modelJoin, hosts: state.hosts.map(HostPollStats.init),
-                                  ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 0)
+                                  ptyBytesIn: 0, ptyBytesPerSecond: 0,
+                                  uptimeSeconds: ProcessStats.uptime(of: me) ?? 0)
             }
             stats.notifications = notificationStats?()
             var fetch = fetchStats

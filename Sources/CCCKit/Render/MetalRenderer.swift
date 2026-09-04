@@ -299,13 +299,17 @@ public final class MetalRenderer {
         // The theme's, not the frame's: the core has no selection colour to
         // resolve into a cell (`GhosttyHost.install`), so the pair enters
         // here and in `ColorSpans` — the two places that turn a frame into
-        // something visible — and nowhere else.
+        // something visible — and nowhere else. bold-is-bright (item 12c)
+        // enters the same way and for the same reason: the eight colours it
+        // promotes into are the theme's, and the policy is ours, not the
+        // core's.
         let selection = theme.selection
+        let bold = theme.bold
 
         for row in frame.rows {
             let top = CGFloat(row.y) * cellH
 
-            for span in RunMerge.backgroundSpans(row, background: frame.background, foreground: foreground, selection: selection) {
+            for span in RunMerge.backgroundSpans(row, background: frame.background, foreground: foreground, selection: selection, bold: bold) {
                 batch.solids.append(SolidInstance(
                     rect: SIMD4<Float>(
                         Float(CGFloat(span.x) * cellW), Float(top),
@@ -315,11 +319,11 @@ public final class MetalRenderer {
                 ))
             }
 
-            for span in RunMerge.decorationSpans(row, background: frame.background, foreground: foreground, selection: selection) {
+            for span in RunMerge.decorationSpans(row, background: frame.background, foreground: foreground, selection: selection, bold: bold) {
                 appendDecoration(span, top: top, metrics: metrics, into: &batch.solids)
             }
 
-            for run in RunMerge.textRuns(row, background: frame.background, foreground: foreground, selection: selection) {
+            for run in RunMerge.textRuns(row, background: frame.background, foreground: foreground, selection: selection, bold: bold) {
                 let color = Self.color(run.style.fg, alpha: run.style.faint ? 0.6 : 1)
                 appendGlyphs(
                     run.text,

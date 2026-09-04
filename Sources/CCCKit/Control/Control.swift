@@ -400,6 +400,10 @@ public struct StatsInfo: Codable, Sendable {
     /// Bytes fed to the terminal since attach, and the rate over the last second.
     public var ptyBytesIn: UInt64
     public var ptyBytesPerSecond: Double
+    /// How long the **app** has been running, which is what it prints beside
+    /// (`ccc stats`' first line is pid, memory, uptime — all the app's). Read
+    /// from the process, not from an attach: it used to be the pane's age,
+    /// and `0` whenever nothing was attached.
     public var uptimeSeconds: Double
     /// Frames the pane actually handed to its on-screen layer, and how long
     /// ago the last one was. Bytes in without frames presented is a pane

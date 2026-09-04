@@ -22,22 +22,26 @@ oracle (10) all shipped 2026-09-03, and the last of them measured the
 first: ccc's pane and iTerm land on bit-identical pixels, so the
 colour-management residual v8 assumed does not exist (docs/EVIDENCE.md
 "8b: there is no colour-management residual"). Those three items have
-left; what survived them is item 12.
+left, and so has item 12 (below).
 
 **The hop is live.** Remote Login went on for studio 2026-09-03 and
 item 3's first two steps shipped the same day: a real `Host` behind a
 real `sshd`, a fixture spawned, attached, resized and driven over it, and
 DESIGN.md §4c answered by measurement (docs/EVIDENCE.md "v9 slice 1 — the
 hop is real"). Doing it found the host list frozen at launch, now fixed.
-**12a, 12b and 13 shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 2",
-"v9 slice 3", "v9 slice 4"): `ccc snapshot --color`, a headless oracle
-that spells a colour the way `ccc pixel` does; selection wearing the
-theme's two colours, with `ccc select`, because the colours turned out to
-have no producer at all; and then the hand — shift-drag, ⌥ for a
-rectangle, double- and triple-click, ⌘C, and `ccc select --word/--line`
-and `ccc copy` as their twins. What is left of item 12 is 12c
-(bold-is-bright). **The frontier is item 3's last step, the picker** —
-it is not large, and nothing blocks it.
+
+**Item 12 is done, and 13 with it.** 12a, 12b, 12c and 13 all shipped
+2026-09-03 (docs/EVIDENCE.md "v9 slice 2" … "v9 slice 5"): `ccc snapshot
+--color`, a headless oracle that spells a colour the way `ccc pixel`
+does; selection wearing the theme's two colours, with `ccc select`,
+because the colours turned out to have no producer at all; then the hand
+— shift-drag, ⌥ for a rectangle, double- and triple-click, ⌘C, and
+`ccc select --word/--line` and `ccc copy` as their twins; and finally
+bold-is-bright, whose recorded blocker turned out not to exist at all —
+the palette index was already crossing the seam inside the same
+`GhosttyStyle` that carries `bold`, and `FrameReader` was discarding it.
+**The frontier is item 3's last step, the picker** — it is not large, and
+nothing blocks it.
 
 ## Open
 
@@ -72,14 +76,15 @@ read before the host list grows. No forcing function yet.
 ### 5. Small leftovers
 
 A sort by model. The Session menu's archive/pin items (the context menu
-has them). **Selection autoscroll**: the core ships the tick event and
-reports a direction, and a drag that leaves the grid stops at the edge
-because the pane has no local scrollback viewport to tick — so this waits
-on one existing, not on the gesture (item 13). **`ccc stats`' first line says `uptime` next to `pid` and
-`memory`, which are the app's, but the number is the attached *pane's* —
-`PaneController.handle(.stats)` passes `uptimeSeconds: 0` whenever nothing
-is attached, so a week-old app reads "uptime 0s" the moment you detach
-(noticed 2026-09-03). Either label it, or make it the app's.** `ccc window
+has them). **Selection autoscroll**, which waits on something larger than
+it sounds: the core ships the tick event and reports a direction, but
+**ccc has no scrollback viewport at all** — `GhosttyPane.scroll` forwards
+every wheel event to the child (or falls back to arrows), so the 2,000
+lines the core keeps are unreachable, and a drag that leaves the grid has
+nothing to tick. Low value while the pane only ever runs `claude attach`,
+which is on the alternate screen and scrolls its own history; stated here
+so nobody starts the gesture believing the viewport is nearly there
+(re-checked 2026-09-03). `ccc window
 show` when another app holds focus — measured
 2026-09-02 with a Wine window in front: `NSApp.activate()` is cooperative
 since macOS 14 and the window stayed behind while `open -a` brought it
@@ -120,41 +125,20 @@ one-line wake message, which is what it was wrong about before; it is not
 proof the TUI finished, and a render that pauses over 250 ms mid-paint can
 still swap in early. Not seen in the wild.
 
-### 12. Colour: 12a and 12b shipped, 12c open
+### 14. The colour oracles have never been compared on a screen
 
-The 2026-09-03 re-probe broke this into three independent items — the old
-"a single change wearing three hats" was wrong, because `Frame.Cell`
-already carries `fg`/`bg`/`underlineColor` as `RGB?` and the seam was
-never the obstacle.
+What items 12a, 12b and 12c each left behind, stated once instead of
+three times. Every colour ccc has shipped is asserted headlessly and
+agrees with **8b's recorded number** (docs/EVIDENCE.md "8b: there is no
+colour-management residual") rather than with a `screencapture` taken
+beside it: `ccc capture` refused on all three slices for want of Screen
+Recording permission, correctly, since that permission belongs to whoever
+asks. One sitting from a terminal that has it settles all three — ccc's
+pane and iTerm side by side on the same bold, selected, coloured text.
 
-**12a is done** (docs/EVIDENCE.md "v9 slice 2 — 12a: colour a golden can
-assert"). `Grid.colors` carries run-length-encoded resolved colour when
-asked; `snapshot()` stays text-only for the hot path. Resolution is shared
-with the renderer through `RunMerge.resolvedColors` and pinned cell by
-cell, the merge is deliberately not. Live pane: 21 of 47 rows carry more
-than one run. The default background reads `#15191F`, matching 8b's
-screencapture measurement by string equality.
-
-**12b is done** (docs/EVIDENCE.md "v9 slice 3"). A selected cell paints
-the theme's two colours, whatever the child had set. It found that
-nothing in ccc could *make* a selection — the inversion 12b was written
-against had never run — so `ccc select` came with it, and item 13 gave
-that a hand (docs/EVIDENCE.md "v9 slice 4").
-
-- **12c. bold-is-bright.** The only one needing the palette index. The core
-  resolves index → RGB before a cell reaches us (`render.h`: "Bold color
-  handling is not applied"), so promoting bold text from colour *n* to
-  *n+8* — which iTerm does — has no *n* left to add 8 to. Either carry the
-  index across the seam or resolve the palette ourselves. Blocks nothing.
-
-Two things 12a uncovered and did not fix, and 12b hit the first of them
-again: `ccc capture` could not be run from a background job's terminal
-(Screen Recording permission belongs to whoever asks, by design), so both
-slices' headless-vs-screen agreement is against 8b's *recorded* number
-rather than a capture taken beside it — worth doing once, for both, from
-a terminal that has the permission. And the colour oracle has still only
-ever run on one display, one profile, at 1x; `pixel --cell`'s scale
-arithmetic is tested at 2x but has never met a Retina panel.
+And the oracle has still only ever run on **one display, one profile, at
+1x**. `ccc pixel --cell`'s scale arithmetic is tested at 2x, including
+against a real offscreen render, but has never met a Retina panel.
 
 ## Later
 

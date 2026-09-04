@@ -60,15 +60,39 @@ enum RunMerge {
     /// the child had set — and it is why selection resolves here rather
     /// than in `FrameReader`: the renderer and the colour oracle share this
     /// function, so they cannot disagree about it (item 12a's rule).
+    ///
+    /// `bold` non-nil is bold-is-bright on (item 12c), and it applies
+    /// **before** `inverse`: the promotion decides what colour the cell is
+    /// wearing, and inversion then decides which side of the cell wears it.
+    /// A promoted colour that ends up as a background is the same colour
+    /// iTerm puts there, and doing it the other way round would brighten
+    /// whatever the cell's *background* happened to be.
     static func resolvedColors(
         _ cell: Frame.Cell, frame background: Frame.RGB, foreground: Frame.RGB,
-        selected: SelectionColors? = nil
+        selected: SelectionColors? = nil, bold: BoldColors? = nil
     ) -> (fg: Frame.RGB, bg: Frame.RGB?) {
         if let selected { return (selected.foreground, selected.background) }
+        let fg = promoted(cell, bold: bold) ?? cell.fg
         if cell.flags.contains(.inverse) {
-            return (cell.bg ?? background, cell.fg ?? foreground)
+            return (cell.bg ?? background, fg ?? foreground)
         }
-        return (cell.fg ?? foreground, cell.bg)
+        return (fg ?? foreground, cell.bg)
+    }
+
+    /// bold-is-bright, in one sentence a golden can assert: **a bold cell
+    /// wearing ANSI colour 0–7 paints colour n+8.** Nil is every other cell.
+    ///
+    /// Three cases deliberately keep their colour, and each is a `nil` here
+    /// rather than a special case elsewhere: a cell with no palette slot
+    /// (truecolor, or the default foreground — there is no *n*, and inventing
+    /// one would mean deciding that "bold" means "white", which is a second
+    /// policy wearing this one's name); slots 8–15, already bright; and slots
+    /// 16–255, the xterm cube, where +8 is a different colour rather than a
+    /// brighter one.
+    private static func promoted(_ cell: Frame.Cell, bold: BoldColors?) -> Frame.RGB? {
+        guard let bold, cell.flags.contains(.bold),
+              let slot = cell.fgPalette, slot < 8 else { return nil }
+        return bold.bright[Int(slot)]
     }
 
     /// The selection colours for column `x`, or nil when it is outside the
@@ -83,10 +107,10 @@ enum RunMerge {
 
     static func style(
         of cell: Frame.Cell, frame background: Frame.RGB, foreground: Frame.RGB,
-        selected: SelectionColors? = nil
+        selected: SelectionColors? = nil, bold: BoldColors? = nil
     ) -> RunStyle {
         RunStyle(
-            fg: resolvedColors(cell, frame: background, foreground: foreground, selected: selected).fg,
+            fg: resolvedColors(cell, frame: background, foreground: foreground, selected: selected, bold: bold).fg,
             bold: cell.flags.contains(.bold),
             italic: cell.flags.contains(.italic),
             faint: cell.flags.contains(.faint),
@@ -102,13 +126,13 @@ enum RunMerge {
     /// span at all: the clear already drew them.
     static func backgroundSpans(
         _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
-        selection: SelectionColors? = nil
+        selection: SelectionColors? = nil, bold: BoldColors? = nil
     ) -> [BackgroundSpan] {
         var spans: [BackgroundSpan] = []
         var current: BackgroundSpan?
         for (x, cell) in row.cells.enumerated() {
             let bg = resolvedColors(cell, frame: background, foreground: foreground,
-                                    selected: selected(x, in: row, selection)).bg
+                                    selected: selected(x, in: row, selection), bold: bold).bg
             let painted: Frame.RGB? = (bg == nil || bg == background) ? nil : bg
             if let painted, var open = current, open.color == painted, open.x + open.length == x {
                 open.length += 1
@@ -138,7 +162,7 @@ enum RunMerge {
 
     static func decorationSpans(
         _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
-        selection: SelectionColors? = nil
+        selection: SelectionColors? = nil, bold: BoldColors? = nil
     ) -> [DecorationSpan] {
         var spans: [DecorationSpan] = []
         var current: DecorationSpan?
@@ -152,7 +176,7 @@ enum RunMerge {
                 continue
             }
             let fg = resolvedColors(cell, frame: background, foreground: foreground,
-                                    selected: selected(x, in: row, selection)).fg
+                                    selected: selected(x, in: row, selection), bold: bold).fg
             let span = DecorationSpan(
                 x: x, length: 1,
                 underline: cell.underline,
@@ -188,7 +212,7 @@ enum RunMerge {
     /// makes the shaped text longer for nothing.
     static func textRuns(
         _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
-        selection: SelectionColors? = nil
+        selection: SelectionColors? = nil, bold: BoldColors? = nil
     ) -> [TextRun] {
         var runs: [TextRun] = []
         var current: TextRun?
@@ -219,7 +243,7 @@ enum RunMerge {
             }
 
             let style = style(of: cell, frame: background, foreground: foreground,
-                              selected: selected(x, in: row, selection))
+                              selected: selected(x, in: row, selection), bold: bold)
             // A wide cell normally owns one cell here and one more when its
             // spacer tail arrives next iteration. Frames that omit the tail
             // still get the two cells they occupy.

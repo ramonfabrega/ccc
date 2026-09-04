@@ -159,7 +159,10 @@ public final class AttachSession {
             hosts: pollState?.hosts.map(HostPollStats.init),
             ptyBytesIn: throughput.total,
             ptyBytesPerSecond: throughput.bytesPerSecond(),
-            uptimeSeconds: Date().timeIntervalSince(startedAt),
+            // The app's, not this session's: it prints beside the app's
+            // `pid` and `memory` (`ccc stats`), and `startedAt` above is
+            // when the *pane* attached.
+            uptimeSeconds: ProcessStats.uptime(of: me) ?? 0,
             paneFramesPresented: host.presentation?.frames,
             paneLastPresentedSecondsAgo: host.presentation?.lastAt.map { Date().timeIntervalSince($0) }
         )

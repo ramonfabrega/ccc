@@ -33,6 +33,22 @@ public struct Frame: Sendable, Equatable {
         public var wide: Wide
         /// Resolved colors, nil = use the frame default.
         public var fg: RGB?
+        /// The ANSI palette slot `fg` was resolved *from*, when it came from
+        /// one — nil for a truecolor cell (`SGR 38;2`) and for a cell wearing
+        /// the default foreground.
+        ///
+        /// The one thing a resolved colour cannot tell you, and the whole of
+        /// what bold-is-bright needs: promoting bold colour *n* to *n+8*
+        /// requires an *n*, and `render.h` resolves the palette before a cell
+        /// reaches us ("Bold color handling is not applied"). The index is not
+        /// lost, though — it rides in the same `GhosttyStyle` that carries
+        /// `bold` itself, as a tagged union, so `FrameReader` reads both out
+        /// of one call it was already making (item 12c).
+        ///
+        /// Carried rather than applied: the promotion is a *policy*, resolved
+        /// with the theme's colours in `RunMerge.resolvedColors` alongside
+        /// selection, so a `Frame` still says only what the core said.
+        public var fgPalette: UInt8?
         public var bg: RGB?
         public var flags: Flags
         public var underline: Underline
@@ -54,7 +70,7 @@ public struct Frame: Sendable, Equatable {
             public static let overline = Flags(rawValue: 1 << 7)
         }
 
-        public static let blank = Cell(text: "", wide: .narrow, fg: nil, bg: nil, flags: [], underline: .none, underlineColor: nil)
+        public static let blank = Cell(text: "", wide: .narrow, fg: nil, fgPalette: nil, bg: nil, flags: [], underline: .none, underlineColor: nil)
     }
 
     public struct Cursor: Sendable, Equatable {

@@ -170,6 +170,16 @@ final class FrameReader {
                 if style.strikethrough { flags.insert(.strikethrough) }
                 if style.overline { flags.insert(.overline) }
                 cell.flags = flags
+                // The palette slot behind `cell.fg`, for bold-is-bright
+                // (item 12c). `..._DATA_FG_COLOR` above already flattened
+                // the lookup; this tagged union is where the *index*
+                // survives, and reading it costs nothing because the style
+                // is the same struct `bold` came out of. `RGB` (truecolor)
+                // and `NONE` (the default foreground) have no slot, and a
+                // policy that needs one correctly leaves them alone.
+                if style.fg_color.tag == GHOSTTY_STYLE_COLOR_PALETTE {
+                    cell.fgPalette = style.fg_color.value.palette
+                }
                 cell.underline = switch style.underline {
                 case 1: .single
                 case 2: .double

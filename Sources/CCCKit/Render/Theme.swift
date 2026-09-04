@@ -13,14 +13,22 @@ import os
 /// overwrites the first sixteen, which keeps our cube identical to the
 /// core's by construction rather than by a copied formula.
 ///
-/// Two things that look like theme values are deliberately absent:
+/// **bold-is-bright is a policy, not a colour** (iTerm's "Use Bright Bold",
+/// on in the profile below): bold text wearing colour *n* paints colour
+/// *n+8*. It lives here as a `Bool`, not as eight more values — the eight
+/// it promotes into are `ansi[8...15]`, already above.
 ///
-/// - **bold-is-bright** (iTerm's "Use Bright Bold", on in the profile
-///   below) promotes bold text from colour *n* to *n+8*. It is a policy,
-///   not a colour, and it cannot be done from a `Frame`: the core resolves
-///   palette indices to RGB before we see a cell (`render.h`, `..._DATA_
-///   FG_COLOR`: "Bold color handling is not applied") so there is no index
-///   left to add 8 to. It needs the index carried through the seam first.
+/// It was recorded here until 2026-09-03 as *impossible* from a `Frame`,
+/// on the grounds that the core resolves palette indices to RGB before we
+/// see a cell (`render.h`, `..._DATA_FG_COLOR`: "Bold color handling is not
+/// applied") so no index is left to add 8 to. That was wrong about one word:
+/// the *resolved colour* has no index, but `GhosttyStyle.fg_color` is a
+/// tagged union and `FrameReader` was already reading that struct for `bold`
+/// itself, throwing the colour half away. Nothing had to cross the seam that
+/// was not crossing it (`Frame.Cell.fgPalette`, item 12c).
+///
+/// One thing that looks like a theme value is still deliberately absent:
+///
 /// - **a light variant.** The profile below has one; the user does not use
 ///   it and nothing else in ccc has a light mode, so building the switch
 ///   now would be a second untested path. `Codable` and `CCC_THEME` are
@@ -55,6 +63,14 @@ public struct Theme: Sendable, Equatable {
     /// decoding error, never a silently padded array.
     public var ansi: [Frame.RGB]
 
+    /// bold-is-bright (item 12c). True by default because the profile these
+    /// colours were read out of has "Use Bright Bold" on, so the built-in
+    /// theme matches the terminal it was measured against — the same reason
+    /// the sixteen are what they are. The knob exists because it is a policy
+    /// and a terminal is allowed to disagree; `false` is a pane whose bold
+    /// text is bold and nothing else.
+    public var boldIsBright: Bool
+
     public static let ansiCount = 16
 
     public init(
@@ -62,9 +78,11 @@ public struct Theme: Sendable, Equatable {
         background: Frame.RGB, foreground: Frame.RGB,
         cursor: Frame.RGB, cursorText: Frame.RGB,
         selectionBackground: Frame.RGB, selectionForeground: Frame.RGB,
-        ansi: [Frame.RGB]
+        ansi: [Frame.RGB],
+        boldIsBright: Bool = true
     ) {
         precondition(ansi.count == Self.ansiCount, "a theme carries exactly 16 ANSI colours, got \(ansi.count)")
+        self.boldIsBright = boldIsBright
         self.name = name
         self.background = background
         self.foreground = foreground
@@ -81,6 +99,30 @@ public struct Theme: Sendable, Equatable {
     /// cells inside a row's `selection` range, and nil for every other cell.
     public var selection: SelectionColors {
         SelectionColors(foreground: selectionForeground, background: selectionBackground)
+    }
+
+    /// The bold-is-bright policy in the shape colour resolution wants it, or
+    /// nil when the policy is off — the same nil-means-inert shape as
+    /// `selection`, so `RunMerge.resolvedColors` reads as one rule per
+    /// optional rather than one rule per flag.
+    public var bold: BoldColors? {
+        boldIsBright ? BoldColors(bright: Array(ansi[8..<Self.ansiCount])) : nil
+    }
+}
+
+/// What bold-is-bright promotes into: the eight bright ANSI colours, indexed
+/// by the *normal* slot they replace, so slot 0–7 maps to `bright[n]`.
+///
+/// Eight rather than the whole 256-entry palette, because that is the whole
+/// of the policy — slots 8–15 are already bright and 16–255 are the xterm
+/// cube, which nothing promotes. It also means the core's palette never has
+/// to cross the seam: these eight are the theme's own, and the theme is what
+/// seeded the core (`GhosttyHost.install`), so the two cannot disagree.
+public struct BoldColors: Sendable, Equatable {
+    public var bright: [Frame.RGB]
+    public init(bright: [Frame.RGB]) {
+        precondition(bright.count == 8, "bold-is-bright promotes into exactly 8 colours, got \(bright.count)")
+        self.bright = bright
     }
 }
 
@@ -212,7 +254,7 @@ extension Frame.RGB: Codable {
 extension Theme: Codable {
     private enum Key: String, CodingKey {
         case name, background, foreground, cursor, cursorText
-        case selectionBackground, selectionForeground, ansi
+        case selectionBackground, selectionForeground, ansi, boldIsBright
     }
 
     public init(from decoder: any Decoder) throws {
@@ -245,7 +287,11 @@ extension Theme: Codable {
             cursor: try colour(.cursor), cursorText: try colour(.cursorText),
             selectionBackground: try colour(.selectionBackground),
             selectionForeground: try colour(.selectionForeground),
-            ansi: ansi)
+            ansi: ansi,
+            // Absent means on: a theme file written before 12c described a
+            // pane that already promoted bold, so reading it as `false`
+            // would change how an existing file renders.
+            boldIsBright: try c.decodeIfPresent(Bool.self, forKey: .boldIsBright) ?? true)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -258,5 +304,6 @@ extension Theme: Codable {
         try c.encode(selectionBackground.hex, forKey: .selectionBackground)
         try c.encode(selectionForeground.hex, forKey: .selectionForeground)
         try c.encode(ansi.map(\.hex), forKey: .ansi)
+        try c.encode(boldIsBright, forKey: .boldIsBright)
     }
 }

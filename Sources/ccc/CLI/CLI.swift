@@ -1215,6 +1215,12 @@ enum CLI {
         }
         // Item 12b drew it; item 13 gave it a hand. The note said neither.
         out += "\n  selection: shift-drag the pane (⌥ for a rectangle), or `ccc select`\n"
+        // The one theme value that is a policy rather than a colour, so it
+        // has to be said in words: it is why bold red reads as slot 9 above
+        // and not slot 1, which is otherwise an unexplained difference
+        // between this table and the screen (item 12c).
+        out += "  bold is bright: \(theme.boldIsBright ? "on" : "off")"
+            + " — bold text wearing colours 0–7 paints 8–15\n"
         print(out)
         return 0
     }

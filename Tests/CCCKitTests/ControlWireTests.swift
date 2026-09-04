@@ -117,3 +117,23 @@ import Testing
         #expect(info.name == "ccc")
     }
 }
+
+/// `ccc stats`' first line is the app's — `pid`, `memory`, `uptime`. The
+/// third of those was the attached *pane's* age until 2026-09-03, and `0`
+/// whenever nothing was attached, so a week-old app read "uptime 0s" the
+/// moment you detached. It comes from the process now.
+@Suite struct ProcessUptimeTests {
+    @Test func ourOwnUptimeIsRealAndDetachedIsNotZero() throws {
+        let uptime = try #require(ProcessStats.uptime(of: getpid()))
+        // A test process is seconds old, not zero and not a year: the two
+        // failures worth catching are a stopped clock and mach timebase
+        // arithmetic off by a factor.
+        #expect(uptime > 0)
+        #expect(uptime < 60 * 60 * 24)
+    }
+
+    @Test func aProcessWeCannotSeeIsNilNotZero() {
+        // Same rule as the roster's: "I don't know" is not "none".
+        #expect(ProcessStats.uptime(of: pid_t.max) == nil)
+    }
+}

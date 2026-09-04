@@ -401,7 +401,7 @@ public final class GhosttyHost: TerminalHost {
         // the renderer paints from, and the text above is it with every
         // colour dropped. Item 12a is only ever this: stop dropping it when
         // asked (`ColorSpans`).
-        if colors { grid.colors = ColorSpans.build(frame: frame, selection: theme.selection) }
+        if colors { grid.colors = ColorSpans.build(frame: frame, selection: theme.selection, bold: theme.bold) }
         return grid
     }
 

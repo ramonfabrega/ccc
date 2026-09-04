@@ -24,7 +24,7 @@ public enum ColorSpans {
     /// there.
     static func build(
         row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
-        selection: SelectionColors? = nil
+        selection: SelectionColors? = nil, bold: BoldColors? = nil
     ) -> [Grid.ColorSpan] {
         var spans: [Grid.ColorSpan] = []
         var column = 0
@@ -34,7 +34,8 @@ public enum ColorSpans {
             // equality below. Counting it keeps `col` in step with the text
             // line, which pads a wide glyph with a following space.
             let resolved = RunMerge.resolvedColors(cell, frame: background, foreground: foreground,
-                                                   selected: RunMerge.selected(column, in: row, selection))
+                                                   selected: RunMerge.selected(column, in: row, selection),
+                                                   bold: bold)
             let fg = resolved.fg
             let bg = resolved.bg ?? background
             if var last = spans.last, last.fg == fg, last.bg == bg {
@@ -54,9 +55,11 @@ public enum ColorSpans {
     /// `selection` is the theme's pair, handed in by the host that owns the
     /// theme, so a selected cell reads the same here as it paints on screen
     /// (item 12b).
-    static func build(frame: Frame, selection: SelectionColors? = nil) -> [[Grid.ColorSpan]] {
+    static func build(frame: Frame, selection: SelectionColors? = nil,
+                      bold: BoldColors? = nil) -> [[Grid.ColorSpan]] {
         frame.rows.map {
-            build(row: $0, background: frame.background, foreground: frame.foreground, selection: selection)
+            build(row: $0, background: frame.background, foreground: frame.foreground,
+                  selection: selection, bold: bold)
         }
     }
 }
