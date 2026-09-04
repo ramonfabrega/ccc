@@ -83,13 +83,15 @@ it should break while being awesome.**
   **What it says comes from the daemon's job file**, amended 2026-09-04:
   the poll says *that* it is your turn, and `waitingFor` is absent exactly
   when it is wanted (measured: the one blocked session carried none). So
-  `JobProbe` reads `detail`, `needs`, `output.result`, `suggestedReply`
-  and `children` out of `~/.claude/jobs/<id>/state.json` — five fields
-  where v5 read one — joined on the local row like the model and carried
-  across the hop. Still read-only, still lenient: a field that moves costs
-  the banner its payload and nothing else. **Every line of a notification
-  carries payload or is not drawn** — "is waiting", "on studio" and
-  "Click to attach" were three constants and a name.
+  `JobProbe` reads `detail`, `needs`, `output.result` and `suggestedReply`
+  out of `~/.claude/jobs/<id>/state.json` — four fields where v5 read one —
+  joined on the local row like the model and carried across the hop. Still
+  read-only, still lenient: a field that moves costs the banner its payload
+  and nothing else. **Every line of a notification carries payload or is
+  not drawn** — "is waiting", "on studio" and "Click to attach" were three
+  constants and a name, and `children` (the job's PRs and artifacts) left
+  the type when it measured as one too: ≤6% of banners drew this run's own
+  work (docs/EVIDENCE.md "v11 slice 3", "v11 slice 4").
 - **Every viewer attaches; the daemon mirrors.** Amended 2026-09-02 from
   "single attach, refused": measured (docs/DESIGN.md §4c), a second
   `claude attach` is accepted, output is broadcast to every viewer and input

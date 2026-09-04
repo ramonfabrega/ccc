@@ -17,19 +17,26 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**There isn't one again.** v10 is done in two slices: the daemon's own
-sentence — what a session is asking, what it is doing, what it did — now
-reaches both the notification, which had been four lines carrying one
-word, and the roster row, which had named everything about a session
-except what it was doing (`docs/EVIDENCE.md` "v10 slice 1", "v10 slice
-2"). What is left of it is a **question, not an item**: `suggestedReply`
-is on the row and shown nowhere, and using it means answering a session
-without attaching — which is under "Later" and has never been argued.
+**There isn't one again.** v11 is done in four slices, cut as **v0.1.18**:
+the window comes back where you left it and every window gesture has a
+verb (slices 1 and 2), and the banner is now a title and a sentence —
+slices 3 and 4 measured the receipt line out of existence rather than
+arguing it away (`docs/EVIDENCE.md` "v11 slice 1" … "v11 slice 4").
 
-Before it: v8 and v9 are done — the theme, the attach transition, the
-colour oracle, the hop, colour (item 12), the hand (item 13) and the
-picker (item 3) all shipped 2026-09-03/04, and `docs/EVIDENCE.md`
-"v9 slice 1" … "v9 slice 7" carries the numbers.
+Two **questions, not items**, are what those left behind. `suggestedReply`
+is on the row and shown nowhere, and using it means answering a session
+without attaching — which is under "Later" and has never been argued. And
+the receipt's only correct form is the **run-delta**: hold each job's link
+count when it enters `working`, draw what appeared since. ~20 lines,
+correct every time, and its own measurement says it draws an empty line on
+nineteen banners in twenty — a reason to wait for the itch, since the
+artifact is in the pane and `ccc links` opens it.
+
+Before it: v8, v9 and v10 are done — the theme, the attach transition, the
+colour oracle, the hop, colour (item 12), the hand (item 13), the picker
+(item 3), and the daemon's own sentence reaching both the banner and the
+roster row. `docs/EVIDENCE.md` "v8 slice 1" … "v10 slice 2" carries the
+numbers.
 
 What is left below is not a frontier. **Item 6 is air's** and happens on
 its own the next time the lid closes overnight. **Item 14 needs a
@@ -77,12 +84,15 @@ neither can be forced from studio.
   20 s of wake replays the same argv
   (`PaneController.reattachIfSleepKilledIt`), never yet through a lid.
 
-### 7. Housekeeping: three branches to delete
+### 7. Housekeeping: four branches to delete
 
-Re-checked 2026-09-03 against `git branch -a`, which this item asked for:
-`hotfix-gridbuilder`, `worktree-v0` and `worktree-v1` are merged into
-master and safe to delete on origin. **`worktree-icon` is not merged** —
-it was on the old list and does not belong in a bulk delete.
+Re-checked 2026-09-04 against `branch -a --merged origin/master`, which
+this item asks for: `hotfix-gridbuilder`, `worktree-v0`, `worktree-v1`
+and `worktree-icon` are all merged into master and safe to delete on
+origin. **`worktree-icon` joined the list on that re-check** — the entry
+carved it out on 2026-09-03 as unmerged, and it had in fact landed at
+37cdae5, the merge tagged v0.1.6. `worktree-v2` is the live branch and
+stays.
 
 ### 9. The attach transition: one end left
 
