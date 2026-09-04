@@ -243,3 +243,42 @@ the same content.
 
 Peek/reply without attach (experiment 4). RC-free approvals via the
 PermissionRequest hook. The phone, if the Mac app earns it.
+
+**Argued 2026-09-04, once, so it is not re-derived.** These three are one
+thing in the order given, and the order is not preference.
+
+The phone's whole marginal value is **unblocking**. Notifications already
+reach every device — the poll is the first notifier — so a phone that only
+looks is a banner that already arrives. What it adds is answering the
+"your turn", which *is* the two write paths above. They are not the
+phone's prerequisites; they are its content, and they are testable on the
+Mac through the twins, where a phone client is not.
+
+**Approvals before peek/reply**, on what is known rather than what is
+wanted. `PermissionRequest` is a documented surface with a `decision`
+object (`docs/HARNESS.md`), and `ccc hook` already receives Notification
+over the control socket — the new part is a hook that blocks and answers.
+Peek/reply rests on **experiment 4, which has never been run**: whether
+the daemon exposes the TUI's reply field outside the TUI is written down
+as *unknown*. Run the experiment before building anything on it; it either
+opens the path or closes it, and it is a measurement, not a slice.
+
+**The phone breaks exactly one locked decision, and it is not "no daemon
+of our own".** It is *"PTY is always local; remote is the same command
+behind `ssh -t`"* — a **subprocess**, and iOS has no fork/exec, so the one
+mechanism the whole remote story rests on is the one that cannot cross.
+Give the phone an in-process ssh client (a library, earned per part) and
+`ssh studio claude attach <id>` is the Mac's own path; the daemon decision
+survives untouched. So the expensive part is a **dependency** question,
+not an architecture one — cheaper than "the phone needs a server" makes it
+sound, and worth knowing before that gets re-argued.
+
+**What is not true yet is "the core is shared."** In principle it is:
+roster, hosts, harness, transcript, theme, `Frame`, `RunMerge`,
+`GridBuilder` are all portable Swift, and the terminal seam (feed, write,
+resize, snapshot) is already the right line. In fact `CCCKit` is **one
+module pinned to `.macOS(.v14)`** with `PTY/` (forkpty), SwiftTerm and
+Sparkle sitting inside it next to `Roster/` and `Render/`. Splitting the
+parts above the seam out of that is Mac-side work, testable on the Mac
+today, and it is what makes the port a port instead of a rewrite — so it
+belongs *while* the Mac is being landed, not after.
