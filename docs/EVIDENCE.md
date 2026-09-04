@@ -2315,3 +2315,133 @@ in ten, which is the whole reason it is keyed on (size, mtime).
 The join itself stays, and is not now doing nothing: `detail`, `needs`,
 `output.result` and `suggestedReply` are what the banner and the roster
 row say. Only `children` left.
+
+## item 6 — the lid: there is no overnight sleep (2026-09-04)
+
+`scripts/lidtest` on air, its own ControlPath, 2 s interval, lid closed
+from 03:32 to 10:03 (air's clock). **2,112 polls, 18 wakes, 38 non-zero.**
+`ccc stats` on air for the other half, and a 60 s sampler on studio
+(`~/lidtest-studio.log`) counting what air left behind.
+
+### The premise was wrong: a closed lid is not a sleep
+
+The item asked what an overnight sleep does to the master. **Air never
+slept overnight.** It woke 18 times, and eleven of the gaps sit between
+14m59s and 16m53s:
+
+```
+9m19s  15m00s  14m59s  15m00s  15m00s  15m49s   4m15s  10m01s    25s
+16m47s 15m04s  16m42s   2m02s  15m31s  15m10s  10m45s  16m53s   4m45s
+```
+
+That is macOS dark wake on a ~15 minute cadence. **The longest sleep the
+master ever has to survive is about fifteen minutes**, and the eight-hour
+case being designed around does not exist. Every question below is
+therefore asked 18 times a night, not once.
+
+### The wedged shape is the everyday wake
+
+§4b closed with "the wedged shape has not been seen in reality yet."
+**It is now the normal case.** Seventeen of the eighteen wakes open with
+the identical three lines:
+
+```
+2026-09-04T07:04:17    5048ms  rc=255  muxclient: master hello exchange failed
+2026-09-04T07:04:24    5022ms  rc=255  ssh: connect to host studio port 22: Operation timed out
+2026-09-04T07:04:31    3648ms  rc=0
+2026-09-04T07:04:37     680ms  rc=0
+```
+
+The first failure is the wedged master: socket present, process present,
+handshake dead. It cost **5041–5613 ms** on all seventeen — `ConnectTimeout`
+bounding it, as §4b found.
+
+**The prediction going in was wrong, and wrong in both directions.**
+`ControlPersist=60` was expected to reap an idle master long before
+morning, making the wake look like §4b's `kill -9` row (a fresh master,
+~316 ms). It reaps nothing: ControlPersist is a **client**-side timer and
+the client is frozen, so the socket outlives the connection it names and
+comes back wedged rather than either surviving or dying.
+
+### What eviction can and cannot buy
+
+The second failure is the one that matters for the fix. After the wedged
+master fails, ssh falls back to a **direct** connection — and that times
+out too, `Operation timed out`, another 5 s, twice on three of the wakes.
+That is not the master's fault and no eviction can prevent it: **the
+tailnet has not come back yet.**
+
+```
+first rc=0 after wake   14–22 s        (two failures, sometimes three)
+that poll               1706–4239 ms
+the next poll           429–908 ms     healthy
+```
+
+So eviction-on-degraded-poll is **not the insurance §4b called it** — it is
+the main path, and `ccc stats` counted `evictions 23` across the 18 wakes.
+But it buys the second 5 s and not the first: a wake costs ~10 s of dead
+network no matter how clean the client is. **A wake is 14–22 s of "no" and
+then it is fine.**
+
+### The one that survived, and where the boundary is
+
+The 25-second gap is the exception that places the edge:
+
+```
+2026-09-04T06:28:52  WOKE   gap 25s
+2026-09-04T06:28:52    8569ms  rc=0        ← alive, slow, never failed
+```
+
+No `rc=255` at all — the master survived and paid 8.6 s. §4b's **1 min 54 s**
+lid survived the same way. The shortest gap that came back *wedged* was
+**4m15s**. So the master is alive-but-slow under ~2 minutes and wedged past
+~4, and the everyday 15-minute cadence is entirely on the wedged side.
+
+### One poll that nothing bounded
+
+```
+2026-09-04T05:23:23   30008ms  rc=-1  timed out after 30 s
+```
+
+§4b's correction was that `ConnectTimeout` **does** bound the mux wait.
+Once in 2,112 polls it did not, and lidtest's own 30 s cap is what ended
+it. One in two thousand, recorded rather than explained.
+
+### The eviction storm drains; it does not leak
+
+Watching from studio the night began at **11 established connections from
+air**, created inside a ~60 s window as the lid closed — one orphaned
+master per evicted tick, since `evictControlMaster()` unlinks the socket
+and deliberately never runs `ssh -O exit`. That looked like a nightly leak
+onto the always-on Mac. **It is not.** They drained on the following
+wakes and were back to one within ~35 minutes, and one is the steady state
+for the rest of the night:
+
+```
+03:32  established=11      04:07  established=1
+03:36  established=7       04:25  established=0
+03:52  established=3       (1 for the next three hours)
+```
+
+The zombies are half-open sockets that only the far side can retire, and
+air waking is what retires them.
+
+### air's poll is saturated, and the clocks disagree
+
+Two things the night showed that it was not asked:
+
+```
+studio  last 2046 ms  mean 1354 ms  n=2662  rows 18  evictions 23
+```
+
+**The remote poll costs about one whole tick.** Against a 2 s interval and
+lidtest's 429–908 ms for the raw `claude agents` call, air's poll is the
+far side's ccc doing the transcript join as well — so air's roster is
+always ~2 s stale and the poller never idles. It sits under
+`degradedThreshold` (3 s) and so never self-evicts on that basis, with
+about a second of headroom.
+
+And air's clock reads **one hour ahead of studio's**, so the two logs of
+the same night do not line up until one is shifted. `scripts/lidtest`
+stamps local time with no offset, which is what made it invisible; the
+correlation above is with air −1h.

@@ -15,15 +15,18 @@ touches it. ccc's own poll runs beside it on its own socket, and
 
 The two lines that matter in the morning are marked:
 
-    WOKE   gap 8h12m — the wall clock jumped, so the machine slept
+    WOKE   gap 15m00s — the wall clock jumped, so the machine slept
     the next poll's ms and rc — what the untouched master did about it
+
+Expect **many** wakes, not one: measured 2026-09-04, a lid closed for six
+and a half hours produced 18, eleven of them 15-17 minutes apart (macOS
+dark wake). See docs/EVIDENCE.md "item 6 — the lid".
 
 Usage:  scripts/lidtest [--host studio] [--dest studio] [--log ~/lidtest.log]
         scripts/lidtest --read [--log ~/lidtest.log]   # summarize a log
 """
 
 import argparse
-import os
 import pathlib
 import subprocess
 import sys
@@ -45,7 +48,10 @@ SLEEP_GAP = 10.0
 
 
 def stamp(t):
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t))
+    # With the offset, always. The first night's two logs were an hour
+    # apart — air's clock against studio's — and a bare local stamp gave
+    # no way to see it, so the halves of one night would not line up.
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(t))
 
 
 def span(seconds):

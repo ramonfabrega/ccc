@@ -53,7 +53,13 @@ approvals, the phone — are under "Later" and have never been argued.
 
 `ClaudeCLI.run` blocks a pool thread per host for up to its timeout
 (`readDataToEndOfFile`). Fine at two or three hosts; wants a nonblocking
-read before the host list grows. No forcing function yet.
+read before the host list grows. No forcing function yet — but the lid
+night gave it a number: air's studio poll ran **`last 2046 ms  mean
+1354 ms`** against a 2 s tick, because the far side's ccc does the
+transcript join before answering. The remote poll costs about one whole
+tick, so air's roster is always ~2 s stale, the poller never idles, and it
+sits ~1 s under `degradedThreshold` (3 s) — close enough that a slower
+studio would start self-evicting on a healthy hop.
 
 ### 5. Small leftovers
 
@@ -72,33 +78,28 @@ focus** — measured 2026-09-02 with a Wine window in front:
 behind while `open -a` brought it front, so `show`'s CLI side should
 activate through `NSWorkspace`.
 
-### 6. Two measurements that need the hop
+### 6. The remote pane's reattach has still never met a lid
 
-Both are air's to run — the hop is live but these need air's own lid, so
-neither can be forced from studio. §4b measured a **1 min 54 s** lid and
-the master survived it ("no eviction needed"); the overnight case is the
-one still open, and it is the everyday one.
+The eviction half is **answered and gone** (docs/EVIDENCE.md "item 6 — the
+lid"): a closed lid is 18 dark wakes a night, not one sleep; the master
+comes back wedged on 17 of 18; eviction is the main path, not insurance;
+and a wake costs 14–22 s that no client-side fix can shorten, because the
+tailnet is what is missing. `scripts/lidtest` is the instrument, and
+`~/lidtest-studio.log`'s sampler is the server half.
 
-- **The ssh master's eviction.** `scripts/lidtest` (was `~/lidtest.py`,
-  now in the repo and smoke-tested studio → studio at 188–207 ms warm)
-  polls the hop every 2 s on **its own ControlPath**, `~/.lidtest/`, and
-  marks the wake gap in `~/lidtest.log`; `--read` summarizes it. The
-  separate socket is the whole design: ccc evicts every remote master on
-  `didWakeNotification`, so ccc's own socket can no longer say what it
-  *would* have done, and `ccc stats` → `evictions` reports only that
-  ccc's proactive half fired. **Prediction to falsify:**
-  `ControlPersist=60` should reap an idle master long before morning, so
-  the wake looks like §4b's `kill -9` row (a fresh master, ~316 ms) and
-  the wedged shape never appears — except that 1 min 54 s already
-  outlasted 60 s and survived, because a held attach keeps the channel
-  open. Whether an *unheld* master survives is the question.
-- **The remote pane's reattach across a real sleep.** `sshExit` within
-  20 s of wake replays the same argv
-  (`PaneController.reattachIfSleepKilledIt`), and `reconnect` covers the
-  case where ssh noticed first (`lastExitStatus == sshExit`). Neither has
-  been through a lid. Needs air's pane attached to a **studio** ref when
-  it closes — and studio's own pane on something else, or this measures
-  item 15 at the same time.
+What that night did **not** exercise: `sshExit` within 20 s of wake
+replaying the same argv (`PaneController.reattachIfSleepKilledIt`), and
+`reconnect`'s case where ssh noticed first (`lastExitStatus == sshExit`).
+Nothing was attached, so neither has run.
+
+It needs air's pane attached to a **studio** ref when the lid closes, and
+studio's pane on something else or nothing, or it measures item 15 at the
+same time. The night now says what to expect: **18 chances per night**, not
+one, and each wake gives the reattach a 14–22 s window of failing ssh to
+survive — which is longer than the 20 s guard is wide. **That is the thing
+to watch**: if the first reattach fires into a dead tailnet and gives up,
+the pane stays dead until the user clicks, and the guard wants to be a
+retry rather than a single shot.
 
 ### 7. Housekeeping: four branches to delete
 

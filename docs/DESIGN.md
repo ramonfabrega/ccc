@@ -237,13 +237,26 @@ master in a second terminal):
 | the attach through the same master | still live after wake; typing continued |
 
 So a short sleep on the tailnet is the *clean* case — better than the
-`kill -9` row, since nothing even reconnected. The wedged shape has not been
-seen in reality yet. Open: a long sleep (thirty minutes, overnight), which
-is the everyday case and the one where the user's plain `ssh studio` does
-die. Until that is measured, eviction-on-degraded-poll stays in the slice as
-insurance (it is twenty lines and a false eviction costs one handshake), and
-the wake notification's immediate re-poll is worth having regardless — it
-turns "up to 2 s of tick plus 2.1 s" into 2.1 s.
+`kill -9` row, since nothing even reconnected. Open at the time: a long
+sleep, which is the everyday case.
+
+**Answered 2026-09-04, and the premise was wrong** (docs/EVIDENCE.md
+"item 6 — the lid"). A closed lid is not a long sleep: air woke **18 times
+in six and a half hours**, eleven of the gaps between 14m59s and 16m53s —
+macOS dark wake. The master never has to survive more than ~15 minutes,
+and at 15 minutes it comes back **wedged** on 17 of 18 wakes
+(`muxclient: master hello exchange failed`, 5041–5613 ms). So the shape
+this section called unseen is the everyday one, ~18 times a night, and
+eviction-on-degraded-poll is the main path rather than insurance —
+`evictions 23` over that night. `ControlPersist` reaps nothing across a
+sleep: it is a client-side timer and the client is frozen.
+
+What eviction cannot buy is the **first** 5 s: after the wedged master
+fails, the direct fallback also times out because the tailnet has not
+returned. A wake costs 14–22 s of failure and then it is fine. The
+boundary between alive-but-slow and wedged sits between the 25 s gap that
+survived (8569 ms, rc=0) and the 4m15s gap that did not — with this
+section's own 1 min 54 s inside it.
 
 **Shipped 2026-09-02** as v2 slice 2 (docs/EVIDENCE.md): per-host slots
 merged at read time, one in-flight tick per host, eviction on a degraded or
