@@ -2783,3 +2783,43 @@ earlier list.
 ccc could not run the delete itself — `git push origin --delete` is refused
 by the auto-mode classifier, both for four branches at once and narrowed to
 one. The user ran it. Worth knowing before a session plans around doing it.
+
+## item 14 closes unmeasured (2026-09-04)
+
+The colour oracles were never compared on a screen, and the item is gone
+anyway. Recorded because closing an item without its measurement needs a
+reason a cold session can check.
+
+**The question that created it was already answered.** 8b took a real
+`screencapture` with ccc's pane and iTerm both visible — one composite, one
+output profile — and found them **bit-identical** at `#15191F` (see "8b:
+there is no colour-management residual"). The suspicion that opened v8, an
+unmanaged Metal layer shifting values against a non-sRGB panel, died there
+by measurement. What 14 proposed to add was confirmation of two more
+colours — 12b's `#B3D7FF` selection and 12c's bold-is-bright `#DD7975` —
+through a pipeline already shown not to move one.
+
+**What it would still have caught, stated so it is not lost.** `ccc
+snapshot --color` and the Metal renderer resolve colour through the *same*
+`RunMerge.resolvedColors`, deliberately (12a). So the headless oracle is
+not independent of the renderer: if that function is wrong, both agree and
+every colour test still passes. A `screencapture` is the only check outside
+it. That blind spot is real and now uncovered on purpose — the bet is that
+8b's bit-identical background already exercised the whole path from
+`resolvedColors` to photons, and only the input differs.
+
+**What it cost to try.** `ccc capture` is refused from a Claude Code
+session's shell, and the cause is not ccc's: macOS keys the CLI's TCC grant
+to the resolved binary path, `~/.local/share/claude/versions/<version>`, so
+every auto-update starts ungranted and Privacy & Security accumulates a row
+per version, all named "claude". `CGRequestScreenCaptureAccess()` returns
+false **without prompting**, and `tccutil` cannot target a path
+(`No such bundle identifier`; resetting the app bundle's
+`com.anthropic.claude-code` succeeds and changes nothing). With the rows
+showing enabled, `screencapture -x` still answered `could not create image
+from display`. The way that works is a plain terminal tab outside Claude
+Code, where the terminal's own stable bundle id is what TCC checks.
+
+`ccc capture` and `ccc pixel` stay — they are correct, they are tested, and
+they are what the next session runs if a colour is ever doubted again. What
+left is the standing obligation to run them.

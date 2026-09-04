@@ -72,12 +72,12 @@ roster row. `docs/EVIDENCE.md` "v8 slice 1" … "v10 slice 2" carries the
 numbers.
 
 What is left below is not a frontier. **Item 6 is air's** and happens on
-its own the next time the lid closes overnight. **Item 14 needs a
-terminal with Screen Recording permission** — a sitting, not a session.
-Items 4 and 5 are debt and leftovers, neither with a
-forcing function. **Item 7 has left** — origin carries `master` and
-`worktree-v2` and nothing else (`docs/EVIDENCE.md` "the four branches, and
-the sha is the undo").
+its own the next time the lid closes overnight. Items 4, 5 and 16 are debt,
+leftovers and one missing twin, none with a forcing function. **Items 7 and
+14 have left** — origin carries `master` and `worktree-v2` and nothing else, and the colour oracle was closed
+unmeasured on the argument that 8b had already answered it
+(`docs/EVIDENCE.md` "the four branches, and the sha is the undo", "item 14
+closes unmeasured").
 
 So the next thing is a **direction**, not an item. Whatever it is, the
 client is still read-only plus attach (CLAUDE.md's thesis), and the
@@ -166,42 +166,6 @@ one-line wake message, which is what it was wrong about before; it is not
 proof the TUI finished, and a render that pauses over 250 ms mid-paint can
 still swap in early. Not seen in the wild.
 
-### 14. The colour oracles have never been compared on a screen
-
-What items 12a, 12b and 12c each left behind, stated once instead of
-three times. Every colour ccc has shipped is asserted headlessly and
-agrees with **8b's recorded number** (docs/EVIDENCE.md "8b: there is no
-colour-management residual") rather than with a `screencapture` taken
-beside it: `ccc capture` refused on all three slices for want of Screen
-Recording permission, correctly, since that permission belongs to whoever
-asks. One sitting from a terminal that has it settles all three — ccc's
-pane and iTerm side by side on the same bold, selected, coloured text.
-
-And the oracle has still only ever run on **one display, one profile, at
-1x**. `ccc pixel --cell`'s scale arithmetic is tested at 2x, including
-against a real offscreen render, but has never met a Retina panel.
-
-**Measured 2026-09-04: studio cannot supply one.** Its display is
-1920x1080 and `UI Looks like 1920 x 1080`, so `backingScaleFactor` is 1
-and no sitting on this Mac can settle the 2x half — that half is
-**air's**, which is the Retina panel, and it needs a terminal there with
-Screen Recording permission. The two halves of this item are therefore on
-two Macs, and only the side-by-side with iTerm is studio's.
-
-**The permission, concretely.** `ccc capture` refuses from a Claude Code
-session's shell here and names the window it could not read (`window 9659`);
-the responsible app up that chain is **iTerm2** (`iTermServer` → `login` →
-`zsh` → `claude`). Granting Screen Recording to it makes `ccc capture`
-work from an ordinary session, not just from a hand-run terminal.
-
-**And the probe has to be a background.** 8b sampled the theme's `#15191F`
-rather than any glyph because text pixels are antialiased and a glyph's
-centre is not its nominal colour — which is fine for 12b (`#B3D7FF` is a
-*background*) and fatal for 12c, whose bold-is-bright is a *foreground*
-policy. The way out is a full block `█`: it fills the cell, so the
-foreground becomes a solid area a pixel probe can read. Expected, from
-`Theme.iterm`: `#B43C2A` for `\e[31m█`, `#DD7975` for `\e[1;31m█`.
-
 ### 15. What a second viewer does to the grid
 
 Homeless until now: it was cited as part of item 3, which has left.
@@ -221,9 +185,8 @@ be picked.
 
 ### 16. The shell pane has no twins but open and close
 
-Found while looking for item 14's fixture, and it blocks the half of it
-that wants **identical bytes in both terminals**: `ccc shell <ref>` opens
-the pane and `ccc shell --close` closes it, and that is the whole surface.
+Found while looking for a colour fixture: `ccc shell <ref>` opens the pane
+and `ccc shell --close` closes it, and that is the whole surface.
 Every verb that could read or drive it — `snapshot`, `select`, `send`,
 `copy`, `pixel --cell` — addresses the *session* pane. Measured
 2026-09-04 with a shell pane up and no session attached: `ccc send …`
@@ -233,11 +196,10 @@ attached)`.
 This is the twin rule biting one level up — not a read field without its
 write verb, but a whole **pane** with two verbs and no others — and it
 matters beyond tidiness, because the shell pane is the
-only place ccc can paint chosen bytes into a real window. A screen oracle
-that wants to put the same `\e[1;31m█` in ccc and in iTerm has nowhere
-else to put it. 12b's method (attach a real session, `ccc select`, read
-`snapshot --color`) is the alternative, and it gives up on iTerm showing
-the same content.
+only place ccc can paint **chosen bytes** into a real window — every other
+pane shows whatever `claude attach` is drawing. Anything that wants to put
+a known sequence on screen and read it back has nowhere else to put it,
+which is what made the shell pane look like a fixture in the first place.
 
 ## Later
 
@@ -272,6 +234,13 @@ Give the phone an in-process ssh client (a library, earned per part) and
 survives untouched. So the expensive part is a **dependency** question,
 not an architecture one — cheaper than "the phone needs a server" makes it
 sound, and worth knowing before that gets re-argued.
+
+**One thing item 14 left here on its way out.** `ccc pixel --cell`'s scale
+arithmetic is tested at 2x but has never met a Retina panel, because the
+oracle runs on studio and studio is 1x. On a phone everything is 2x or 3x,
+so that untested arithmetic stops being a curiosity the moment a port is
+real — and not one second before, which is why it lives in this paragraph
+and not in an item.
 
 **What is not true yet is "the core is shared."** In principle it is:
 roster, hosts, harness, transcript, theme, `Frame`, `RunMerge`,
