@@ -87,7 +87,7 @@ it should break while being awesome.**
   behind `ssh -t` when remote, and no ccc ever depends on another ccc. The
   draft lives with the session. The shared PTY is last-resize-wins across
   viewers; whether a secondary viewer renders the grid as-is instead of
-  resizing it is still open (docs/DESIGN.md §4c, docs/QUEUE.md item 3) and
+  resizing it is still open (docs/DESIGN.md §4c, docs/QUEUE.md item 15) and
   comes due the first time air joins a session studio already has up.
 - **No tmux, ever.** The daemon is the multiplexer.
 - **Every Mac runs the release build.** Developer ID + notarized + Sparkle

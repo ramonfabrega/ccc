@@ -17,69 +17,21 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**v8 is done** — the theme (8), the attach transition (9) and the colour
-oracle (10) all shipped 2026-09-03, and the last of them measured the
-first: ccc's pane and iTerm land on bit-identical pixels, so the
-colour-management residual v8 assumed does not exist (docs/EVIDENCE.md
-"8b: there is no colour-management residual"). Those three items have
-left, and so has item 12 (below).
+**There isn't one, and that is the news.** v8 and v9 are done: the theme,
+the attach transition, the colour oracle, the hop, colour (item 12), the
+hand (item 13) and the picker (item 3) all shipped 2026-09-03/04, and
+`docs/EVIDENCE.md` "v9 slice 1" … "v9 slice 7" carries the numbers.
 
-**The hop is live.** Remote Login went on for studio 2026-09-03 and
-item 3's first two steps shipped the same day: a real `Host` behind a
-real `sshd`, a fixture spawned, attached, resized and driven over it, and
-DESIGN.md §4c answered by measurement (docs/EVIDENCE.md "v9 slice 1 — the
-hop is real"). Doing it found the host list frozen at launch, now fixed.
+What is left below is not a frontier. **Item 6 is air's** and happens on
+its own the next time the lid closes overnight. **Item 14 needs a
+terminal with Screen Recording permission** — a sitting, not a session.
+Items 4, 5 and 7 are debt, leftovers and housekeeping, none with a
+forcing function.
 
-**Item 12 is done, and 13 with it.** 12a, 12b, 12c and 13 all shipped
-2026-09-03 (docs/EVIDENCE.md "v9 slice 2" … "v9 slice 5"): `ccc snapshot
---color`, a headless oracle that spells a colour the way `ccc pixel`
-does; selection wearing the theme's two colours, with `ccc select`,
-because the colours turned out to have no producer at all; then the hand
-— shift-drag, ⌥ for a rectangle, double- and triple-click, ⌘C, and
-`ccc select --word/--line` and `ccc copy` as their twins; and finally
-bold-is-bright, whose recorded blocker turned out not to exist at all —
-the palette index was already crossing the seam inside the same
-`GhosttyStyle` that carries `bold`, and `FrameReader` was discarding it.
-**The frontier is item 3's last step, the picker** — it is not large, and
-nothing blocks it.
-
-## Open
-
-### 3. The hop: the picker's UI is what is left
-
-**Shipped 2026-09-03** (docs/EVIDENCE.md "v9 slice 1 — the hop is real"):
-`ccc hosts add studio --ssh studio`, `ccc hosts check studio` at 684 ms
-against local's 223 ms, and a haiku fixture spawned, attached, resized and
-typed into entirely over ssh. Steady state 543 ms mean over ~75 polls, 0
-failures, 0 evictions, the model column intact remotely, and the notifier
-firing for the remote host. `Host.claude`'s absolute path is load-bearing:
-experiment 3's "no claude on PATH" still holds on this Mac.
-
-**The bench was studio→studio**, which carries the real client code and
-the real sshd but no latency, so every number is a floor — and it is the
-right way to test the remote path from here. The air→studio direction
-needs air, and air alone.
-
-**The one-way hop is self-enforcing; stop designing around it.** Air is
-never remote-advertised and has no sshd, so it cannot be ssh'd into and
-cannot appear as a candidate anywhere. Nothing needs to filter it, exclude
-it by name, or ask about it. Recorded here because this ground has been
-re-litigated twice (2026-09-03, 2026-09-04), both times because the rule
-is stated in enough places to read as live rather than settled.
-
-**The tailnet half shipped 2026-09-04** (docs/EVIDENCE.md "v9 slice 6"):
-`ccc hosts discover` lists the live Macs — this one included, since
-registering yourself is the loopback — off `tailscale status --json`,
-with `Tailnet.scan()` behind it. It enumerates only: nothing in that JSON
-says who runs an sshd, so `ccc hosts add`'s ssh probe stays the gate.
-
-**The picker shipped 2026-09-04** (docs/EVIDENCE.md "v9 slice 7"): App
-menu ▸ Add Mac…, and the New Session sheet's host row, which is where a
-host is actually being chosen — that row used to hide itself below two
-hosts, so the Mac with only `local` had no host UI at all. `HostSetup.add`
-came with it, because adding a host was about to have two implementations.
-
-**Item 3 is done.** What is left of the hop is air's to run (item 6).
+So the next thing is a **direction**, not an item. Whatever it is, the
+client is still read-only plus attach (CLAUDE.md's thesis), and the
+things that would change that — peek/reply without attach, RC-free
+approvals, the phone — are under "Later" and have never been argued.
 
 ### 4. Debt: the blocking poll read
 
@@ -98,11 +50,11 @@ lines the core keeps are unreachable, and a drag that leaves the grid has
 nothing to tick. Low value while the pane only ever runs `claude attach`,
 which is on the alternate screen and scrolls its own history; stated here
 so nobody starts the gesture believing the viewport is nearly there
-(re-checked 2026-09-03). `ccc window
-show` when another app holds focus — measured
-2026-09-02 with a Wine window in front: `NSApp.activate()` is cooperative
-since macOS 14 and the window stayed behind while `open -a` brought it
-front, so `show`'s CLI side should activate through `NSWorkspace`.
+(re-checked 2026-09-03). **`ccc window show` when another app holds
+focus** — measured 2026-09-02 with a Wine window in front:
+`NSApp.activate()` is cooperative since macOS 14 and the window stayed
+behind while `open -a` brought it front, so `show`'s CLI side should
+activate through `NSWorkspace`.
 
 ### 6. Two measurements that need the hop
 
@@ -129,8 +81,9 @@ Shipped (docs/EVIDENCE.md "the attach transition, and the hole in the ←
 guard"), and **proved over ssh 2026-09-03**: six alternating swaps between
 two remote fixtures ran 1075–1385 ms against the local path's 1022–1086 ms,
 every one answering "attached … (left …)", so the hop costs ~20–50 ms on a
-warm master and the 8 s `waitUntilDrawn` timeout has ~7x headroom. On a
-loopback hop — a latent one is still untested, and that is air's to run.
+warm master and the 8 s `waitUntilDrawn` timeout has ~7x headroom. That
+was a loopback hop, so it carries no latency; a latent one is untested,
+and is air's to run.
 
 What is left is the shape, not the wait: **"drawn" is a shape, not a
 certainty.** `waitUntilDrawn` returns on the first stable screen with more
@@ -153,6 +106,23 @@ pane and iTerm side by side on the same bold, selected, coloured text.
 And the oracle has still only ever run on **one display, one profile, at
 1x**. `ccc pixel --cell`'s scale arithmetic is tested at 2x, including
 against a real offscreen render, but has never met a Retina panel.
+
+### 15. What a second viewer does to the grid
+
+Homeless until now: it was cited as part of item 3, which has left.
+CLAUDE.md and `docs/DESIGN.md` §4c both point here.
+
+Measured 2026-09-02: a second `claude attach` is **accepted**, output is
+broadcast to every viewer, and input from any viewer goes in — which is
+why the pane on any Mac is just `claude attach <id>` and no ccc depends on
+another ccc. The shared PTY is **last-resize-wins across viewers**, and
+what is still open is whether a secondary viewer should resize it at all
+or render the grid as-is at whatever size the first viewer set.
+
+**It comes due the first time air joins a session studio already has up**,
+which is the ordinary case the moment the lid opens somewhere else — so
+this is the one item below that will announce itself rather than wait to
+be picked.
 
 ## Later
 
