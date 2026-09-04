@@ -2289,3 +2289,29 @@ one definition, many surfaces — and its test had been the tell all along,
 ### Measured
 
 388 tests, from 393: the five that went were the receipt's own.
+
+### Cut
+
+**v0.1.18, build 145**, notarized and published the same night: `spctl`
+accepted as Notarized Developer ID, one `<item>` in the appcast, and the
+live check agreed with the zip at 5,070,405 bytes. Studio moved onto the
+released bytes with `scripts/install --dist` — `ccc 0.1.18 (145)`, no
+`dev` marker — and `ota verify --feed ccc` answered `ok`.
+
+The job join, on the cut that removed its only remaining reader:
+
+```
+roster poll  last 230 ms  mean 186 ms  n=14
+model join   last 9 ms  mean 19 ms  reads 23  cached 201  gone 0
+job join     reads 19  cached 233  none 0  92% cached
+```
+
+**92%, against the 65% recorded at the v0.1.17 cut** — which is the claim
+that entry made ("65% is three ticks in, not the steady state; the cached
+share climbs as terminal sessions stop changing") arriving as a
+measurement one release later. The join now costs one `stat` nine ticks
+in ten, which is the whole reason it is keyed on (size, mtime).
+
+The join itself stays, and is not now doing nothing: `detail`, `needs`,
+`output.result` and `suggestedReply` are what the banner and the roster
+row say. Only `children` left.
