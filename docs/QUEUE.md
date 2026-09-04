@@ -29,8 +29,12 @@ item 3's first two steps shipped the same day: a real `Host` behind a
 real `sshd`, a fixture spawned, attached, resized and driven over it, and
 DESIGN.md §4c answered by measurement (docs/EVIDENCE.md "v9 slice 1 — the
 hop is real"). Doing it found the host list frozen at launch, now fixed.
-**The frontier is item 3's last step — the picker — and item 12**, which
-is the one thing left of v8 and needs no hop at all.
+**The frontier is 12a — the headless colour oracle.** Re-probing item 12
+2026-09-03 broke it into three independent items, not the one change it
+claimed to be: `Frame` already carries RGB, so 12a is `GridBuilder`
+catching up to `FrameReader` and pays no seam cost. It is the one that
+compounds — it is what lets a renderer change be judged with no screen.
+Item 3's last step, the picker, is the other live thread.
 
 ## Open
 
@@ -110,24 +114,38 @@ one-line wake message, which is what it was wrong about before; it is not
 proof the TUI finished, and a render that pauses over 250 ms mid-paint can
 still swap in early. Not seen in the wild.
 
-### 12. Colour has to cross the seam
+### 12. Colour: three items, not one
 
-The one thing left of v8, and it is a single change wearing three hats.
-The core resolves palette indices to RGB before a cell reaches us
-(`render.h`: "Bold color handling is not applied"), and `GridBuilder`
-carries no colour at all, so:
+**Re-probed 2026-09-03 and the old framing was wrong** — it said "a single
+change wearing three hats… all three want the palette index carried
+through `Frame` into `Grid`". Two of the three want no such thing.
+`Frame.Cell` **already carries** `fg`/`bg`/`underlineColor` as `RGB?` plus
+`flags`, and `Frame.Row` already has a `selection: Range<Int>?` field. The
+seam is not the obstacle; there are two readers over one core —
+`FrameReader` (colour-complete, feeds the renderer) and
+`GridBuilder.grid(from:cursorVisible:)` (text-only, feeds `Grid`) — and
+they have drifted. Ordered cheapest first:
 
-- **bold-is-bright** cannot be done. iTerm has it on; it promotes bold
-  text from colour *n* to *n+8*, and there is no *n* left on our side of
-  the seam to add 8 to.
-- **selection** is carried by `Theme` and drawn by nobody: `FrameReader`
-  always builds rows with `selection: nil`.
-- **a replay golden cannot assert RGB.** `ccc capture`/`ccc pixel` judge
-  a colour but need a *window*, so the one oracle an agent can run with
-  no screen is still text-only.
-
-All three want the palette index carried through `Frame` into `Grid`.
-Doing any one alone pays the seam cost without collecting the other two.
+- **12a. The headless colour oracle.** `Grid` is `lines: [String]`, so a
+  replay golden cannot assert RGB and the one oracle an agent can run with
+  no screen stays text-only (`ccc capture`/`ccc pixel` judge a colour but
+  need a *window*). `Frame` already has the RGB per cell — this is
+  `GridBuilder` catching up to `FrameReader`, not a seam change. **Highest
+  value: it is what lets a renderer change be judged without a screen.**
+- **12b. Selection colours.** Not "drawn by nobody" — `FrameReader.swift`
+  inverts a selected cell (`if selected { cell.flags.insert(.inverse) }`,
+  commented "v1 selection policy: invert; refine with a selection color
+  later"), so selection *is* visible. What is unused is
+  `Theme.selectionBackground`/`selectionForeground` and `Frame.Row`'s own
+  `selection` field, which `FrameReader` always sets to `nil`. Populate the
+  field, draw the theme's colours. Self-contained, no seam change.
+- **12c. bold-is-bright.** The only one the old framing had right, and the
+  only one that needs the palette index. The core resolves index → RGB
+  before a cell reaches us (`render.h`: "Bold color handling is not
+  applied"), so promoting bold text from colour *n* to *n+8* — which iTerm
+  does — has no *n* left to add 8 to. Either carry the index across the
+  seam or resolve the palette ourselves. Hardest, least urgent, and it does
+  **not** block 12a or 12b.
 
 Also uncovered, and cheap to state: the colour oracle has only ever run
 on one display, one profile, at 1x. `pixel --cell`'s scale arithmetic is
