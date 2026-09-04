@@ -230,3 +230,73 @@ import Testing
         #expect(try JSONDecoder.roster.decode(SessionRow.self, from: wire).job == nil)
     }
 }
+
+/// Remote Control off the job file (item 17). The shapes are studio's real
+/// `respawnFlags`, copied 2026-09-04 — the fleet writes `--rc` and the
+/// ad-hoc `--agent claude` spawns do not, which is the whole discrimination.
+@Suite struct JobRemoteControlTests {
+    /// `--rc` among the flags, in the position the daemon actually writes
+    /// it: first, with the name and model after.
+    @Test func theFlagIsRead() {
+        let json = #"{"state":"blocked","detail":"x","respawnFlags":["--rc","--name","ccc","--model","opus[1m]"]}"#
+        #expect(JobInfo.decode(Data(json.utf8))?.remoteControl == true)
+    }
+
+    /// The long spelling the harness also accepts. The fleet does not write
+    /// it, which is exactly why it is tested: nothing else would catch a
+    /// session that *is* answerable from the phone reading as one that is
+    /// not.
+    @Test func theLongSpellingCounts() {
+        let json = #"{"detail":"x","respawnFlags":["--name","n","--remote-control"]}"#
+        #expect(JobInfo.decode(Data(json.utf8))?.remoteControl == true)
+    }
+
+    /// An ad-hoc spawn: flags, none of them `--rc`.
+    @Test func anOrdinarySpawnIsNotRemoteControlled() {
+        let json = #"{"detail":"x","respawnFlags":["--agent","claude","--model","opus[1m]"]}"#
+        #expect(JobInfo.decode(Data(json.utf8))?.remoteControl == false)
+    }
+
+    /// Lenient like every other boundary reading: a missing key, a wrong
+    /// type, and wrong element types all answer "not remote-controlled"
+    /// rather than throwing or claiming reachability the row cannot back.
+    @Test func aChangedShapeIsNotRemoteControlled() {
+        for flags in ["null", #""--rc""#, "5", #"[1,2,3]"#, #"[{"a":"--rc"}]"#] {
+            let json = #"{"detail":"x","respawnFlags":\#(flags)}"#
+            #expect(JobInfo.decode(Data(json.utf8))?.remoteControl == false, "flags: \(flags)")
+        }
+        #expect(JobInfo.decode(Data(#"{"detail":"x"}"#.utf8))?.remoteControl == false)
+    }
+
+    /// `--rc` alone is a reading worth carrying: a session with nothing to
+    /// say but a phone it can be answered from is not the empty reading.
+    @Test func theFlagAloneSurvivesTheEmptyCheck() {
+        let json = #"{"state":"working","respawnFlags":["--rc"]}"#
+        let info = JobInfo.decode(Data(json.utf8))
+        #expect(info?.remoteControl == true)
+        #expect(info?.say(for: .working) == nil)
+        // …and a job file with neither a sentence nor the flag is still nil.
+        #expect(JobInfo.decode(Data(#"{"state":"done","respawnFlags":["--agent","claude"]}"#.utf8)) == nil)
+    }
+
+    /// The hop, which is the reason `JobInfo` decodes by hand. A reading
+    /// from an **older ccc** carries no `remoteControl` key; the newest
+    /// field must fall back to false without taking `detail`, `needs` and
+    /// `result` down with it, because `SessionRow` decodes the whole
+    /// reading with `try?` and would drop it whole.
+    @Test func anOlderCccsReadingKeepsItsSentence() throws {
+        let wire = #"{"detail":"live line","needs":"a question","result":"a result"}"#
+        let info = try JSONDecoder().decode(JobInfo.self, from: Data(wire.utf8))
+        #expect(info.remoteControl == false)
+        #expect(info.detail == "live line")
+        #expect(info.needs == "a question")
+        #expect(info.result == "a result")
+    }
+
+    /// And the round trip this build writes for the next one.
+    @Test func theFlagCrossesTheHop() throws {
+        let sent = JobInfo(detail: "d", remoteControl: true)
+        let data = try JSONEncoder().encode(sent)
+        #expect(try JSONDecoder().decode(JobInfo.self, from: data) == sent)
+    }
+}

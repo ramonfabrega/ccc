@@ -481,6 +481,24 @@ struct RosterRow: View {
                     if row.archived {
                         Label("archived", systemImage: "archivebox").font(.caption).foregroundStyle(.tertiary).fixedSize()
                     }
+                    // Remote Control (item 17): dispatched `--rc`, so this
+                    // one is answerable from the phone and not only from
+                    // this Mac. Drawn as the icon alone — the word "rc"
+                    // means nothing at a glance in a window, where the CLI
+                    // twin needs it because a terminal has no icons.
+                    //
+                    // It is not drawn when absent, and that asymmetry is
+                    // deliberate: "you can answer this from the couch" is
+                    // the payload, and "you cannot" is the ordinary case
+                    // that would put a mark on most rows to say nothing
+                    // (the v11 rule — every line carries payload or is not
+                    // drawn).
+                    if row.job?.remoteControl == true {
+                        Image(systemName: "iphone")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .help("Remote Control: dispatched --rc, so this session can be answered from the Claude app or claude.ai/code, not only here")
+                    }
                     Spacer()
                     // The worktree (v6): the branch, with what it holds over
                     // master and — in orange, since it blocks a fast-forward

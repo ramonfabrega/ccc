@@ -40,6 +40,27 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// A reply the daemon proposes to `needs`. Rare (2 of 20), and worth
     /// showing when it is there rather than building anything for.
     public var suggestedReply: String?
+    /// Whether this session was dispatched with `--rc` — Remote Control,
+    /// so it is on claude.ai/code and in the Claude app, where it can be
+    /// **answered from a phone** (v13, item 17; docs/HARNESS.md "Remote
+    /// Control"). Read from `respawnFlags`, which is this same file.
+    ///
+    /// Measured 2026-09-04 before it was built, because two nearer
+    /// candidates are wrong: `claude agents --json --all` carries nine
+    /// keys and **no flag signal at all**, and `bridgeSessionId` is on
+    /// **every** job — it is the claude.ai session id every background
+    /// session gets, not a mark of Remote Control. `bridgeOutboundOnly`
+    /// and `bridgeSessionSeq` do not discriminate either. `respawnFlags`
+    /// does, five of nine on the fleet it was measured on, and it costs
+    /// nothing: this file was already open.
+    ///
+    /// What it means is narrow and worth stating: the session was
+    /// *launched* answerable. It is not proof the phone is connected right
+    /// now, and nothing here polls Anthropic to find out. The row is
+    /// telling you which sessions you could answer from the couch and
+    /// which are only answerable at this Mac — which is the question a
+    /// person actually has.
+    public var remoteControl: Bool
     // `children` — the job's pull requests and published artifacts — is
     // **not read**. It was, for a day: v11 slice 3 dropped the PR half of
     // the banner's receipt line and slice 4 dropped the rest, because the
@@ -60,17 +81,39 @@ public struct JobInfo: Codable, Sendable, Equatable {
     // earns itself.
 
     public init(detail: String? = nil, needs: String? = nil, result: String? = nil,
-                suggestedReply: String? = nil) {
+                suggestedReply: String? = nil, remoteControl: Bool = false) {
         self.detail = detail
         self.needs = needs
         self.result = result
         self.suggestedReply = suggestedReply
+        self.remoteControl = remoteControl
     }
 
     /// Nothing worth carrying. The join yields `nil` rather than an empty
     /// reading, so a row's `job` is present only when it says something.
+    ///
+    /// `remoteControl` counts only when **true**: a session that is merely
+    /// not remote-controlled has said nothing, and a reading of "no" for
+    /// every field is the empty reading this guards against.
     public var isEmpty: Bool {
-        detail == nil && needs == nil && result == nil && suggestedReply == nil
+        detail == nil && needs == nil && result == nil && suggestedReply == nil && !remoteControl
+    }
+
+    /// Hand-written and lenient, for the same reason `SessionRow`'s is:
+    /// these readings arrive over ssh from *another build of ccc*, which
+    /// may predate any field here. Synthesised decoding would throw on a
+    /// missing non-optional `remoteControl`, and `SessionRow` decodes the
+    /// whole reading with `try?` — so one absent key would drop `detail`,
+    /// `needs` and `result` with it, and the far side's row would go
+    /// silent rather than merely lose its newest field. Every field falls
+    /// back instead.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        detail = try? container.decodeIfPresent(String.self, forKey: .detail)
+        needs = try? container.decodeIfPresent(String.self, forKey: .needs)
+        result = try? container.decodeIfPresent(String.self, forKey: .result)
+        suggestedReply = try? container.decodeIfPresent(String.self, forKey: .suggestedReply)
+        remoteControl = (try? container.decodeIfPresent(Bool.self, forKey: .remoteControl)) ?? false
     }
 
     /// What this session has to say for itself, given what the roster says
@@ -103,8 +146,24 @@ public struct JobInfo: Codable, Sendable, Equatable {
         }
         let info = JobInfo(detail: string("detail"), needs: string("needs"),
                            result: string("result", in: (object["output"] as? [String: Any]) ?? [:]),
-                           suggestedReply: string("suggestedReply"))
+                           suggestedReply: string("suggestedReply"),
+                           remoteControl: remoteControl(in: object))
         return info.isEmpty ? nil : info
+    }
+
+    /// `--rc` (or its long spelling) among `respawnFlags`. Lenient in the
+    /// house way: a missing array, an array of the wrong element type, or
+    /// a whole file without the key all read as "not remote-controlled",
+    /// which is the safe answer — the row simply says nothing about the
+    /// phone rather than claiming a session is reachable there.
+    ///
+    /// Both spellings are matched because the harness accepts both and
+    /// records what was typed; the fleet writes `--rc`, and a session
+    /// launched with `--remote-control` would otherwise read as a session
+    /// that cannot be answered from the couch when it can.
+    static func remoteControl(in object: [String: Any]) -> Bool {
+        guard let flags = object["respawnFlags"] as? [Any] else { return false }
+        return flags.contains { ($0 as? String).map { $0 == "--rc" || $0 == "--remote-control" } ?? false }
     }
 }
 

@@ -4,7 +4,7 @@ import Foundation
 /// The command face. Each verb is a click's twin.
 ///
 ///   ccc hosts [add|remove|check|discover]  the machines ccc can reach
-///   ccc list [--json]                 the roster, with the model column
+///   ccc list [--json]                 the roster, with the model and `rc` columns
 ///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
@@ -1441,17 +1441,26 @@ enum CLI {
             let waiting = say == nil ? (s.waitingFor.map { " ⏸ \($0)" } ?? "") : ""
             let archived = row.archived ? " (archived)" : ""
             let model = row.model.map { shortModel($0) } ?? "-"
+            // Remote Control (item 17): this session was dispatched `--rc`,
+            // so it is answerable from the phone and not only from here.
+            // Two narrow ASCII columns rather than a glyph, for the reason
+            // the rest of this line is columns at all — an emoji is two
+            // cells in some terminals and one in others, and this row is
+            // aligned. The word is the flag the user typed, so nothing has
+            // to be looked up to read it.
+            let rc = (row.job?.remoteControl ?? false) ? "rc" : "  "
             // The worktree (v6): the repository, then the branch and its
             // standing — the same reading as the window's row.
             let cwd = hosts.shortCwd(row.worktree?.repo ?? s.cwd, host: row.host) + (row.worktree?.baseMark.map { " \($0)" } ?? "")
             let worktree = row.worktree.map { " ⎇ \($0.summary)" } ?? ""
-            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
+            print("\(marker) \(host)\(s.id.padding(toLength: 8, withPad: " ", startingAt: 0))  \(state.padding(toLength: 11, withPad: " ", startingAt: 0)) \(live.padding(toLength: 4, withPad: " ", startingAt: 0))  \(rc)  \(name)  \(model.padding(toLength: 10, withPad: " ", startingAt: 0))  \(cwd)\(worktree)\(waiting)\(archived)")
             // What the session has to say for itself (v10 slice 2), on its
             // own indented line: the row above is columns, and a sentence
             // of up to 460 characters would destroy them. `--json` carries
             // it whole; this is the reading, cut to one terminal line.
             if let say {
-                print("  \(host.isEmpty ? "" : String(repeating: " ", count: hostWidth + 2))\(String(repeating: " ", count: 10))↳ \(ellipsized(say, to: 96))")
+                // 14, not 10: the `rc` column above it is four cells wide.
+                print("  \(host.isEmpty ? "" : String(repeating: " ", count: hostWidth + 2))\(String(repeating: " ", count: 14))↳ \(ellipsized(say, to: 96))")
             }
         }
         }
@@ -1593,7 +1602,9 @@ enum CLI {
                ccc hosts mute|unmute <name>        no banners for that host's sessions (rows and counts stay)
                ccc list [--host <name>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--json]
                                                   every host's roster; --host narrows to one, --archived shows the
-                                                  folded rows (--json always has every row, sorted, never grouped)
+                                                  folded rows (--json always has every row, sorted, never grouped).
+                                                  The `rc` column marks a session dispatched --rc: answerable from
+                                                  the Claude app, not only here
                ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host
                                                   (archived rows fold away unless blocked; pinned sort first)
                ccc watch [--host <name>] [--interval S] [--all] [--json]
