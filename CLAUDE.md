@@ -131,8 +131,11 @@ it should break while being awesome.**
 - VERIFY the served model from the spawn's JSONL, never from the spawn
   parameter or completion notification. `lore spawns` mechanizes this post-hoc
   and flags requested-vs-served drift.
-- Ledger every fan-out in the lore wiki log: per agent — scope, tokens, tools,
-  duration, verified model.
+- Leave the fan-out legible to `lore index`, which is what actually builds the
+  ledger (`lore spawns`: agentType, verified model, tokens, duration, per
+  spawn). An explicit model and a real agent type are the whole obligation.
+  **ccc never writes the ledger, or anything else, into the lore wiki** — see
+  References.
 - Prompts that drive CLIs pin the invocation (`claude`, `lore`, `ccc` on PATH —
   never a source path "from the current directory").
 
@@ -144,7 +147,15 @@ it should break while being awesome.**
 - `docs/HARNESS.md` — the daemon/attach/hooks surface, triaged stable vs
   undocumented vs unknown, with the experiments that resolve the unknowns.
 - `docs/TERMINAL.md` — the embed research and the core/renderer/PTY plan.
-- lore wiki `projects/ccc.md` — origin conversation, spawn ledger, open threads.
+- lore wiki `projects/ccc.md` — origin conversation, spawn ledger, open
+  threads. **Read-only from here, and not ccc's to maintain.** That page is
+  produced by lore, either by an ingest that mines this repo and its wells or
+  by a relay lore banks from a message — its own frontmatter records each
+  section's provenance (`ingest #N — 1 miner + 1 canon auditor`), so a
+  hand-written section both skips that pass and makes the provenance false.
+  A ccc session with something lore should know sends it (`SendMessage` to
+  `lore`) and stops there. Established 2026-09-03, after a session wrote a
+  milestone section by hand and had to revert it.
 - Prior art, read not copied: `arthjean/paneflow` (GPUI + alacritty core, GPL,
   built for parallel agents), `manaflow-ai/cmux` (forked Ghostty + remote
   daemon), `vercel-labs/native` (`<terminal>` over libghostty-vt with its own

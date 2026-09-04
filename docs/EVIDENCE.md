@@ -23,10 +23,12 @@ Two rules keep it usable:
 
 `docs/CHECKS.md` is the shape this file's sections aspire to: a claim, the
 command that proved it, the number it returned. Nothing here is a story
-about a day's work — that lives in the lore wiki
+about a day's work — that ends up in the lore wiki
 (`~/code/personal/lore-wiki/projects/ccc.md`), which keeps the arguments,
-the reversals and the user's own words. This file keeps the milliseconds
-and the symbol names.
+the reversals and the user's own words. **It gets there by lore's hand,
+never by ours** (CLAUDE.md, References): a session writes the number here
+and, if lore should know something, sends it. This file keeps the
+milliseconds and the symbol names.
 
 Each milestone is comparable against `claude agents` on its own. Experiments
 (docs/HARNESS.md) gate the feature that needs them, not the milestone before.
