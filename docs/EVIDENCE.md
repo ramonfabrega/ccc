@@ -2577,3 +2577,18 @@ the window alone: a context menu is its own window, and the socket path
 never raises the HUD (that is `MainWindowController.openShell`, the
 window's gesture). The strings are shared with the CLI, which is what the
 transcript above stands in for.
+
+### Cut as v0.1.21
+
+Build 156, 5,079,362 bytes, notarized and published to both CDN keys; the
+live feed's `length=` matched the zip's real content-length, which is what
+`scripts/package` exits non-zero on. First cut whose GitHub Release is that
+script's own last act rather than a step in prose. `scripts/install --dist`
+put it on studio, and the released bytes answer with the new sentence:
+
+```
+$ ccc version
+ccc 0.1.21 (156)  /Users/rf-studio/Applications/ccc.app
+$ ccc shell d079be9f
+shell in ~/code/work/cuanto/.claude/worktrees/pending-auths-search — ⇧⌘T closes it
+```
