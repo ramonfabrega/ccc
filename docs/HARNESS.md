@@ -81,8 +81,9 @@ behind `ssh`.
 **`claude attach <id>`** — no flags. Fullscreen TUI. Detach: `←` on an empty
 prompt, `/exit`, `Ctrl+Z` (back to where you started), double `Ctrl+C` or
 `Ctrl+D` on an empty prompt. None stop the session; `/stop` inside does.
-**A second attach is refused**: "this session is running in another
-terminal". **`claude logs <id>`** prints recent output — a snapshot, not a
+**A second attach is accepted** — the docs once said refused; experiment 2
+below measured a mirror: every viewer sees the output, any viewer's input
+goes in. **`claude logs <id>`** prints recent output — a snapshot, not a
 stream.
 
 **Peek / queued reply.** In the agents view, Space on a row shows recent
@@ -116,9 +117,11 @@ session creates a new background session. **Measured 2026-09-02 (2.1.259,
   `needs: "send a prompt to start"`, `intent: ""`, no `tokens`,
   `firstTerminalAt: null`; for a session blocked on an AskUserQuestion
   the same file reads `state: "blocked"`, `needs: <the question>`,
-  `tokens: 51937`, `intent: <the first prompt>`. ccc reads `needs` (and
-  `detail`) for the phrase, never writes the file, and falls back to
-  "no transcript" when the file is unreadable (`DraftProbe`, v5 slice 2).
+  `tokens: 51937`, `intent: <the first prompt>`. ccc reads `detail`,
+  `needs`, `output.result`, `suggestedReply` and `respawnFlags` through
+  `JobProbe` (`JobInfo`), never writes the file, and `DraftProbe` is the
+  draft predicate over that reading, falling back to "no transcript" when
+  the file is unreadable (v5 slice 2, widened in v11 and v13).
   Undocumented; unknown fields preserved is the only promise, so a
   missing `needs` is "no reading", never "not a draft".
 - The row is in `claude agents --json --all` by the time `--bg` has exited

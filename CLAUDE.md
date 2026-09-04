@@ -83,8 +83,9 @@ it should break while being awesome.**
   **What it says comes from the daemon's job file**, amended 2026-09-04:
   the poll says *that* it is your turn, and `waitingFor` is absent exactly
   when it is wanted (measured: the one blocked session carried none). So
-  `JobProbe` reads `detail`, `needs`, `output.result` and `suggestedReply`
-  out of `~/.claude/jobs/<id>/state.json` — four fields where v5 read one —
+  `JobProbe` reads `detail`, `needs`, `output.result`, `suggestedReply`
+  and `respawnFlags` (the `rc` mark, v13) out of
+  `~/.claude/jobs/<id>/state.json` — five fields where v5 read one —
   joined on the local row like the model and carried across the hop. Still
   read-only, still lenient: a field that moves costs the banner its payload
   and nothing else. **Every line of a notification carries payload or is

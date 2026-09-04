@@ -3,8 +3,10 @@ import PackageDescription
 
 // ccc — one binary. No arguments → the AppKit app; a subcommand → headless
 // CLI over the same code. CCCKit is everything that runs without a window
-// and is what the tests link. SwiftTerm is the v0 pane stand-in (pinned to a
-// release tag, never main — docs/TERMINAL.md); it leaves with v1.
+// and is what the tests link. SwiftTerm was the v0 pane stand-in (pinned to a
+// release tag, never main — docs/TERMINAL.md) and stays as the
+// `CCC_CORE=swiftterm` escape hatch behind the libghostty-vt pane
+// (docs/CHECKS.md).
 let package = Package(
     name: "ccc",
     platforms: [.macOS(.v14)],

@@ -2,10 +2,10 @@ import AppKit
 import Foundation
 
 /// The one-page seam (docs/TERMINAL.md). Everything above it — roster, PTY,
-/// control socket, CLI — talks to a terminal only through these five
-/// members. v0 fills it with SwiftTerm (`SwiftTermHost` for the window,
-/// `HeadlessHost` for tests and `--headless`); v1 fills it with libghostty-vt
-/// and our Metal renderer. Nothing outside `Terminal/` may import SwiftTerm.
+/// control socket, CLI — talks to a terminal only through these members.
+/// libghostty-vt and our Metal renderer fill it (`GhosttyPane`, the
+/// default since v1); SwiftTerm stays behind `CCC_CORE=swiftterm`
+/// (`SwiftTermHost`). Nothing outside `Terminal/` may import SwiftTerm.
 @MainActor
 public protocol TerminalHost: AnyObject {
     /// Bytes from the child (the PTY master) into the terminal core.

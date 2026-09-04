@@ -3179,3 +3179,21 @@ synchronous by signature and run off the main actor.
 non-login shell's PATH. The host config stores absolute paths, so the real
 poll never hits this — but a timing that forgets it measures a failed
 exec in 80 ms and reports the wrong win.
+
+## item 9 leaves (2026-09-04)
+
+The attach transition shipped ("the attach transition, and the hole in the
+← guard") and was proved over ssh 2026-09-03: six alternating swaps
+between two remote fixtures ran 1075–1385 ms against the local path's
+1022–1086 ms, every one answering "attached … (left …)", so the hop costs
+~20–50 ms on a warm master and the 8 s `waitUntilDrawn` timeout has ~7x
+headroom. That was a loopback hop; a latent one is air's to run.
+
+What the item held open was a shape, not a wait: **"drawn" is a shape,
+not a certainty.** `waitUntilDrawn` returns on the first stable screen
+with more than one painted row — enough to reject the attach client's
+one-line wake message, not proof the TUI finished; a render that pauses
+over 250 ms mid-paint can still swap in early. Never seen in the wild,
+which is why it leaves the queue: it is a known edge with no forcing
+function, recorded here so the next person who sees an early swap has
+its name.

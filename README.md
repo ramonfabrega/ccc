@@ -17,7 +17,7 @@ docs/CHECKS.md      the v1 six-check scoreboard; closed, only if reopening the c
 docs/EVIDENCE.md    what was measured and the command that measured it — do NOT read it, grep it
 ```
 
-**Status: v0.1.18 (2026-09-04) — through v11 slice 4.** One binary, two
+**Status: v0.1.23 (2026-09-04) — v13 (item 17) is the frontier.** One binary, two
 faces: `ccc` with no arguments opens the window (roster + attached pane, a
 shell pane under it on ⌘T, + menubar item); every gesture has a command
 twin over a unix socket. The
@@ -27,8 +27,8 @@ pane is libghostty-vt + our Metal renderer, which took all six checks
 
 ```
 git submodule update --init         # vendor/ghostty, pinned to one commit; scripts/fetch-zig gets the Zig it needs
-swift build && swift test           # 394 tests: roster, hosts/refs, model + job probe, PTY, replay goldens,
-                                    # keys/mouse, renderer, theme, ← guard, pixels, worktree verbs, docs guard
+swift build && swift test           # ~420 tests: roster, hosts/refs, model + job probe, PTY, subprocess, replay
+                                    # goldens, keys/mouse, renderer, theme, ← guard, pixels, worktree verbs, docs guard
 scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH (symlink into the bundle)
                                     # run it UNSANDBOXED: sandboxed it quits the app, half-copies the
                                     # bundle and leaves it dead
@@ -75,7 +75,8 @@ ccc shell <ref> [--repo] | --close  # ⌘T's twin: a shell pane under the sessio
                                     # the row's item and `t` flip to Close Terminal while that row's shell is up
 
 # the pane
-ccc attach <ref> [--headless]       # attach in the window, or headless: a PTY + the socket, no window
+ccc attach <ref> [--headless [--cols N --rows N]]
+                                    # attach in the window, or headless: a PTY + the socket, no window
                                     # <ref> is `id` on this Mac, `host:id` anywhere else
 ccc snapshot [--json] [--color]     # the pane's grid as text — how an agent sees what you see
                                     # --color adds the resolved #RRGGBB per run: colour with no screen
@@ -88,7 +89,10 @@ ccc select <c> <r> <c> <r> [--rect] | --clear
                                     # child is not tracking the mouse), ⌥ for a rectangle
 ccc select --word <c> <r> | --line <c> <r>
                                     # the double- and triple-click's twins
-ccc copy                            # ⌘C's twin: the selected text, onto the pasteboard
+ccc copy [--json]                   # ⌘C's twin: the selected text, onto the pasteboard
+ccc focus [in|out]                  # what the window last told the child about focus (DEC 1004), or assert
+                                    # it; the harness suppresses your phone's push while a terminal reports
+                                    # focus, so `out` is what says nobody is here
 ccc detach | resize <c> <r> | stats # detach; resize (headless); memory / poll + model/job-join cost / PTY B/s
 
 # the window, and judging what it shows
@@ -100,7 +104,7 @@ ccc peek [out.png]                  # PNG of the window from our view hierarchy 
 ccc capture [out.png] [--json]      # PNG of the window AS IT IS ON SCREEN, via `screencapture -l` — the
                                     # presentation oracle. Screen Recording permission belongs to whoever
                                     # runs it, which is why the app never asks for it and peek always works
-ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect '#RRGGBB' [--tolerance N]]
+ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect '#RRGGBB' [--tolerance N]] [--json]
                                     # the colour at one pixel; --cell aims through the window's geometry,
                                     # --expect makes the exit code the answer, so a script can judge a colour
 ccc geometry [--json]               # the window id screencapture wants, where the window is (top-left
@@ -112,8 +116,10 @@ ccc theme [--json]                  # the pane's colours: 16 ANSI + 6 specials, 
 # the build itself
 ccc version [--json]                # this build: version, build number, bundle (see below)
 ccc install-cli [--dir <d>] [--force]  # link `ccc` on PATH into the installed app
-ccc replay <bytes> [--bytes N] [--core X]  # render a recording headlessly (the golden-test oracle)
-ccc bench <bytes> [--repeat N]      # throughput, snapshot cost, footprint delta, grid digest
+ccc replay <bytes> [--bytes N] [--core X] [--cols N --rows N] [--color]
+                                    # render a recording headlessly (the golden-test oracle)
+ccc bench <bytes> [--repeat N] [--core ghostty|swiftterm]
+                                    # throughput, snapshot cost, footprint delta, grid digest
 scripts/release-notes [<tag>]       # a release's notes: this repo's commit subjects + a compare link
                                     # (scripts/package calls it; the twin that normalizes an old Release)
 scripts/record-attach <id>          # record a real `claude attach` as the replay fixture

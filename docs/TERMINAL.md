@@ -137,14 +137,22 @@ that ignores SIGHUP would otherwise make the child immune to `terminate`).
 ## The seam
 
 ```
-protocol TerminalHost {
-  func feed(_ bytes: Data)          // child → core
-  func write(_ bytes: Data)         // user → child
+@MainActor protocol TerminalHost: AnyObject {
+  func feed(_ bytes: Data)                       // child → core
+  var onOutput: ((Data) -> Void)? { get set }    // core → child (key encodings, query replies, paste framing)
+  var keyInterceptor: ((NamedKey) -> Bool)? { get set }  // the one gate on the key path (the ← guard)
   func resize(cols: Int, rows: Int)
-  func snapshot() -> Grid           // text grid; the headless / test surface
-  var view: NSView { get }
+  func snapshot(colors: Bool) -> Grid            // the headless / test surface; colors on request
+  var view: NSView? { get }                      // nil for a headless host
+  var presentation: (frames: Int, lastAt: Date?)? { get }  // what reached the screen
+  func press(_ key: NamedKey) -> Bool            // encoded by the core, never hand-rolled
+  func paste(_ text: String) -> Bool             // framed as the child negotiated
+  func setFocused(_ focused: Bool) -> Bool       // DEC 1004; what tells the harness nobody is here
 }
 ```
+
+(As of 2026-09-04, from `Sources/CCCKit/Terminal/TerminalHost.swift`; the
+file is the truth and this block follows it.)
 
 Two implementations: `SwiftTermHost` (stock view; v0 stand-in, MIT, pin a
 tag — a lifecycle/IO rewrite is in flight ahead of its 2.0; **checked
