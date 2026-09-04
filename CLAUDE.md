@@ -56,11 +56,16 @@ it should break while being awesome.**
   poll, attach, spawn: one prefix per host, one multiplexed ssh connection per
   host. Folders, git, worktrees fall out as cwd choices. No daemon of our own.
 - **The fleet has one hop, and it points one way: air → studio.** Decided
-  2026-09-03. Studio is always the host — the always-on Mac the agents run
-  on; air is the roaming client that joins. **Nothing ever ssh's into air**,
-  which is also why every update is a pull (RELEASES.md). Any-Mac-to-any-Mac
-  is a someday, not a goal, and no work here should assume it. The hop is
-  gated on Remote Login being on for studio (docs/QUEUE.md item 3).
+  2026-09-03; Remote Login went on for studio the same day and the hop is
+  live. Studio is always the host — the always-on Mac the agents run on;
+  air is the roaming client that joins, which is also why every update is a
+  pull (RELEASES.md). Any-Mac-to-any-Mac is a someday, not a goal.
+  **This needs no enforcing and no mention.** Air is never
+  remote-advertised and runs no sshd, so it cannot be a target and cannot
+  appear as a candidate: there is nothing to filter, exclude by name, gate,
+  or ask about. Test the remote path **studio → studio**. Written this way
+  because the earlier phrasing ("nothing ever ssh's into air") read as a
+  live constraint and sent two sessions designing around a noop.
 - **TERM starts as `xterm-256color`.** Upgrade to `xterm-ghostty` (install the
   terminfo on our own hosts) only when a feature needs it.
 - **Keys are the core's job.** AppKit key events → libghostty-vt's encoder.

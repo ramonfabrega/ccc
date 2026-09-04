@@ -56,16 +56,27 @@ firing for the remote host. `Host.claude`'s absolute path is load-bearing:
 experiment 3's "no claude on PATH" still holds on this Mac.
 
 **The bench was studio→studio**, which carries the real client code and
-the real sshd but no latency, so every number is a floor. The air→studio
-direction still needs air, and air alone.
+the real sshd but no latency, so every number is a floor — and it is the
+right way to test the remote path from here. The air→studio direction
+needs air, and air alone.
+
+**The one-way hop is self-enforcing; stop designing around it.** Air is
+never remote-advertised and has no sshd, so it cannot be ssh'd into and
+cannot appear as a candidate anywhere. Nothing needs to filter it, exclude
+it by name, or ask about it. Recorded here because this ground has been
+re-litigated twice (2026-09-03, 2026-09-04), both times because the rule
+is stated in enough places to read as live rather than settled.
 
 **What is left: the picker off `tailscale status --json`.** MagicDNS names
-are the ssh destinations (Bonjour never crosses the tailnet); `tailscale
-status` already lists `studio 100.81.87.24` and `air 100.122.216.104`
-alongside non-Mac peers, so the picker's real work is filtering to hosts
-that can answer `claude` and not offering air as a target (CLAUDE.md: one
-hop, one way). The host list it writes to is now hot-reloaded, so the
-picker's add lands in the running app the way `ccc hosts add` does.
+are the ssh destinations (Bonjour never crosses the tailnet), and the
+first label of `DNSName` is both the destination and the natural
+`Host.name` — not `HostName`, which is "Ramon's Mac Studio" for studio and
+"localhost" for the iPhone. The picker's work is presenting the macOS
+peers that can answer `claude`; the tailnet carries its own liveness, so a
+long-dead peer says so (`LastSeen`) instead of needing a heuristic. The
+host list it writes to is now hot-reloaded, so the picker's add lands in
+the running app the way `ccc hosts add` does. **The direction is not the
+picker's problem** — see the note under "The hop is live" above.
 
 ### 4. Debt: the blocking poll read
 
