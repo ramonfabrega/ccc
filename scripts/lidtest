@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""The lid instrument (docs/QUEUE.md item 6, docs/DESIGN.md §4b).
+
+Polls the far side over ccc's exact ssh prefix every 2 s and appends one
+line per poll to a log, so a lid closed overnight leaves a timeline behind
+instead of a memory. Run it on the Mac whose lid closes — the client, air.
+
+**It keeps its own master, deliberately.** ccc evicts every remote master
+on `NSWorkspace.didWakeNotification`, which is the proactive half of §4b's
+fix; that eviction is also what would destroy this measurement, since the
+socket ccc drops on wake can no longer say what it would have done. So the
+ControlPath here is `~/.lidtest/<host>.sock` and nothing but this script
+touches it. ccc's own poll runs beside it on its own socket, and
+`ccc stats` reports that half.
+
+The two lines that matter in the morning are marked:
+
+    WOKE   gap 8h12m — the wall clock jumped, so the machine slept
+    the next poll's ms and rc — what the untouched master did about it
+
+Usage:  scripts/lidtest [--host studio] [--dest studio] [--log ~/lidtest.log]
+        scripts/lidtest --read [--log ~/lidtest.log]   # summarize a log
+"""
+
+import argparse
+import os
+import pathlib
+import subprocess
+import sys
+import time
+
+# ccc's own options (CCCKit/Harness/ClaudeCLI.swift `sshPrefix`), so what
+# this measures is what the poll would have paid. Only ControlPath differs,
+# and that difference is the point.
+SSH_OPTIONS = [
+    "-o", "ControlMaster=auto",
+    "-o", "ControlPersist=60",
+    "-o", "ConnectTimeout=5",
+    "-o", "BatchMode=yes",
+]
+
+# A gap this much longer than the interval is not scheduling jitter, it is
+# the machine having been asleep.
+SLEEP_GAP = 10.0
+
+
+def stamp(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t))
+
+
+def span(seconds):
+    seconds = int(seconds)
+    h, rest = divmod(seconds, 3600)
+    m, s = divmod(rest, 60)
+    return f"{h}h{m:02d}m" if h else (f"{m}m{s:02d}s" if m else f"{s}s")
+
+
+def poll(dest, socket, claude):
+    argv = ["/usr/bin/ssh", *SSH_OPTIONS, "-o", f"ControlPath={socket}",
+            dest, claude, "agents", "--json", "--all"]
+    started = time.monotonic()
+    try:
+        done = subprocess.run(argv, capture_output=True, timeout=30)
+        ms = int((time.monotonic() - started) * 1000)
+        note = done.stderr.decode("utf-8", "replace").strip().split("\n")[0][:90]
+        return ms, done.returncode, note
+    except subprocess.TimeoutExpired:
+        return int((time.monotonic() - started) * 1000), -1, "timed out after 30 s"
+
+
+def run(args):
+    socket = pathlib.Path(args.socket_dir).expanduser() / f"{args.host}.sock"
+    socket.parent.mkdir(parents=True, exist_ok=True)
+    log = pathlib.Path(args.log).expanduser()
+    with log.open("a", buffering=1) as out:
+        out.write(f"# {stamp(time.time())} lidtest starts — {args.dest} "
+                  f"every {args.interval}s, own master at {socket}\n")
+        last = None
+        while True:
+            now = time.time()
+            if last is not None and now - last > args.interval + SLEEP_GAP:
+                out.write(f"{stamp(now)}  WOKE   gap {span(now - last)} "
+                          f"(last poll {stamp(last)})\n")
+            ms, rc, note = poll(args.dest, socket, args.claude)
+            tail = f"  {note}" if rc != 0 or note else ""
+            out.write(f"{stamp(now)}  {ms:6d}ms  rc={rc}{tail}\n")
+            last = time.time()
+            time.sleep(args.interval)
+
+
+def read(args):
+    log = pathlib.Path(args.log).expanduser()
+    if not log.exists():
+        sys.exit(f"lidtest: no log at {log}")
+    lines = log.read_text(errors="replace").split("\n")
+    polls = [l for l in lines if "ms  rc=" in l]
+    wakes = [i for i, l in enumerate(lines) if "WOKE" in l]
+    print(f"{log}: {len(polls)} polls, {len(wakes)} wake(s)")
+    if not wakes:
+        print("no sleep recorded — the lid never closed long enough, or the "
+              "script was not running across it")
+    for i in wakes:
+        print("\n" + lines[i])
+        for l in lines[i + 1:i + 6]:
+            if l.strip():
+                print("  " + l)
+    failed = [l for l in polls if "rc=0" not in l]
+    print(f"\nnon-zero polls: {len(failed)}")
+    for l in failed[:10]:
+        print("  " + l)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--host", default="studio", help="the host's ccc name (names the socket)")
+    p.add_argument("--dest", default=None, help="the ssh destination (default: --host)")
+    p.add_argument("--claude", default="claude", help="path to claude on the far side")
+    p.add_argument("--log", default="~/lidtest.log")
+    p.add_argument("--socket-dir", default="~/.lidtest")
+    p.add_argument("--interval", type=float, default=2.0)
+    p.add_argument("--read", action="store_true", help="summarize the log instead of polling")
+    args = p.parse_args()
+    args.dest = args.dest or args.host
+    if args.read:
+        read(args)
+    else:
+        try:
+            run(args)
+        except KeyboardInterrupt:
+            print("\nlidtest: stopped", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

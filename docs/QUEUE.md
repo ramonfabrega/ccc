@@ -75,14 +75,30 @@ activate through `NSWorkspace`.
 ### 6. Two measurements that need the hop
 
 Both are air's to run — the hop is live but these need air's own lid, so
-neither can be forced from studio.
+neither can be forced from studio. §4b measured a **1 min 54 s** lid and
+the master survived it ("no eviction needed"); the overnight case is the
+one still open, and it is the everyday one.
 
-- **The ssh master's eviction.** `~/lidtest.py` runs on air appending to
-  `~/lidtest.log`; that log decides whether the eviction ever fires
-  (`ccc stats` → `evictions`). The file comes off air by air's own hand.
+- **The ssh master's eviction.** `scripts/lidtest` (was `~/lidtest.py`,
+  now in the repo and smoke-tested studio → studio at 188–207 ms warm)
+  polls the hop every 2 s on **its own ControlPath**, `~/.lidtest/`, and
+  marks the wake gap in `~/lidtest.log`; `--read` summarizes it. The
+  separate socket is the whole design: ccc evicts every remote master on
+  `didWakeNotification`, so ccc's own socket can no longer say what it
+  *would* have done, and `ccc stats` → `evictions` reports only that
+  ccc's proactive half fired. **Prediction to falsify:**
+  `ControlPersist=60` should reap an idle master long before morning, so
+  the wake looks like §4b's `kill -9` row (a fresh master, ~316 ms) and
+  the wedged shape never appears — except that 1 min 54 s already
+  outlasted 60 s and survived, because a held attach keeps the channel
+  open. Whether an *unheld* master survives is the question.
 - **The remote pane's reattach across a real sleep.** `sshExit` within
   20 s of wake replays the same argv
-  (`PaneController.reattachIfSleepKilledIt`), never yet through a lid.
+  (`PaneController.reattachIfSleepKilledIt`), and `reconnect` covers the
+  case where ssh noticed first (`lastExitStatus == sshExit`). Neither has
+  been through a lid. Needs air's pane attached to a **studio** ref when
+  it closes — and studio's own pane on something else, or this measures
+  item 15 at the same time.
 
 ### 7. Housekeeping: four branches to delete
 
