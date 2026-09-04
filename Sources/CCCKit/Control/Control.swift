@@ -6,8 +6,18 @@ import Foundation
 /// Attach is exclusive at the daemon, so this is the only way a second
 /// process (an agent, a test, the CLI) can see what the pane shows.
 public enum ControlRequest: Codable, Sendable {
-    /// The roster as the server last polled it, with model column.
+    /// The roster as the server last polled it, with model column. The
+    /// server polls once more before answering, so this costs a
+    /// `claude agents` spawn; `roster` is the one that does not.
     case list
+    /// Every host's slot as the server holds it right now — rows, issues,
+    /// notes, the last error, when it was polled — which is what the
+    /// window is showing. `fresh` asks for one more tick first (the
+    /// caller wants the daemon's word, not the last one). Item 4: this is
+    /// how `ccc list` answers in milliseconds where its own tick was a
+    /// cold process redoing every join, and so how the far side's poll
+    /// stops costing a whole tick.
+    case roster(fresh: Bool? = nil)
     /// Attach the pane to a session (the click's twin). The payload is a
     /// `SessionRef`, so an agent on this Mac can drive a session on another.
     ///
@@ -107,6 +117,7 @@ public enum ControlRequest: Codable, Sendable {
 
 public enum ControlResponse: Codable, Sendable {
     case list([SessionRow])
+    case roster([HostPoll])
     case snapshot(SnapshotInfo)
     case links([LinkInfo])
     case stats(StatsInfo)

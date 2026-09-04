@@ -54,7 +54,7 @@ enum CLI {
                     sort = s
                 }
                 return try await list(host: stringFlag("--host", rest), archived: rest.contains("--archived"),
-                                      group: group, sort: sort, json: json)
+                                      group: group, sort: sort, fresh: rest.contains("--fresh"), json: json)
             case "watch":
                 return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2,
                                        all: rest.contains("--all"), json: json)
@@ -258,26 +258,41 @@ enum CLI {
     /// far side reads to build *its* roster, and a machine filters for
     /// itself. `--group` and `--sort` are the View menu's twins; grouping
     /// is presentation and never reaches `--json`, the sort does.
+    ///
+    /// **Answered by the running app when there is one** (item 4). The
+    /// window already holds every host's slot, at most one tick old, with
+    /// every join warm; a fresh `ccc list` process redid all of it cold —
+    /// 450–670 ms here against the app's 190 ms tick — and that cold
+    /// process is exactly what the far side runs on every poll, which is
+    /// why air's poll cost a whole tick. `--fresh` asks the app to poll
+    /// once more first; with no app on the socket the tick is ours, as
+    /// it always was. What the far side reads is the *same* roster the
+    /// window shows, which is the twin rule stated as a fact.
     static func list(host name: String?, archived: Bool = false, group: RosterGroup = .none,
-                     sort: RosterSort = .activity, json: Bool) async throws -> Int32 {
+                     sort: RosterSort = .activity, fresh: Bool = false, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
-        let poller: RosterPoller
-        if let name {
-            guard let host = loaded.config.host(named: name) else {
-                stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
-                return 2
-            }
-            guard let cli = ClaudeCLI.of(host) else {
-                stderr("ccc: \(host.validate() ?? "claude not found for host '\(name)'")")
-                return 1
-            }
-            poller = RosterPoller(cli: cli)
-        } else {
-            poller = RosterPoller(hosts: loaded.config)
+        if let name, loaded.config.host(named: name) == nil {
+            stderr("ccc: unknown host '\(name)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
         }
-        await poller.tick()
-        let state = poller.state
+        let state: RosterPoller.State
+        if let served = rosterFromApp(host: name, fresh: fresh) {
+            state = served
+        } else {
+            let poller: RosterPoller
+            if let name, let host = loaded.config.host(named: name) {
+                guard let cli = ClaudeCLI.of(host) else {
+                    stderr("ccc: \(host.validate() ?? "claude not found for host '\(name)'")")
+                    return 1
+                }
+                poller = RosterPoller(cli: cli)
+            } else {
+                poller = RosterPoller(hosts: loaded.config)
+            }
+            await poller.tick()
+            state = poller.state
+        }
         for failed in state.failures {
             stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")")
         }
@@ -299,6 +314,23 @@ enum CLI {
             if !archived, hidden > 0 { print("(\(hidden) archived; --archived shows them)") }
         }
         return state.issues.isEmpty ? 0 : 3
+    }
+
+    /// The app's slots over the socket, narrowed to `host` when asked.
+    /// `nil` when no app is serving, when the one serving is older than
+    /// the `roster` request (it answers "malformed request"), or when it
+    /// does not know the host — every one of which means "poll it
+    /// yourself", never an error: the CLI has always worked without the
+    /// app and still does.
+    static func rosterFromApp(host: String?, fresh: Bool) -> RosterPoller.State? {
+        guard let response = try? ControlClient().send(.roster(fresh: fresh ? true : nil)),
+              case .roster(let hosts) = response else { return nil }
+        // An app that has not finished its first tick has nothing to
+        // show yet; that is not a roster, so poll it here.
+        guard hosts.contains(where: { $0.pollCount > 0 }) else { return nil }
+        guard let host else { return RosterPoller.State(hosts: hosts) }
+        guard let slot = hosts.first(where: { $0.host == host }) else { return nil }
+        return RosterPoller.State(hosts: [slot])
     }
 
     /// `ccc archive|unarchive|pin|unpin <ref>` (v4): a mark on the session,
@@ -1376,6 +1408,11 @@ enum CLI {
             if json { printJSON(["ok": message]) } else { print(message) }
         case .list(let rows):
             if json { printJSON(rows) } else { printRoster(rows, issues: [], hosts: HostConfig.load().config) }
+        case .roster(let hosts):
+            // `ccc list` reads this through `rosterFromApp`; here it is the
+            // raw slots, for a script that wants the app's own numbers.
+            let state = RosterPoller.State(hosts: hosts)
+            if json { printJSON(hosts) } else { printRoster(state.sorted, issues: state.issues, hosts: HostConfig.load().config) }
         case .snapshot(let info):
             if json { printJSON(info) } else if let grid = info.grid { print(grid.rendered()) } else { print("(nothing attached)") }
         case .links(let found):
@@ -1613,9 +1650,11 @@ enum CLI {
                                                   (paths are found on the host unless given)
                ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
                ccc hosts mute|unmute <name>        no banners for that host's sessions (rows and counts stay)
-               ccc list [--host <name>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--json]
+               ccc list [--host <name>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--fresh] [--json]
                                                   every host's roster; --host narrows to one, --archived shows the
                                                   folded rows (--json always has every row, sorted, never grouped).
+                                                  Answered by the running app's roster (≤ one tick old, joins warm);
+                                                  --fresh polls once more first, and no app means polling here
                                                   The `rc` column marks a session dispatched --rc: answerable from
                                                   the Claude app, not only here
                ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host

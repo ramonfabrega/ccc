@@ -58,7 +58,7 @@ public indirect enum JSONValue: Codable, Sendable, Equatable {
 
 /// Why the roster did not decode as expected. Rendered as the "roster shape
 /// changed" banner; the rows that did decode are still shown.
-public struct RosterShapeIssue: Sendable, Equatable, CustomStringConvertible {
+public struct RosterShapeIssue: Sendable, Equatable, Codable, CustomStringConvertible {
     public var index: Int?          // element index, nil for top-level
     public var field: String?
     public var message: String

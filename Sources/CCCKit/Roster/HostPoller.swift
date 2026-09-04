@@ -6,7 +6,7 @@ import Observation
 /// N of these at read time, which is what makes "one unreachable host must
 /// never blank the roster" structural rather than a rule (docs/DESIGN.md
 /// §4b).
-public struct HostPoll: Sendable, Equatable {
+public struct HostPoll: Sendable, Equatable, Codable {
     public var host: String
     /// The last rows this host answered with. **Kept across a failed
     /// poll**: a Mac that just went to sleep still has its sessions, and a
@@ -57,6 +57,39 @@ public struct HostPoll: Sendable, Equatable {
 
     /// Rows are being shown from before the host stopped answering.
     public var isStale: Bool { error != nil && !rows.isEmpty }
+
+    /// The socket carries this whole slot (`ControlResponse.roster`), so
+    /// `ccc list` can print what the window shows instead of re-polling.
+    /// Decoded field by field with the struct's own defaults, never with
+    /// the synthesised strictness: a CLI newer than the app on the socket
+    /// must read the app's answer, and a field it added is simply absent.
+    private enum CodingKeys: String, CodingKey {
+        case host, rows, issues, notes, error, failures, lastPolledAt, lastSuccessAt, lastPollMs, meanPollMs,
+             pollCount, evictions, lastModelJoinMs, meanModelJoinMs, modelCounters, jobCounters,
+             transcriptLookups, transcriptUnresolved
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        host = try c.decode(String.self, forKey: .host)
+        rows = try c.decodeIfPresent([SessionRow].self, forKey: .rows) ?? []
+        issues = try c.decodeIfPresent([RosterShapeIssue].self, forKey: .issues) ?? []
+        notes = try c.decodeIfPresent([String].self, forKey: .notes) ?? []
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        failures = try c.decodeIfPresent(Int.self, forKey: .failures) ?? 0
+        lastPolledAt = try c.decodeIfPresent(Date.self, forKey: .lastPolledAt)
+        lastSuccessAt = try c.decodeIfPresent(Date.self, forKey: .lastSuccessAt)
+        lastPollMs = try c.decodeIfPresent(Double.self, forKey: .lastPollMs)
+        meanPollMs = try c.decodeIfPresent(Double.self, forKey: .meanPollMs)
+        pollCount = try c.decodeIfPresent(Int.self, forKey: .pollCount) ?? 0
+        evictions = try c.decodeIfPresent(Int.self, forKey: .evictions) ?? 0
+        lastModelJoinMs = try c.decodeIfPresent(Double.self, forKey: .lastModelJoinMs)
+        meanModelJoinMs = try c.decodeIfPresent(Double.self, forKey: .meanModelJoinMs)
+        modelCounters = try c.decodeIfPresent(ModelProbe.Counters.self, forKey: .modelCounters)
+        jobCounters = try c.decodeIfPresent(JobProbe.Counters.self, forKey: .jobCounters)
+        transcriptLookups = try c.decodeIfPresent(Int.self, forKey: .transcriptLookups) ?? 0
+        transcriptUnresolved = try c.decodeIfPresent(Int.self, forKey: .transcriptUnresolved) ?? 0
+    }
 
     /// The join's cost as `ccc stats` reports it. `nil` before the first
     /// tick, so an idle process does not claim a measurement it never took.

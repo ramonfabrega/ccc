@@ -177,6 +177,20 @@ first:
 - **`ccc list --json` writes its issues to stderr.** Exit 3 alone told a
   caller *that* something changed and never *what*; stdout stays pure JSON.
 
+**Amended 2026-09-04 (queue item 4): the far side answers from its app.**
+The 213–284 ms above was the join alone; the whole `ccc list` the hop
+runs was a *cold process* — a fresh `claude agents` spawn plus every
+probe's cache empty — and measured 450–670 ms on studio against the
+app's own 190 ms tick, which is why air's poll cost a whole tick
+(`docs/EVIDENCE.md` "item 4 — the far side answers from the app"). Now
+`ccc list` asks the running app over the control socket for every host's
+slot as it holds it (`ControlRequest.roster`) and prints that; the far
+side's poll therefore reads the same roster studio's window shows, at
+most one tick old, for the price of the hop. `--fresh` asks the app to
+tick first; with no app on the socket the CLI polls itself, as before.
+The one wire rule that made this safe is that a slot decodes with the
+struct's defaults, so a CLI newer than the app still reads its answer.
+
 ## 4b. What actually sleeps is the client (v2, 2026-09-02)
 
 The fan-out was first designed for "N hosts, several of them Macs that come

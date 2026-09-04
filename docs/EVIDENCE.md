@@ -3099,3 +3099,83 @@ One thing to know when reading `ccc focus` right after a cut:
 `scripts/install --dist` relaunches the app, which makes its window key, so
 the first reading is `focus in` and that is correct rather than stuck. It
 flips on the next key change.
+
+## item 4 — the far side answers from the app (2026-09-04)
+
+The queue held item 4 as debt with a number attached: air's studio poll
+ran `mean 1354 ms` against a 2 s tick on the lid night, "because the far
+side's ccc does the transcript join before answering". The first
+measurement said the join was not the cost.
+
+### The cold process was the cost
+
+On studio, with 22 rows, three readers of the same roster:
+
+```
+claude agents --json --all                real 0.14  0.14
+ccc list --json --host local (0.1.23)     real 0.67  0.59  0.45
+ccc stats  →  roster poll  last 188 ms  mean 192 ms   model join  last 9 ms  mean 11 ms
+```
+
+The app's own tick is 190 ms and its join 10 ms. A fresh `ccc list`
+process is 450–670 ms because it is *cold*: a new `claude agents` spawn,
+an empty `ModelProbe`, an empty `JobProbe`, every transcript path
+re-found (a miss stats ~100 wells), and `git rev-list` for every moved
+worktree. That cold process is exactly what the hop runs on every poll,
+so the far side redid, cold, what its own window had warm two seconds
+earlier.
+
+### The fix: `ccc list` asks the app
+
+`ControlRequest.roster(fresh:)` answers with every host's `HostPoll` —
+rows, issues, notes, the last error, when it was polled — as the app
+holds it; `ccc list` tries that first and prints it through the same
+`RosterPoller.State` its own tick would have built. `--fresh` asks the
+app to tick once more first. No app on the socket, an older app that
+answers "malformed request", or a host the app does not know: the CLI
+polls itself, as it always did. `HostPoll` decodes field by field with
+its defaults, so a CLI newer than the app reads the app's answer.
+
+Measured against a headless `ccc attach --headless` of this build on a
+private socket (`CCC_CONTROL_SOCKET`), attached to a haiku fixture, same
+22 rows:
+
+```
+ccc list --json --host local   served     real 0.01  0.01  0.00  0.00  0.00
+ccc list --json --host local   --fresh    real 0.18  0.17  0.18
+```
+
+And across an ssh hop, studio → studio over loopback, which is the shape
+air's poll has minus the latency:
+
+```
+ssh localhost echo ok                                   real 0.08  0.08  0.08
+ssh localhost /opt/homebrew/bin/ccc list … (0.1.23)     real 0.66  0.99  0.73  0.93  0.80
+ssh localhost <new> list …            (served)          real 0.10  0.10  0.09  0.09  0.10
+ssh localhost <new> list … --fresh    (one warm tick)   real 0.28  0.28  0.27
+```
+
+Same rows both ways: 22716 bytes against 22715, the one byte being the
+fixture's `attached` flag, true on the headless server that held it.
+**The far side's answer is now the hop plus ~20 ms**, where it was the
+hop plus 600–900 ms. Air's own number is owed from air (its poll includes
+the tailnet's latency, which loopback does not carry), and the lid
+instrument already prints it.
+
+### The blocking read left with it
+
+`ClaudeCLI.run` now goes through `Subprocess.run`: both pipes drained by
+`DispatchIO`, the exit awaited through `terminationHandler`, cancellation
+terminating the child. `SubprocessTests` pins the three things the
+blocking version could not be trusted to do — no deadlock on a child
+that fills both pipes past 64 KiB, no thread parked per child (32
+concurrent 300 ms sleeps finish in 313 ms), and a cancelled task ends its
+child. `Git.run` and `Tailnet.scan` keep the blocking shape; they are
+synchronous by signature and run off the main actor.
+
+### One trap for the next measurement
+
+`ssh localhost "ccc list …"` exits **127**: the bare name is not on a
+non-login shell's PATH. The host config stores absolute paths, so the real
+poll never hits this — but a timing that forgets it measures a failed
+exec in 80 ms and reports the wrong win.

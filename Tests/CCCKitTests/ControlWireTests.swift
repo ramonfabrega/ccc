@@ -103,6 +103,52 @@ import Testing
         #expect(word?.grain == .word)
     }
 
+    /// `roster` (item 4) carries an optional `fresh`; an older CLI's bare
+    /// `{"roster":{}}` must read as "as you hold it", never as a failure.
+    @Test func rosterCarriesAnOptionalFresh() throws {
+        guard case .roster(let fresh) = try roundTrip(.roster(fresh: true)) else {
+            Issue.record("not a roster")
+            return
+        }
+        #expect(fresh == true)
+        guard case .roster(let bare) = try JSONDecoder().decode(ControlRequest.self, from: Data(#"{"roster":{}}"#.utf8)) else {
+            Issue.record("not a roster")
+            return
+        }
+        #expect(bare == nil)
+    }
+
+    /// The answer is every host's slot as the app holds it. A slot from an
+    /// app older than this CLI carries fewer keys; the CLI reads it with
+    /// the struct's own defaults and never refuses the rows over a counter.
+    @Test func aHostSlotCrossesTheSocketAndTolerantlyBack() throws {
+        var slot = HostPoll(host: "studio")
+        slot.pollCount = 4
+        slot.lastPollMs = 210
+        slot.error = nil
+        slot.issues = [RosterShapeIssue(index: 2, field: "state", message: "unknown value")]
+        slot.notes = ["overlay: unreadable"]
+        let data = try JSONEncoder().encode(ControlResponse.roster([slot]))
+        guard case .roster(let back) = try JSONDecoder.ccc.decode(ControlResponse.self, from: data) else {
+            Issue.record("not a roster")
+            return
+        }
+        #expect(back == [slot])
+
+        let minimal = Data(#"{"host":"air","rows":[],"pollCount":1}"#.utf8)
+        let old = try JSONDecoder.ccc.decode(HostPoll.self, from: minimal)
+        #expect(old.host == "air")
+        #expect(old.pollCount == 1)
+        #expect(old.issues.isEmpty)
+        #expect(old.evictions == 0)
+        #expect(old.error == nil)
+        // The one field with no default is the name: a slot with no host
+        // is not a slot.
+        #expect(throws: (any Error).self) {
+            try JSONDecoder.ccc.decode(HostPoll.self, from: Data(#"{"rows":[]}"#.utf8))
+        }
+    }
+
     /// The far side's `ccc version --json` is read by `hosts check`; a
     /// newer ccc adding fields there must not break an older reader, and
     /// the two fields that carry the number are the ones pinned.

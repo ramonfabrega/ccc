@@ -365,24 +365,14 @@ public struct ClaudeCLI: Sendable {
              program: String,
              cwd: String? = nil,
              environment: [String: String]? = nil) async throws -> (stdout: Data, stderr: String, status: Int32) {
-        let process = Process()
-        process.executableURL = URL(filePath: argv[0])
-        process.arguments = Array(argv.dropFirst())
-        if let cwd { process.currentDirectoryURL = URL(filePath: cwd) }
-        if let environment { process.environment = environment }
-        let out = Pipe(), err = Pipe()
-        process.standardOutput = out
-        process.standardError = err
-        process.standardInput = FileHandle.nullDevice
-        try process.run()
-        // Read both pipes to EOF before waiting, or a full pipe deadlocks.
-        let stdout = out.fileHandleForReading.readDataToEndOfFile()
-        let stderr = err.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let text = String(decoding: stderr, as: UTF8.self)
-        guard accepted.contains(process.terminationStatus) else {
-            throw RunError(status: process.terminationStatus, stderr: text, host: host.name, program: program)
+        // Nonblocking since item 4: the pipes drain as bytes arrive and the
+        // exit is awaited, so a 5 s `ConnectTimeout` against a sleeping Mac
+        // suspends this task instead of parking a pool thread.
+        let output = try await Subprocess.run(argv, cwd: cwd, environment: environment)
+        let text = String(decoding: output.stderr, as: UTF8.self)
+        guard accepted.contains(output.status) else {
+            throw RunError(status: output.status, stderr: text, host: host.name, program: program)
         }
-        return (stdout, text, process.terminationStatus)
+        return (output.stdout, text, output.status)
     }
 }

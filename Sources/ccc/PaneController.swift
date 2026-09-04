@@ -747,6 +747,9 @@ final class PaneController {
         case .list:
             await poller.tick()
             return .list(poller.state.sorted)
+        case .roster(let fresh):
+            if fresh == true { await poller.tick() }
+            return .roster(poller.state.hosts)
         case .attach(let ref):    // a SessionRef; the label is the wire key
             do {
                 return .ok(try await switchTo(ref: ref))

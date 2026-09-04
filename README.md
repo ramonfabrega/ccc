@@ -43,9 +43,12 @@ ccc hosts reconnect [<name>]        # drop the ssh master(s) and poll again — 
 ccc hosts mute|unmute <name>        # no banners for that host's sessions (rows and counts stay)
 
 # the roster
-ccc list [--host <n>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--json]
-                                    # the roster with the model column and what each session is doing (no
-                                    # app needed); --json is always every row, sorted, never grouped
+ccc list [--host <n>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--fresh] [--json]
+                                    # the roster with the model column, the `rc` column (answerable from the
+                                    # Claude app) and what each session is doing; --json is always every row,
+                                    # sorted, never grouped. Answered by the running app's roster when there
+                                    # is one (≤ one tick old, joins warm); --fresh polls once more first, and
+                                    # with no app it polls here
 ccc archive|unarchive|pin|unpin <ref>  # a mark on a session, kept with the session's host
 ccc watch [--host <n>] [--interval S] [--all] [--json]
                                     # one line per transition (blocked, done, failed, stopped); muted hosts

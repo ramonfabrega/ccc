@@ -46,20 +46,11 @@ correct form is the **run-delta**: hold each job's link count when it enters
 own measurement says it draws an empty line nineteen banners in twenty.
 
 Below the frontier: **item 6 is air's** and happens the next time the lid
-closes overnight. Items 4, 5 and 16 are debt, leftovers and one missing
-twin, none with a forcing function. **Items 7 and 14 have left.**
-
-### 4. Debt: the blocking poll read
-
-`ClaudeCLI.run` blocks a pool thread per host for up to its timeout
-(`readDataToEndOfFile`). Fine at two or three hosts; wants a nonblocking
-read before the host list grows. No forcing function yet — but the lid
-night gave it a number: air's studio poll ran **`last 2046 ms  mean
-1354 ms`** against a 2 s tick, because the far side's ccc does the
-transcript join before answering. The remote poll costs about one whole
-tick, so air's roster is always ~2 s stale, the poller never idles, and it
-sits ~1 s under `degradedThreshold` (3 s) — close enough that a slower
-studio would start self-evicting on a healthy hop.
+closes overnight. Items 5 and 16 are leftovers and one missing twin, none
+with a forcing function. **Items 4, 7 and 14 have left** — item 4 on
+2026-09-04 (`docs/EVIDENCE.md` "item 4 — the far side answers from the
+app"): the far side's `ccc list` now answers from its running app's
+roster, and air's measurement of it is owed from the next lid night.
 
 ### 5. Small leftovers
 
