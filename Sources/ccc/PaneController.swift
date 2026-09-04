@@ -677,6 +677,20 @@ final class PaneController {
                 pane.wheel(lines: wheel)
             }
             return .ok("sent")
+        case .select(let region):
+            guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
+            guard let pane = session.host as? GhosttyPane else {
+                return .error("selection needs the ghostty pane; this session is on the \(PaneController.selectedCore) core")
+            }
+            guard let region else {
+                pane.select(nil)
+                return .ok("selection cleared")
+            }
+            guard pane.select(region) else {
+                let size = pane.size
+                return .error("\(region.from.col),\(region.from.row) → \(region.to.col),\(region.to.row) is not on a \(size.cols)x\(size.rows) grid")
+            }
+            return .ok("selected \(region.from.col),\(region.from.row) → \(region.to.col),\(region.to.row)\(region.rectangle ? " (rectangle)" : "")")
         case .resize(let cols, let rows):
             guard let session, session.isRunning else { return .error(AttachError.nothingAttached.description) }
             session.resize(cols: cols, rows: rows)

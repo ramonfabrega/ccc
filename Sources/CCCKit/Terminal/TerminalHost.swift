@@ -60,6 +60,44 @@ extension TerminalHost {
     public var presentation: (frames: Int, lastAt: Date?)? { nil }
 }
 
+/// A region of the viewport to select (item 12b), in the coordinates every
+/// other verb uses: column and row of the grid a snapshot prints, both ends
+/// **inclusive**, so `0,0 → 4,0` is five cells and not four.
+///
+/// `rectangle` is the block selection a terminal makes with ⌥-drag: the same
+/// two corners read as opposite corners of a box instead of as a run of text
+/// that wraps at the right margin. The core does both from these two points,
+/// which is why the flag rides here rather than becoming a second verb.
+public struct SelectionRegion: Codable, Sendable, Equatable {
+    public struct Point: Codable, Sendable, Equatable {
+        public var col: Int
+        public var row: Int
+        public init(col: Int, row: Int) {
+            self.col = col
+            self.row = row
+        }
+    }
+    public var from: Point
+    public var to: Point
+    public var rectangle: Bool
+
+    public init(from: Point, to: Point, rectangle: Bool = false) {
+        self.from = from
+        self.to = to
+        self.rectangle = rectangle
+    }
+
+    public init(fromCol: Int, fromRow: Int, toCol: Int, toRow: Int, rectangle: Bool = false) {
+        self.init(from: Point(col: fromCol, row: fromRow), to: Point(col: toCol, row: toRow), rectangle: rectangle)
+    }
+
+    /// Negative coordinates would clamp to zero on the way into the core's
+    /// `uint16` and silently select from column 0; a host says no instead.
+    public var isNonNegative: Bool {
+        from.col >= 0 && from.row >= 0 && to.col >= 0 && to.row >= 0
+    }
+}
+
 /// The keys `ccc send --key` accepts. Spelled the way a human types them:
 /// `enter`, `shift-enter`, `ctrl-c`, `ctrl-z`, `escape`, `tab`, `up`, `f1`.
 public struct NamedKey: Sendable, Equatable, CustomStringConvertible {

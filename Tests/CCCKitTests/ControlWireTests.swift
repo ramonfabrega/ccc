@@ -64,6 +64,23 @@ import Testing
         #expect(stats.pollCount == 5)
     }
 
+    /// `select` carries a region or a nil that means "clear", and the two
+    /// must stay distinguishable on the wire: a dropped `region` key would
+    /// turn `ccc select 0 0 4 0` into a clear on the far side.
+    @Test func selectCarriesARegionOrAClear() throws {
+        let region = SelectionRegion(fromCol: 1, fromRow: 2, toCol: 3, toRow: 4, rectangle: true)
+        guard case .select(let decoded) = try roundTrip(.select(region: region)) else {
+            Issue.record("not a select")
+            return
+        }
+        #expect(decoded == region)
+        guard case .select(let cleared) = try roundTrip(.select(region: nil)) else {
+            Issue.record("not a select")
+            return
+        }
+        #expect(cleared == nil)
+    }
+
     /// The far side's `ccc version --json` is read by `hosts check`; a
     /// newer ccc adding fields there must not break an older reader, and
     /// the two fields that carry the number are the ones pinned.

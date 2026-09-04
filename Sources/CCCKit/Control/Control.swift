@@ -72,6 +72,14 @@ public enum ControlRequest: Codable, Sendable {
     /// list and opens it the way the click does — so what the hand can
     /// click, a script can name.
     case links(open: Int? = nil)
+    /// Select a region of the pane, or clear it with a nil `region` (item
+    /// 12b). Viewport coordinates, both ends inclusive — the same grid
+    /// `snapshot` prints and `pixel --cell` aims at, so `select` then
+    /// `snapshot --color` (headless) and `select` then `capture` + `pixel`
+    /// (on screen) are two readings of one thing. The pane's own drag does
+    /// not exist yet — the child owns the mouse — so this verb is where a
+    /// selection comes from, rather than a gesture's twin.
+    case select(region: SelectionRegion?)
     /// Where the window is and how big a cell is (v8 slice 3), so a real
     /// `screencapture` can be aimed at this one window and a cell can be
     /// turned into a pixel. Headless servers have no window and say so.

@@ -166,6 +166,15 @@ enum CLI {
             case "resize":
                 guard let cols = rest.first.flatMap({ Int($0) }), let rows = rest.dropFirst().first.flatMap({ Int($0) }) else { return usage() }
                 return try request(.resize(cols: cols, rows: rows), json: json)
+            case "select":
+                // `ccc select COL ROW COL ROW [--rect]`, both ends inclusive;
+                // `ccc select --clear` puts it back.
+                if rest.contains("--clear") { return try request(.select(region: nil), json: json) }
+                let numbers = rest.filter { !$0.hasPrefix("--") }.compactMap { Int($0) }
+                guard numbers.count == 4 else { return usage() }
+                return try request(.select(region: SelectionRegion(
+                    fromCol: numbers[0], fromRow: numbers[1], toCol: numbers[2], toRow: numbers[3],
+                    rectangle: rest.contains("--rect"))), json: json)
             case "stats":
                 return try request(.stats, json: json)
             case "peek":
@@ -1515,6 +1524,10 @@ enum CLI {
                                                   the colour at one pixel; --cell aims at a grid cell
                                                   through the window's geometry, --expect makes the
                                                   exit code the answer
+               ccc select <col> <row> <col> <row> [--rect] | --clear
+                                                  select a region of the pane (both ends inclusive); it
+                                                  paints the theme's selection colours, which
+                                                  `ccc snapshot --color` and `ccc pixel` both read
                ccc geometry [--json]              where the window and its pane are, and the cell size
                ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
                ccc window show|hide|close|resize W H   the window's own gestures (close = Cmd-W)

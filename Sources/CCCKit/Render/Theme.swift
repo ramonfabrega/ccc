@@ -42,11 +42,12 @@ public struct Theme: Sendable, Equatable {
     /// the terminal picks it, and iTerm's pick is an explicit value rather
     /// than an inversion of the cell.
     public var cursorText: Frame.RGB
-    /// Selection colours. **Nothing consumes these yet**: `FrameReader`
-    /// always builds rows with `selection: nil` and the renderer draws no
-    /// selection at all. They are here because they are part of the answer
-    /// to "what are my colours", and because the day selection lands it
-    /// should reach for the theme rather than invent two more constants.
+    /// Selection colours (item 12b). A selected cell paints these two and
+    /// nothing else — not an inversion of what it was wearing, which is
+    /// what v1 did — so the answer to "what colour is a selected cell" is
+    /// the theme's, whatever SGR the child had set. `Theme.selection`
+    /// below is the pair the renderer and the colour oracle both resolve
+    /// through; the core never sees them (`GhosttyHost.install`).
     public var selectionBackground: Frame.RGB
     public var selectionForeground: Frame.RGB
 
@@ -72,6 +73,26 @@ public struct Theme: Sendable, Equatable {
         self.selectionBackground = selectionBackground
         self.selectionForeground = selectionForeground
         self.ansi = ansi
+    }
+
+    /// The pair a selected cell paints in, in the shape colour resolution
+    /// wants it. One value rather than two loose colours because it travels
+    /// as one: `RunMerge.resolvedColors` takes it non-nil for exactly the
+    /// cells inside a row's `selection` range, and nil for every other cell.
+    public var selection: SelectionColors {
+        SelectionColors(foreground: selectionForeground, background: selectionBackground)
+    }
+}
+
+/// What a selected cell paints. Non-nil at a call site means "this cell is
+/// selected"; the colours ride along so no layer below the theme has to know
+/// where they came from.
+public struct SelectionColors: Sendable, Equatable {
+    public var foreground: Frame.RGB
+    public var background: Frame.RGB
+    public init(foreground: Frame.RGB, background: Frame.RGB) {
+        self.foreground = foreground
+        self.background = background
     }
 }
 

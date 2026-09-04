@@ -102,6 +102,18 @@ public final class GhosttyPane: TerminalHost {
 
     public var size: (cols: Int, rows: Int) { metalView.gridSize() }
 
+    /// `ccc select`: the core's selection, and a frame to show it in. The
+    /// pane has no drag of its own yet (the child owns the mouse), so this
+    /// is the only way a selection appears on screen — which is also what
+    /// makes the headless colour oracle and a real `screencapture` able to
+    /// look at the same selected cells (item 12b).
+    @discardableResult
+    public func select(_ region: SelectionRegion?) -> Bool {
+        let done = core.select(region)
+        scheduleFrame()
+        return done
+    }
+
     /// `ccc send --wheel N`: the wheel gesture's twin, at the pane's center.
     /// Same path as a real wheel: the core's mouse encoder when the child
     /// tracks the mouse, arrow keys in the alternate screen otherwise.

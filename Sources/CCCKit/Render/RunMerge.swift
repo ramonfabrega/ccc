@@ -52,20 +52,41 @@ enum RunMerge {
 
     /// Colours after `inverse` is applied. `bg == nil` means "the frame default",
     /// which the renderer skips because the clear colour already painted it.
+    ///
+    /// `selected` non-nil is a cell inside the row's selection (item 12b),
+    /// and it **wins outright**: the two theme colours, not an inversion of
+    /// what the cell was wearing. That is a rule a golden can state in one
+    /// sentence — a selected cell is `#000000` on `#B3D7FF` whatever SGR
+    /// the child had set — and it is why selection resolves here rather
+    /// than in `FrameReader`: the renderer and the colour oracle share this
+    /// function, so they cannot disagree about it (item 12a's rule).
     static func resolvedColors(
-        _ cell: Frame.Cell, frame background: Frame.RGB, foreground: Frame.RGB
+        _ cell: Frame.Cell, frame background: Frame.RGB, foreground: Frame.RGB,
+        selected: SelectionColors? = nil
     ) -> (fg: Frame.RGB, bg: Frame.RGB?) {
+        if let selected { return (selected.foreground, selected.background) }
         if cell.flags.contains(.inverse) {
             return (cell.bg ?? background, cell.fg ?? foreground)
         }
         return (cell.fg ?? foreground, cell.bg)
     }
 
+    /// The selection colours for column `x`, or nil when it is outside the
+    /// row's selected range — the one place that joins the range (the core's
+    /// word, carried on the row) to the colours (the theme's).
+    static func selected(
+        _ x: Int, in row: Frame.Row, _ selection: SelectionColors?
+    ) -> SelectionColors? {
+        guard let selection, let range = row.selection, range.contains(x) else { return nil }
+        return selection
+    }
+
     static func style(
-        of cell: Frame.Cell, frame background: Frame.RGB, foreground: Frame.RGB
+        of cell: Frame.Cell, frame background: Frame.RGB, foreground: Frame.RGB,
+        selected: SelectionColors? = nil
     ) -> RunStyle {
         RunStyle(
-            fg: resolvedColors(cell, frame: background, foreground: foreground).fg,
+            fg: resolvedColors(cell, frame: background, foreground: foreground, selected: selected).fg,
             bold: cell.flags.contains(.bold),
             italic: cell.flags.contains(.italic),
             faint: cell.flags.contains(.faint),
@@ -80,12 +101,14 @@ enum RunMerge {
     /// whose background resolves to nil, or to the frame default, produce no
     /// span at all: the clear already drew them.
     static func backgroundSpans(
-        _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB
+        _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
+        selection: SelectionColors? = nil
     ) -> [BackgroundSpan] {
         var spans: [BackgroundSpan] = []
         var current: BackgroundSpan?
         for (x, cell) in row.cells.enumerated() {
-            let bg = resolvedColors(cell, frame: background, foreground: foreground).bg
+            let bg = resolvedColors(cell, frame: background, foreground: foreground,
+                                    selected: selected(x, in: row, selection)).bg
             let painted: Frame.RGB? = (bg == nil || bg == background) ? nil : bg
             if let painted, var open = current, open.color == painted, open.x + open.length == x {
                 open.length += 1
@@ -114,7 +137,8 @@ enum RunMerge {
     }
 
     static func decorationSpans(
-        _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB
+        _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
+        selection: SelectionColors? = nil
     ) -> [DecorationSpan] {
         var spans: [DecorationSpan] = []
         var current: DecorationSpan?
@@ -127,7 +151,8 @@ enum RunMerge {
                 current = nil
                 continue
             }
-            let fg = resolvedColors(cell, frame: background, foreground: foreground).fg
+            let fg = resolvedColors(cell, frame: background, foreground: foreground,
+                                    selected: selected(x, in: row, selection)).fg
             let span = DecorationSpan(
                 x: x, length: 1,
                 underline: cell.underline,
@@ -162,7 +187,8 @@ enum RunMerge {
     /// it: there is no glyph to shape, and keeping a run of spaces alive only
     /// makes the shaped text longer for nothing.
     static func textRuns(
-        _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB
+        _ row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
+        selection: SelectionColors? = nil
     ) -> [TextRun] {
         var runs: [TextRun] = []
         var current: TextRun?
@@ -192,7 +218,8 @@ enum RunMerge {
                 continue
             }
 
-            let style = style(of: cell, frame: background, foreground: foreground)
+            let style = style(of: cell, frame: background, foreground: foreground,
+                              selected: selected(x, in: row, selection))
             // A wide cell normally owns one cell here and one more when its
             // spacer tail arrives next iteration. Frames that omit the tail
             // still get the two cells they occupy.

@@ -82,7 +82,8 @@ final class FrameReader {
                 x += 1
             }
             while rowCellsOut.count < Int(cols) { rowCellsOut.append(.blank) }
-            frameRows.append(Frame.Row(y: y, dirty: dirty == .full || rowDirty, cells: rowCellsOut, selection: nil))
+            frameRows.append(Frame.Row(y: y, dirty: dirty == .full || rowDirty,
+                                       cells: rowCellsOut, selection: selection(of: iterator, cols: Int(cols))))
             y += 1
         }
 
@@ -180,11 +181,34 @@ final class FrameReader {
             }
         }
 
-        var selected = false
-        _ = ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_SELECTED, &selected)
-        if selected { cell.flags.insert(.inverse) }   // v1 selection policy: invert; refine with a selection color later
-
         return cell
+    }
+
+    /// The row's selected columns, or nil when the selection misses this
+    /// row. **Once per row, not once per cell** — `render.h` says so
+    /// outright about `..._CELLS_DATA_SELECTED` ("prefer querying
+    /// GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION once per row"), and reading
+    /// it per cell is what v1 did: one C call per cell per frame to answer
+    /// a question the row already knew, on a grid of ~4,400 cells.
+    ///
+    /// The range is what is *selected*; the colours it paints in are the
+    /// theme's, applied at resolution time (`RunMerge.resolvedColors`), so
+    /// a `Frame` still carries only what the core said.
+    private func selection(of iterator: GhosttyRenderStateRowIterator?, cols: Int) -> Range<Int>? {
+        var selection = GhosttyRenderStateRowSelection()
+        selection.size = MemoryLayout<GhosttyRenderStateRowSelection>.size   // sized struct, see above
+        // GHOSTTY_NO_VALUE — this row does not intersect the selection —
+        // is the common answer and is not an error.
+        guard ghostty_render_state_row_get(iterator, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &selection) == GHOSTTY_SUCCESS
+        else { return nil }
+        // Both ends inclusive. Normalized and clamped rather than trusted:
+        // a selection's *endpoints* are documented as possibly reversed
+        // (selection.h), and a row narrower than the range would index
+        // past the cells we built.
+        let low = min(Int(selection.start_x), Int(selection.end_x))
+        let high = min(max(Int(selection.start_x), Int(selection.end_x)), cols - 1)
+        guard low <= high, low >= 0 else { return nil }
+        return low..<(high + 1)
     }
 
     private func rgb(_ c: GhosttyColorRgb) -> Frame.RGB { Frame.RGB(c.r, c.g, c.b) }

@@ -193,9 +193,68 @@ public final class GhosttyHost: TerminalHost {
         }
     }
 
+    // MARK: selection
+
+    /// Select a region of the viewport, both ends inclusive, or clear the
+    /// selection with `nil` (item 12b). Coordinates are the ones every other
+    /// verb here uses — column and row of the *viewport*, the grid a
+    /// snapshot prints — never screen or history points.
+    ///
+    /// This is the only producer of a selection in ccc. The child owns the
+    /// mouse (Claude Code keeps tracking on and does its own selection with
+    /// a drag, see `LinkScanner`), so a local drag-select would have to be a
+    /// gesture the child does not want, the way ⌘-click is; that gesture is
+    /// not here yet, and this is what stands in for it — and what a golden
+    /// and `ccc select` both drive.
+    ///
+    /// Returns false when a point is off the grid, which is the core's
+    /// answer, not a guess of ours.
+    @discardableResult
+    public func select(_ region: SelectionRegion?) -> Bool {
+        guard let terminal else { return false }
+
+        guard let region else {
+            let cleared = ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, nil) == GHOSTTY_SUCCESS
+            needsFullRedraw = needsFullRedraw || cleared
+            return cleared
+        }
+
+        func ref(col: Int, row: Int) -> GhosttyGridRef? {
+            var point = GhosttyPoint()
+            point.tag = GHOSTTY_POINT_TAG_VIEWPORT
+            point.value.coordinate = GhosttyPointCoordinate(x: UInt16(clamping: col), y: UInt32(clamping: row))
+            var out = GhosttyGridRef()
+            out.size = MemoryLayout<GhosttyGridRef>.size   // sized struct, as everywhere in this API
+            guard ghostty_terminal_grid_ref(terminal, point, &out) == GHOSTTY_SUCCESS else { return nil }
+            return out
+        }
+        guard region.isNonNegative, let start = ref(col: region.from.col, row: region.from.row),
+              let end = ref(col: region.to.col, row: region.to.row) else { return false }
+
+        var selection = GhosttySelection()
+        selection.size = MemoryLayout<GhosttySelection>.size
+        selection.start = start
+        selection.end = end
+        selection.rectangle = region.rectangle
+        // The core copies the selection and tracks it itself, so the grid
+        // refs above do not have to outlive this call.
+        let done = ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS
+        // Only a selection that took needs a frame; a refused one changed
+        // nothing on screen.
+        needsFullRedraw = needsFullRedraw || done
+        return done
+    }
+
     // MARK: frames (the renderer's input)
 
     private var frameReader: FrameReader?
+
+    /// Set when something *we* changed has to reach the screen even though
+    /// the terminal's own dirty tracking saw no writes: a selection. The
+    /// render state's dirty level is recomputed from the terminal on every
+    /// `update`, so it cannot be pre-set — the frame is marked instead, on
+    /// the renderer's path only.
+    private var needsFullRedraw = false
 
     /// The resolved viewport for the renderer, as a delta since the last
     /// call (see `FrameReader`). Separate from `snapshot()`, which is the
@@ -203,7 +262,13 @@ public final class GhosttyHost: TerminalHost {
     public func frame() -> Frame? {
         guard let terminal else { return nil }
         if frameReader == nil { frameReader = FrameReader(terminal: terminal) }
-        return frameReader?.read()
+        guard var frame = frameReader?.read() else { return nil }
+        if needsFullRedraw {
+            needsFullRedraw = false
+            frame.dirty = .full
+            for index in frame.rows.indices { frame.rows[index].dirty = true }
+        }
+        return frame
     }
 
     // MARK: snapshot
@@ -240,7 +305,7 @@ public final class GhosttyHost: TerminalHost {
         // the renderer paints from, and the text above is it with every
         // colour dropped. Item 12a is only ever this: stop dropping it when
         // asked (`ColorSpans`).
-        if colors { grid.colors = ColorSpans.build(frame: frame) }
+        if colors { grid.colors = ColorSpans.build(frame: frame, selection: theme.selection) }
         return grid
     }
 

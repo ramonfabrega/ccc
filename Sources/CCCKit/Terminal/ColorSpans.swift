@@ -22,7 +22,10 @@ public enum ColorSpans {
     /// it" — is reported as the frame background, because the question a
     /// golden asks is what is on the screen, not which code path put it
     /// there.
-    static func build(row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB) -> [Grid.ColorSpan] {
+    static func build(
+        row: Frame.Row, background: Frame.RGB, foreground: Frame.RGB,
+        selection: SelectionColors? = nil
+    ) -> [Grid.ColorSpan] {
         var spans: [Grid.ColorSpan] = []
         var column = 0
         for cell in row.cells {
@@ -30,7 +33,8 @@ public enum ColorSpans {
             // it carries the head's colours and is merged into it by the
             // equality below. Counting it keeps `col` in step with the text
             // line, which pads a wide glyph with a following space.
-            let resolved = RunMerge.resolvedColors(cell, frame: background, foreground: foreground)
+            let resolved = RunMerge.resolvedColors(cell, frame: background, foreground: foreground,
+                                                   selected: RunMerge.selected(column, in: row, selection))
             let fg = resolved.fg
             let bg = resolved.bg ?? background
             if var last = spans.last, last.fg == fg, last.bg == bg {
@@ -46,8 +50,14 @@ public enum ColorSpans {
 
     /// Every row of a frame. Nil rows are impossible here — a frame read
     /// without consuming dirty state carries the whole viewport.
-    static func build(frame: Frame) -> [[Grid.ColorSpan]] {
-        frame.rows.map { build(row: $0, background: frame.background, foreground: frame.foreground) }
+    ///
+    /// `selection` is the theme's pair, handed in by the host that owns the
+    /// theme, so a selected cell reads the same here as it paints on screen
+    /// (item 12b).
+    static func build(frame: Frame, selection: SelectionColors? = nil) -> [[Grid.ColorSpan]] {
+        frame.rows.map {
+            build(row: $0, background: frame.background, foreground: frame.foreground, selection: selection)
+        }
     }
 }
 

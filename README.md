@@ -37,7 +37,8 @@ ccc hosts [add <n> --ssh <d>|remove <n>|check]  # the Macs ccc can reach; check 
 ccc list [--host <name>] [--json]   # the roster with the model column (no app needed)
 ccc attach <ref> [--headless]       # attach in the window, or headless: a PTY + the socket, no window
                                     # <ref> is `id` on this Mac, `host:id` anywhere else
-ccc snapshot [--json]               # the pane's grid as text — how an agent sees what you see
+ccc snapshot [--json] [--color]     # the pane's grid as text — how an agent sees what you see
+                                    # --color adds the resolved #RRGGBB per run: colour with no screen
 ccc send "text" | --key ctrl-z      # type; named keys go through the core's key encoder
 ccc send --paste <text>|- | --wheel N  # paste framed as the child negotiated (- reads stdin); scroll
 ccc detach | resize <c> <r> | stats # detach; resize (headless); memory / poll + model-join cost / PTY B/s
@@ -48,6 +49,9 @@ ccc capture [out.png] [--json]      # PNG of the window AS IT IS ON SCREEN, via 
 ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect '#RRGGBB' [--tolerance N]]
                                     # the colour at one pixel; --cell aims through the window's geometry,
                                     # --expect makes the exit code the answer, so a script can judge a colour
+ccc select <c> <r> <c> <r> [--rect] | --clear
+                                    # select a region of the pane (both ends inclusive) in the theme's
+                                    # selection colours; the pane has no drag yet — the child owns the mouse
 ccc geometry [--json]               # the window id screencapture wants, the pane's rect, the cell size
 ccc theme [--json]                  # the pane's colours: 16 ANSI + 6 specials, with a swatch per row
                                     # --json is the shape CCC_THEME reads; 16-255 are the xterm cube, not a choice

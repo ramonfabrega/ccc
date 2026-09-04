@@ -45,12 +45,14 @@ public final class MetalRenderer {
 
     private var hasRendered = false
     /// The colours the core was built with. The renderer needs its own copy
-    /// because two of them never travel in a `Frame`: the core has no
-    /// cursor-text or selection colour to hand us (`render.h` leaves
+    /// because three of them never travel in a `Frame`: the core has no
+    /// cursor-text or selection colours to hand us (`render.h` leaves
     /// "rendering policy for selected cells" to the caller), so this is
-    /// where they live. Everything else in a frame — default fg/bg, cursor,
-    /// every resolved cell colour — already comes out of the same theme by
-    /// way of the core, and is read from the frame, not from here.
+    /// where they live — the frame says *which* cells are selected (a range
+    /// per row) and the theme says what that looks like. Everything else in
+    /// a frame — default fg/bg, cursor, every resolved cell colour — already
+    /// comes out of the same theme by way of the core, and is read from the
+    /// frame, not from here.
     public var theme: Theme = .active
 
     private let log = Logger(subsystem: "app.cuanto.ccc", category: "MetalRenderer")
@@ -294,10 +296,16 @@ public final class MetalRenderer {
         let baseline = metrics.baselinePixels
         let scale = metrics.scale
 
+        // The theme's, not the frame's: the core has no selection colour to
+        // resolve into a cell (`GhosttyHost.install`), so the pair enters
+        // here and in `ColorSpans` — the two places that turn a frame into
+        // something visible — and nowhere else.
+        let selection = theme.selection
+
         for row in frame.rows {
             let top = CGFloat(row.y) * cellH
 
-            for span in RunMerge.backgroundSpans(row, background: frame.background, foreground: foreground) {
+            for span in RunMerge.backgroundSpans(row, background: frame.background, foreground: foreground, selection: selection) {
                 batch.solids.append(SolidInstance(
                     rect: SIMD4<Float>(
                         Float(CGFloat(span.x) * cellW), Float(top),
@@ -307,11 +315,11 @@ public final class MetalRenderer {
                 ))
             }
 
-            for span in RunMerge.decorationSpans(row, background: frame.background, foreground: foreground) {
+            for span in RunMerge.decorationSpans(row, background: frame.background, foreground: foreground, selection: selection) {
                 appendDecoration(span, top: top, metrics: metrics, into: &batch.solids)
             }
 
-            for run in RunMerge.textRuns(row, background: frame.background, foreground: foreground) {
+            for run in RunMerge.textRuns(row, background: frame.background, foreground: foreground, selection: selection) {
                 let color = Self.color(run.style.fg, alpha: run.style.faint ? 0.6 : 1)
                 appendGlyphs(
                     run.text,

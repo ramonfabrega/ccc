@@ -1316,3 +1316,96 @@ Colour` pins that.
 The SwiftTerm escape hatch answers `colors: nil` rather than empty runs —
 `GridBuilder` reads text alone, and an empty array would read to a golden
 as "no colour anywhere" instead of "this core cannot say". 307 tests.
+
+## v9 slice 3 — 12b: a selected cell wears the theme (2026-09-03)
+
+Queue item 12b. `Theme` has carried `selectionBackground` / `selection
+Foreground` since v8 and nothing read them; `FrameReader` set every row's
+`selection` to nil and inverted selected cells instead (`if selected {
+cell.flags.insert(.inverse) }`). Both are gone: the row carries the
+range, the theme carries the colours, and `RunMerge.resolvedColors`
+joins them.
+
+### The finding that shaped the slice: there was no producer
+
+**Nothing in ccc could make a selection at all.** The core's selection is
+set by the host through `GHOSTTY_TERMINAL_OPT_SELECTION` and ccc never
+called it, so `..._CELLS_DATA_SELECTED` was false for every cell of every
+frame ever read — the inversion above had never once run in the app. The
+child owns the mouse (Claude Code keeps tracking on and does its own
+drag-selection, v7 slice 2), so a local drag has to be a gesture the
+child does not want, the way ⌘-click is, and that is not built. Shipping
+the colours alone would have been shipping unreachable code, so the slice
+carries the producer with them:
+
+    ccc select <col> <row> <col> <row> [--rect]      both ends inclusive
+    ccc select --clear
+    GhosttyHost.select(SelectionRegion?) -> Bool     nil clears; false = off the grid
+
+### The rule: selection wins outright
+
+A selected cell paints the theme's two colours whatever the child had
+set — not an inversion of them. One sentence a golden can state, and it
+resolves in `RunMerge.resolvedColors`, the function the renderer and the
+colour oracle already share (12a), so the pane and `ccc snapshot --color`
+cannot come apart on it. Live, on a real attached pane (`ad19c590`,
+headless on a private `CCC_CONTROL_SOCKET` so the running app was not
+touched):
+
+    ccc select 2 3 40 3        → selected 2,3 → 40,3
+    ccc snapshot --color       0+2   #DCDCDC on #15191F
+                               2+39  #000000 on #B3D7FF     39 cells: both ends inclusive
+                               41+49 #DCDCDC on #15191F
+    ccc select 5 2 10 4 --rect → rows 2,3,4 each 5+6 on #B3D7FF   a block, not three lines
+    ccc select 0 0 200 0       → ccc: 0,0 → 200,0 is not on a 80x21 grid   (exit 1)
+    ccc select --clear         → no #B3D7FF run anywhere
+
+### Two things the C API decided for us
+
+**Once per row, not once per cell.** `render.h` says it outright about
+`..._CELLS_DATA_SELECTED` ("prefer querying `..._ROW_DATA_SELECTION` once
+per row"), and v1 was doing the per-cell read: one C call per cell per
+frame — ~4,400 on a full pane — to answer a question the row already
+knew. The row-local range is one call and is what `Frame.Row.selection`
+now holds.
+
+**And the bench cannot see it, which is stated rather than dressed up.**
+`ccc bench Fixtures/attach/attach.bin --repeat 300`, release, A/B by
+putting the per-cell read back and rebuilding: row-local 0.180 ms best of
+8 runs (0.18–0.28), per-cell 0.201 ms best of 4 (0.20–0.22). The best
+runs lean the right way by ~10% and the distributions overlap completely
+— studio had three other agents on it. So the claim here is structural
+(a call per row instead of a call per cell, on the API's own advice), not
+a measured win; a quiet machine could resolve it.
+
+**Selecting does not dirty the terminal.** `Screen.select` (vendored
+`src/terminal/Screen.zig:2879`) tracks pins and marks nothing dirty — the
+embedder's renderer is expected to know it changed. Nothing is written to
+the terminal either, so the render state's dirty level stays `false` and
+`MetalRenderer.shouldDraw` would skip the frame: the pane would keep
+showing an unselected grid until the child next printed. `GhosttyHost`
+marks the *next* frame full instead (`needsFullRedraw`), on the
+renderer's path only, so `snapshot()` still consumes nothing.
+`selectingForcesTheNextFrameToRedraw` pins both halves — full once, clean
+after.
+
+### Down to pixels
+
+`aSelectedCellIsBlueInTheRenderedPixels` renders a selected frame through
+the real Metal renderer into an offscreen texture and reads the image
+back: the selected blank cell's centre is `#B3D7FF`, an unselected blank
+is `#15191F`, and across the whole of a selected *glyph* cell no pixel is
+the default background while some are neither ground nor default — the
+glyph, drawn on the selection. Sampled at cell centres, the way
+`WindowGeometry.pixel` aims `ccc pixel --cell`, and spelled `#RRGGBB` so
+a future `ccc capture` of the same thing is comparable by string
+equality. **Not run through a real `screencapture`**: that permission
+still belongs to whoever asks, and this job's terminal does not have it
+(the same gap 12a recorded).
+
+Ten tests (`SelectionTests`) plus one wire test — `select` carries a
+region or a nil that means clear, and the two must stay distinguishable
+or `ccc select 0 0 4 0` becomes a clear on an older far side. 318 tests.
+Not done, and now unblocked rather than blocked: the drag gesture itself
+(which modifier, and what ⌘C copies — the core has
+`ghostty_terminal_selection_format_buf` for the text).
