@@ -385,6 +385,20 @@ final class PaneController {
     /// fields become a command.
     func spawn(_ request: SpawnRequest, on hostName: String) async throws -> SpawnResult {
         let cli = try cli(for: SessionRef(host: hostName, id: "-"))
+        // The same two refusals `ccc spawn` makes (item 19), off the roster
+        // the app is already holding — no extra poll here, which is the
+        // whole reason `SpawnGuard` is pure over rows. The sheet has no
+        // `--replace`, so the message names the verb instead.
+        let landing = (request.worktree == nil && request.base == nil) ? request.cwd : nil
+        if let held = SpawnGuard.nameHolder(for: request, on: hostName, cwd: landing, rows: poller.state.rows) {
+            throw SpawnError(description: held.said)
+        }
+        if hosts.hosts.first(where: { $0.name == hostName })?.isLocal == true {
+            let probe = request.cwd ?? FileManager.default.currentDirectoryPath
+            if let refusal = SpawnGuard.spaceRefusal(SpawnGuard.space(at: probe), floorGB: SpawnGuard.floorGB()) {
+                throw SpawnError(description: refusal)
+            }
+        }
         let result = try await cli.spawn(request)
         await poller.tick()
         return result

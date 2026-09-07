@@ -268,6 +268,35 @@ public struct ClaudeCLI: Sendable {
         public var said: String
     }
 
+    /// `claude stop <id>` on this host: end a running background session
+    /// and keep everything — "Its conversation is kept; resume it later
+    /// with `claude attach <id>`", and the worktree is untouched, which is
+    /// what separates it from `rm`. It works only on a live session (`rm`
+    /// is the one that works on an exited one).
+    ///
+    /// ccc had no verb for this until 2026-09-06 even though `stopped` has
+    /// been a state on every row since v1 — the twin rule biting from the
+    /// read side (a state ccc could show and never produce). `ccc spawn
+    /// --replace` needs it, and a stop that existed only inside `--replace`
+    /// would be the same gap one level down.
+    public func stopArgv(id: String) -> [String] {
+        argv(["stop", id], tty: false)
+    }
+
+    public struct StopResult: Sendable {
+        public var stopped: Bool
+        /// What the harness said, stdout and stderr in the order they came.
+        public var said: String
+    }
+
+    public func stop(id: String) async throws -> StopResult {
+        try prepareControlDirectory()
+        let result = try await run(stopArgv(id: id), accepting: [0, 1], program: "claude")
+        let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return StopResult(stopped: result.status == 0, said: said)
+    }
+
     public func rm(id: String) async throws -> RmResult {
         try prepareControlDirectory()
         let result = try await run(rmArgv(id: id), accepting: [0, 1], program: "claude")

@@ -147,6 +147,7 @@ public struct SpawnResult: Codable, Sendable, Equatable {
 
 public struct SpawnError: Error, CustomStringConvertible, Sendable {
     public var description: String
+    public init(description: String) { self.description = description }
 }
 
 extension ClaudeCLI {

@@ -80,6 +80,13 @@ enum CLI {
                     return 2
                 }
                 return try await rm(ref: ref, json: json)
+            case "stop":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await stop(ref: ref, json: json)
             case "spawn", "new":
                 return try await spawn(rest, json: json)
             case "merge":
@@ -532,6 +539,31 @@ enum CLI {
         return result.removed ? 0 : 1
     }
 
+    /// Stop a session: `claude stop` behind the ref's host prefix. The
+    /// conversation and the worktree both stay — `rm` is the one that
+    /// deletes. `stopped` has been a state on every row since v1 with no
+    /// verb to produce it; this is that verb, and `spawn --replace` is its
+    /// first caller.
+    static func stop(ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let result = try await cli.stop(id: ref.id)
+        if json {
+            printJSON(["ref": ref.description, "stopped": result.stopped ? "true" : "false", "said": result.said])
+        } else {
+            print(result.said)
+        }
+        return result.stopped ? 0 : 1
+    }
+
     /// `ccc spawn` (v5): `claude --bg` on a host, the New Session sheet's
     /// twin. Needs no running app; `--attach` then asks the app to attach,
     /// the way `ccc attach` does. The prompt is every word that is not a
@@ -544,6 +576,9 @@ enum CLI {
         var hostFlag: String?
         var from: SessionRef?
         var attach = false
+        var replace = false
+        var allowDuplicate = false
+        var noSpaceCheck = false
         var words: [String] = []
         var i = 0
         while i < args.count {
@@ -576,6 +611,11 @@ enum CLI {
             switch arg {
             case "--attach": attach = true
             case "--rc", "--remote-control": spec.rc = true
+            // The two guards' escape hatches (item 19). ccc refuses; it
+            // never forbids, so each refusal names the flag that means it.
+            case "--replace": replace = true
+            case "--allow-duplicate": allowDuplicate = true
+            case "--no-space-check": noSpaceCheck = true
             // `--worktree` is bare (the harness names it) or `--worktree=<name>`:
             // never `--worktree <name>`, which would eat the prompt's first word.
             case "--worktree": spec.worktree = ""
@@ -623,17 +663,30 @@ enum CLI {
             stderr("ccc: \(host.validate() ?? "claude not found for host '\(hostName)'")")
             return 1
         }
+        // One poll answers both the fork's lookup and the name guard, so a
+        // named spawn costs one `claude agents --json` and no more.
+        var rows: [SessionRow]?
+        if from != nil || (spec.name?.isEmpty == false && !allowDuplicate) {
+            let poller = RosterPoller(cli: cli)
+            await poller.tick()
+            if let failed = poller.state.failures.first {
+                // A roster ccc cannot read is not a reason to refuse a
+                // spawn — it is a reason to say so and let the fork's
+                // lookup, which genuinely needs it, be the one that fails.
+                if from != nil {
+                    stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")")
+                    return 1
+                }
+                stderr("ccc: \(failed.host): \(failed.error ?? "unreachable") — spawning without the name check")
+            } else {
+                rows = poller.state.rows
+            }
+        }
         // The source's row: `--resume` needs the full session id (the
         // short one opens the harness's picker — docs/HARNESS.md), and the
         // row is where that id and the source's folder are.
         if let from {
-            let poller = RosterPoller(cli: cli)
-            await poller.tick()
-            if let failed = poller.state.failures.first {
-                stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")")
-                return 1
-            }
-            guard let row = poller.state.rows.first(where: { $0.ref == from }) else {
+            guard let row = (rows ?? []).first(where: { $0.ref == from }) else {
                 stderr("ccc: no session \(from) in the roster of \(host.name)")
                 return 1
             }
@@ -643,6 +696,35 @@ enum CLI {
             }
             spec.from = sessionId
             if spec.cwd == nil { spec.cwd = row.session.cwd }
+        }
+        // Item 19a: a live job already answering to this name. The cwd the
+        // guard compares is the one the session will run in — which is not
+        // `spec.cwd` when a worktree is about to be cut, so that case
+        // reports no folder rather than the wrong one.
+        if let rows, !allowDuplicate {
+            let landing = (spec.worktree == nil && spec.base == nil) ? spec.cwd : nil
+            if let held = SpawnGuard.nameHolder(for: spec, on: host.name, cwd: landing, rows: rows) {
+                guard replace else {
+                    stderr("ccc: \(held.said)")
+                    return 1
+                }
+                let stopped = try await cli.stop(id: held.ref.id)
+                guard stopped.stopped else {
+                    stderr("ccc: --replace could not stop \(held.ref): \(stopped.said)")
+                    return 1
+                }
+                stderr("ccc: stopped \(held.ref) (\(held.name)) before respawning it")
+            }
+        }
+        // Item 19b: the disk the session would land on. Local only — the
+        // far side's ccc guards its own volume, and a `df` over ssh would
+        // put a round trip in front of every remote spawn.
+        if !noSpaceCheck, host.isLocal {
+            let probe = spec.cwd ?? FileManager.default.currentDirectoryPath
+            if let refusal = SpawnGuard.spaceRefusal(SpawnGuard.space(at: probe), floorGB: SpawnGuard.floorGB()) {
+                stderr("ccc: \(refusal)")
+                return 1
+            }
         }
         let result: SpawnResult
         do {
@@ -1747,7 +1829,7 @@ enum CLI {
                                                   a terminal reports focus, so `out` is what says nobody is here
                ccc spawn [--host <name>] [--cwd <dir>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
                          [--rc] [--effort <e>] [--worktree[=<name>]] [--base <branch>] [--from <ref>] [--attach] [--json]
-                         [<prompt>... | -]
+                         [--replace|--allow-duplicate] [--no-space-check] [<prompt>... | -]
                                                   `claude --bg` on a host (cwd: here, or the far side's home); the
                                                   prompt is the remaining words, or stdin for `-`; none makes a
                                                   draft that waits for one; --from forks a new session off <ref>'s
@@ -1755,7 +1837,12 @@ enum CLI {
                                                   (`--resume <session id> --fork-session`); --attach opens it in the app.
                                                   --permission-mode defaults to auto. --worktree from a folder on the
                                                   default branch is the harness's; from any other branch, or with
-                                                  --base, ccc cuts the worktree off that branch and records the base
+                                                  --base, ccc cuts the worktree off that branch and records the base.
+                                                  A --name a LIVE job already answers to is refused (messages and the
+                                                  roster would resolve to whichever started last): --replace stops
+                                                  that one first, --allow-duplicate means it. A local spawn under
+                                                  the free-space floor is refused too (CCC_SPAWN_FLOOR_GB, default
+                                                  10; 0 or --no-space-check turns it off)
                ccc base <ref> [<branch> | --clear]  what the worktree branch is measured against and lands on: read,
                                                   record (a worktree cut by hand), or forget — `branch.<b>.ccc-base`
                                                   in the repo's config; VS Code's vscode-merge-base is honoured too
@@ -1779,6 +1866,8 @@ enum CLI {
                ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
                                                   default branch — to origin, never forced; git's own refusal is the
                                                   answer (exit 1; nothing changes anywhere)
+               ccc stop <ref> [--json]            end a running session; its conversation and its worktree are kept
+                                                  (`ccc attach` resumes it). `ccc rm` is the one that deletes
                ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
                ccc resize <cols> <rows>
                ccc stats [--json]
