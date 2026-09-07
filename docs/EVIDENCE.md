@@ -4839,3 +4839,30 @@ a banner (`SessionEvent.drawsBanner`). What this does *not* answer is
 whether `pushed` fires once per *landing* as against once per *push* —
 `loop-280` pushed twice 42 s apart and would have drawn twice. A live run
 with attrition's merge log as independent ground truth is still owed.
+
+**Resolved the same day, by the only party who could.** Reflogs show that
+a branch pushed twice; they cannot show *why*. attrition read the three
+double-pushes at cause and **all three were one landing each, none a
+mid-item checkpoint**: `loop-280`'s 42 s pair is `fb371df` (the item) then
+`6de474e`, a follow-up correcting its own paperwork; `lane-run88` is the
+capture and then a memcap measurement **the commander asked for after the
+first push**; `lane-272` is the same shape.
+
+So `pushed` fires **once per push, at ~1.14 pushes per landing**, and the
+excess is a commander asking for one more thing — a normal event in that
+loop, which will keep happening. Its own verdict is to ship at that rate
+and not suppress the follow-ups: the cost is a second look at a branch it
+was about to merge anyway, against the error it made all day, which was
+not looking at all.
+
+**What `pushed` means, stated so nothing overstates it later**: not "this
+worker is done" — nothing keyed on refs can know that, and neither can the
+worker — but *the branch changed and is now publishable*. **The merge is
+the only event that means "landing", and only the commander can emit it**,
+being a judgement: gate green, paperwork booked, successors taken. No
+detector should try to infer it, which is also why the kind's manifest
+line says "the branch tip moved" and claims nothing further.
+
+What is still owed from a live run is narrower than the rate: whether the
+detector fires reliably under real concurrency, two workers wide. One
+session cannot answer that.

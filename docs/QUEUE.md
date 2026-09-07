@@ -105,11 +105,11 @@ ahead. Built 2026-09-07 as `SessionEvent.landed`, keyed on the branch tip
 — a join on the reading the ⇡⇣ marks already pay for (`docs/EVIDENCE.md`
 "the stall stream's first run", "the landing detector").
 
-**Both halves fired live** on studio, and history priced the rate first:
-over 21 of attrition's worker branches, **24 pushes against 32 commits on
-the four unmerged** — the banner half ~1.1 per landing (`docs/EVIDENCE.md`
-"the landing rate"). **One live run is left**, gated on a release: does
-`pushed` fire per *landing* or per *push* (`loop-280` pushed twice, 42 s)?
+**Both halves fired live**, and the rate is settled: **24 pushes over 21 of
+attrition's worker branches**, every excess one a follow-up inside the same
+landing, and its verdict is to ship at that (`docs/EVIDENCE.md` "the landing
+rate"). `pushed` means *publishable*, never *done* — only a commander emits
+a landing. A live run owes one thing: does it fire two workers wide.
 
 ### 28. The fd rule is prose, and it has already failed once
 
