@@ -4507,3 +4507,30 @@ always-on studio, "unlocked" would suppress push all day.
 Fixtures removed with `claude stop` + `claude rm`, the throwaway cwd
 deleted, and the pane put back on the session it was holding before
 (`ccc attach a18a763f`, which `attach` had left on the way in).
+
+## Cut as v0.1.30 (2026-09-07)
+
+Item 17's two fixes, the night they were measured. `spctl` accepted, both
+CDN keys, the live feed equal to the zip, the Release with the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 212 length 5293918
+ota verify --feed ccc    →  ok: … version 212 length 5293918
+gh release view v0.1.30  →  {"assets":["ccc-v0.1.30.zip"], "tag":"v0.1.30"}
+ccc version              →  ccc 0.1.30 (212)
+ccc stats                →  ccc 0.1.30 (212)  pid 39758
+```
+
+**Both fixes proved on the released bytes, not the debug build** — the
+house rule that studio green is the control, applied to studio itself.
+One `--rc` fixture through the installed binary:
+
+```
+ccc spawn --name ccc-release-check --model haiku --rc 'Reply with … ok …'
+→ draft: false; state done, intent = the prompt, output.result = "ok"
+ccc list → 4bb68e68  done  idle  rc       ccc-release-check  haiku-4-5-
+```
+
+`rc` on the row and **no `asks`** beside it: the prompt survives the flag
+that used to eat it, and the mark that was wrong on twelve of eighteen
+rows is silent on a roster that is entirely `auto`. Fixture removed.
