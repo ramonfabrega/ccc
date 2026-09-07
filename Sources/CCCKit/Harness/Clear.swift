@@ -115,13 +115,11 @@ extension ClaudeCLI {
     }
 
     public enum ClearError: Error, CustomStringConvertible {
-        case noSuchSession(String)
         case notBackground(String)
         case dirty(String)
         case noRemoteCCC(String)
         public var description: String {
             switch self {
-            case .noSuchSession(let id): return "no session '\(id)' in the roster"
             case .notBackground(let id): return "\(id) is an interactive session; ccc has no pane on it to type into"
             case .dirty(let reason): return reason
             case .noRemoteCCC(let host): return "a clear is armed where the session lives, and \(host) has no ccc for it (`ccc hosts add \(host)` finds one)"
@@ -161,7 +159,7 @@ extension ClaudeCLI {
         }
 
         let roster = RosterDecoder.decode(try await agentsJSON())
-        guard let row = roster.sessions.first(where: { $0.id == id }) else { throw ClearError.noSuchSession(id) }
+        let row = try roster.sessions.session(matching: id)
         guard row.kind == .background else { throw ClearError.notBackground(id) }
         if let reason = ClearGuard.refusal(cwd: row.cwd) { throw ClearError.dirty(reason) }
 

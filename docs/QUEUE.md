@@ -21,12 +21,12 @@ findings"). Items 24 and 27 have left since; the stale-`↳` finding 27
 left behind is now a rule on the surface it constrains (`docs/HARNESS.md`
 "Rules", the convention in `docs/DESIGN.md` §9).
 
-**v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
-that **the phone's job is already shipped** — Remote Control puts most
-live workers in the Claude app, where they are messaged and answered — so
-ccc builds what RC leaves out (`docs/EVIDENCE.md` "the mobile survey").
-Both of its unmeasured halves were run on 2026-09-07; what is left is a
-decision, not a measurement.
+**v13 is done and the frontier is item 25.** Item 17 left on 2026-09-07:
+both its unmeasured halves were run that night and both its remaining
+questions were decided (`docs/EVIDENCE.md` "item 17 closes"). Remote
+Control is now `ccc spawn`'s default — every worker is answerable from the
+phone, `--no-rc` opts out — and slice 3 was dropped rather than deferred,
+because the buzz it would suppress is wanted.
 
 Three **questions, not items**. `suggestedReply` is on the row and shown
 nowhere; using it means answering without attaching (see "Later"). The
@@ -53,13 +53,10 @@ focus**: `NSApp.activate()` is cooperative since macOS 14 (measured
 CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
 remove|check` in the window, an age column. **From item 18**: the New
 Session sheet has no worktree or base field, and a remote `--base` is
-refused rather than routed to the far side's ccc. **From item 31** (fixed
-2026-09-07, `docs/EVIDENCE.md` "item 17 — the roster says nothing about
-`--rc`"): the `asks` mark now trusts only a value `respawnFlags` cannot
-have invented, which makes a deliberate `--permission-mode default`
-invisible; the transcript's last `permission-mode` record is the source
-that would see one, at a tail read per tick, and is worth it only if a
-non-`auto` worker ever becomes ordinary here.
+refused rather than routed to the far side's ccc. **From item 31**: the
+`asks` mark trusts only a typed asking mode now, so a deliberate
+`--permission-mode default` is invisible; the transcript's last
+`permission-mode` record would see one, at a tail read per tick.
 
 ### 6. The remote pane's reattach has still never met a lid
 
@@ -109,28 +106,6 @@ it matters beyond tidiness: the shell pane is the only place ccc can paint
 **chosen bytes** into a real window. `focus` already reaches both panes; a
 target on the request, not a second verb set, is the shape to copy.
 
-### 17. ccc is blind to RC, and the phone is already in the pocket
-
-None of this is the phone; all of it makes the phone the user already has
-work better (`docs/EVIDENCE.md` "the mobile survey").
-
-**Everything measurable here is measured.** Slices 1 and 2 shipped ("the
-pane that could not say it had looked away", "Cut as v0.1.23"); the roster
-half says an rc row differs from a plain one in nothing but identity, so
-`respawnFlags` is the only source, and that `--rc` had been eating the
-prompt of every spawn until 2026-09-07 ("item 17 — the roster says nothing
-about `--rc`"); and four `--rc` fixtures blocked on a question, one held by
-ccc's pane before its first turn, **all four buzzed** ("item 17 — the phone
-buzzes for everything").
-
-**What is left is two decisions.** Whether `--rc` should be the default,
-never really asked since the flag made every spawn a draft. And **slice 3,
-`CLAUDE_CLIENT_PRESENCE_FILE`** — `ccc presence on|off|status`,
-`--settings` printing the settings.json `env` entry and never writing it,
-keyed on **idle time** rather than the lock since studio is always-on —
-whose premise is now inverted: nothing is over-suppressed, so the
-complaint available is the phone buzzing for what the user is watching.
-
 ### 25. The detector is wrong, and it is not the window
 
 **Measured, not argued** (`docs/EVIDENCE.md` "the stall stream's first
@@ -172,7 +147,11 @@ of a thread on 09-06. Proposed: a `<repo>-<role>-<item>` default in `ccc
 spawn`, refused on a live collision by the guard that exists, and
 **parent + role in the per-worktree record** beside the base — the
 spawner's bridge id, which survives clears — so `ccc list --tree` and
-lore read one record instead of inferring.
+lore read one record instead of inferring. **Half of it is lore's**
+(2026-09-07): `lore jobs` carries `parent`, read off the spawner's own
+transcript, and 19 of 28 jobs since 09-06 hang under one with no ccc
+change. The record is optional; **the name grammar is the part only ccc
+can enforce**.
 
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 
@@ -185,6 +164,33 @@ parallel, and is 510 tests in 19 s with `--no-parallel`. **Production is
 nowhere near the limit** — the poller probes serially, a verb is one call
 — so the cost is a suite nobody can trust on a busy Mac. Fix is one
 reader without a per-call thread, or `Subprocess` behind the sync face.
+
+### 32. A dead session's dirty tree looks like every other dead session
+
+From attrition, 2026-09-07, with 406 lines nearly lost to it. Nine
+finished worktrees were reaped on the queue's own advice — *"nothing
+unmerged, ccc rm"* — and the ninth, `loop-234`, had died mid-item in the
+09-04/06 crash window. Every branch check agreed nothing was owed:
+`HEAD..loop-234` was 0 commits and ccc's row read `level`. The **working
+tree** held the item's whole product, uncommitted; it survived only
+because `git worktree remove` refuses a dirty tree and a human stopped to
+look.
+
+**ccc's ⇡⇣ is computed on the branch; a session's work lives in the tree
+until it commits.** They agree in every ordinary case and disagree in
+exactly one — a session that died mid-item — which is where the work is
+least recoverable and least likely to be remembered. Reap advice is
+phrased against the branch view, so the row quietly answers a different
+question than the one asked of it.
+
+Cheap, because the probe exists: `ClearGuard.refusal(cwd:)` already reads
+a dirty tree to refuse a clear and nothing puts that on a row. Two halves
+— a dirty mark beside the ⇡⇣ ccc already draws, and `ccc rm`'s refusal
+naming *what* it would lose ("N modified, M untracked") rather than that
+git said no, which turns a refusal into a decision instead of something a
+`--force` routes around. **Argue whose it is first**: the harness's
+worktree flow has the same seam, and "the tree belongs to whatever
+spawned the session" is a real answer.
 
 ## Later
 

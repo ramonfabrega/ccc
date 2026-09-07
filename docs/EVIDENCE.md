@@ -4395,11 +4395,32 @@ right:
 Three things at once. The **order is reconstructed** (c4 typed the mode
 before the model and got it back after). The **model is filled in** when
 none was passed (`opus[1m]`, the ambient default). And `auto` came back as
-`default` in all four spawns that named a model and survived in both that
-did not — `acceptEdits` was never touched, so it is the value `auto` that
-is rewritten, not the field. The mechanism is inside the CLI; the matrix
-is the claim, and `default` is not even one of `--permission-mode`'s own
-documented choices.
+`default` in all four spawns that named a model, while surviving in both
+that did not — `acceptEdits` was never touched, so it is the value `auto`
+that is rewritten, not the field.
+
+**That reading of the condition was wrong, and lore caught it the same
+night.** Building a fixture for its harness corpus, lore could not
+reproduce the rewrite on any of the 20 live jobs on 2.1.260 that name a
+`--model` — every one still carried the typed `auto`. It is not "a model
+was named"; it is **which** model, and every fixture above was `--model
+haiku` because this fleet's rule is that test spawns run on haiku:
+
+| `--model` | `respawnFlags` permission-mode |
+| --- | --- |
+| `haiku` | `default` |
+| `claude-haiku-4-5-20251001` | `default` |
+| `sonnet` | `auto` |
+| `opus` | `auto` |
+
+So `auto` is downgraded to `default` on **Haiku 4.5 and nowhere else** —
+consistent with `auto` being a mode Haiku does not serve, resolved at
+init. The correction matters in both directions: it makes the rewrite
+almost invisible in production, since real workers run opus or fable, and
+it means the fleet's own test-spawn convention is what made it look
+universal. Four fixtures either way; the matrix is the claim, and
+`default` is not even one of `--permission-mode`'s own documented
+choices.
 
 The transcript is the truth and says so plainly:
 
@@ -4408,9 +4429,9 @@ The transcript is the truth and says so plainly:
 ```
 
 **What it costs ccc.** `JobProbe.asksForPermission` is `permissionMode not
-in {auto, bypassPermissions}`, so every ccc spawn that names a model — the
-normal shape, since the fan-out rule requires an explicit model — reports
-"this one will stop at its first prompt" about a session on `auto`. That
+in {auto, bypassPermissions}`, so any spawn whose `auto` was rewritten —
+every haiku one, which is every fixture this fleet makes — reports "this
+one will stop at its first prompt" about a session on `auto`. That
 is the `asks` column in `ccc list` and the ❓ badge in the window, whose
 tooltip reads *"Launched --permission-mode default … `ccc spawn` defaults
 to auto"*: it contradicts itself in one line.
@@ -4425,7 +4446,8 @@ live rows compared: 18; `asks` drawn but session is on auto/bypass: 12
 
 Twelve wrong, **zero right**, one unjudgeable (`attrition`, no such record
 in the current transcript), five correctly silent. And the twelve fail for
-a *second* independent reason: none of them carries `--permission-mode` in
+a *second* independent reason, and it is the one that actually carries the
+count: none of them carries `--permission-mode` in
 `respawnFlags` at all — they were not spawned by ccc — and `permissionMode`
 returning `nil` reads as "asks" while all twelve transcripts say `auto`. So
 the mark has two causes to be wrong and, on this roster, no case where it
@@ -4436,7 +4458,10 @@ what is true.
 **Fixed the same night, at the user's word that the fleet runs `auto`
 always.** `asksForPermission` now marks only `plan`, `manual` and
 `acceptEdits` — the values `respawnFlags` cannot have rewritten into place
-— and says nothing about `default` or about a missing flag. That takes the
+— and says nothing about `default` or about a missing flag. The haiku
+correction narrows one of its two reasons and removes neither: the twelve
+wrong rows were wrong because **absent** does not mean asks, which no
+model condition touches. That takes the
 count to 0 wrong, and its price is that a deliberate `--permission-mode
 default` is now invisible: the source that would see one is the
 transcript's last `permission-mode` record, which is a tail read per tick
@@ -4534,3 +4559,74 @@ ccc list → 4bb68e68  done  idle  rc       ccc-release-check  haiku-4-5-
 `rc` on the row and **no `asks`** beside it: the prompt survives the flag
 that used to eat it, and the mark that was wrong on twelve of eighteen
 rows is silent on a roster that is entirely `auto`. Fixture removed.
+
+## item 17 closes: two decisions, and the flag whose default flipped (2026-09-07)
+
+Both unmeasured halves answered the same night, so what was left was the
+user's to decide, and he did — in the same message that asked whether
+anything else was owed.
+
+**Remote Control is on by default.** `ccc spawn` passes `--rc` unless
+`--no-rc` refuses it, so every worker is answerable from the Claude app
+rather than only from the Mac it runs on. The question had been open since
+the box was built and was **never really askable**: until that morning the
+flag ate the prompt and made every spawn it touched a draft, so nobody had
+used it enough to have an opinion. The default lives on `SpawnRequest`
+beside `defaultPermissionMode`, which is what gives the New Session sheet
+the same behaviour without a control — the sheet leaves `rc` nil the way
+it leaves the mode nil, and its own contract already says the flags it
+omits are the command's alone. `remoteControlIsOnUnlessRefused` pins it in
+both directions.
+
+The `rc` column inverts with it: on a roster where every ccc-spawned row
+carries the mark, the row **without** one is the row that carries news, so
+`ccc list`'s help now says that rather than describing the mark. The cost
+is stated where it belongs — an RC session registers with the API and its
+transcript lives on Anthropic servers while connected — and `--no-rc` is
+the opt-out that makes it a choice.
+
+**Slice 3 is dropped, not deferred.** `CLAUDE_CLIENT_PRESENCE_FILE` existed
+to stop the phone buzzing for a session the user is watching on the Mac,
+and the measurement that made that case buildable is the one that killed
+it: the user's answer to *"is that a bug or the right default"* was that
+the buzz is fine. So item 17 leaves the queue whole rather than keeping a
+gated slice, and v13's frontier moves to item 25.
+
+## the ref that was only an id (2026-09-07)
+
+Reported by lore, measured on itself at ~06:21Z: `ccc clear lore` answered
+
+```
+ccc: no session 'lore' in the roster
+```
+
+in the same second `ccc list --json` drew the row (`a18a763f`, name
+`lore`, state `working`), while `ccc clear a18a763f` armed and fired.
+
+**The split is not `clear`'s, it is the verb list's.** Every lookup ccc
+performs itself matched `$0.id == id` — `clear`, `archive`/`pin`,
+`merge`, `base`, `push`, `update`, `localWorktree`, and `rm`'s cwd read,
+eight sites — while `stop`, `send` and `attach` hand the ref to `claude`
+and got name resolution from the harness for free. Half the verb list took
+a name and half did not, and the manifest's own `<ref> is …` convention
+described the half that worked. That is `docs/DESIGN.md` §9's rule
+arriving as a defect for the second time: *a verb with fewer surfaces than
+its opposite will be reported missing* — and it was, by a peer, not by the
+user.
+
+One resolver now answers all eight (`Collection<Session>.session(matching:)`).
+**The id wins over the name**, always: an id is minted unique and a name is
+not, so a name shaped like another row's id can never shadow the row it
+names. **An ambiguous name is named, not guessed at** — `ccc spawn`
+refuses a duplicate live name but `--allow-duplicate` means it, so two
+rows under one name is a real state, and picking one would clear, archive
+or merge the wrong session:
+
+```
+'worker' is the name of 2 live sessions (a1b2c3d4, e5f6a7b8); use an id
+```
+
+The three now-unreachable `noSuchSession` cases went with it — the same
+sentence had been written four times, and a string with no reader is a
+string nothing keeps true. `RefLookupTests` is five tests on fixtures,
+never on a live row.

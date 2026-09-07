@@ -751,6 +751,9 @@ enum CLI {
             switch arg {
             case "--attach": attach = true
             case "--rc", "--remote-control": spec.rc = true
+            // Remote Control is the default since 2026-09-07 (item 17), so
+            // the flag that carries payload is the one that turns it off.
+            case "--no-rc", "--no-remote-control": spec.rc = false
             // The two guards' escape hatches (item 19). ccc refuses; it
             // never forbids, so each refusal names the flag that means it.
             case "--replace": replace = true
@@ -1791,8 +1794,9 @@ enum CLI {
             // is at a laptop". Drawn only when it asks — the v11 rule —
             // and only for a background job, since an interactive session
             // has someone at it by definition. `default` and no mode at
-            // all say nothing, because `respawnFlags` writes a typed
-            // `auto` as `default` (item 31).
+            // all say nothing: a missing flag never meant the harness
+            // default, and `respawnFlags` writes a typed `auto` as
+            // `default` on haiku.
             let asks = (row.job?.asksForPermission ?? false) && row.session.kind == .background ? "asks" : "    "
             // The worktree (v6): the repository, then the branch and its
             // standing — the same reading as the window's row.

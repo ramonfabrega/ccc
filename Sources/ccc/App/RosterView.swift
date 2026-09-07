@@ -502,9 +502,10 @@ struct RosterRow: View {
                     // Launched with a permission mode that asks: it will
                     // stop at its first prompt. Same rule as the phone
                     // badge — drawn only when it is the payload, which
-                    // since item 31 excludes `default` and no mode at
-                    // all: `respawnFlags` writes a typed `auto` as
-                    // `default`, so neither is evidence of anything.
+                    // now excludes `default` and no mode at all: a missing
+                    // flag never meant the harness default, and
+                    // `respawnFlags` writes a typed `auto` as `default` on
+                    // haiku, so neither is evidence of anything.
                     if row.session.kind == .background, row.job?.asksForPermission == true {
                         Image(systemName: "questionmark.bubble")
                             .font(.caption)

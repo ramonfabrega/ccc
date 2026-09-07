@@ -244,9 +244,7 @@ extension ClaudeCLI {
             switch change {
             case .archive, .pin:
                 let roster = RosterDecoder.decode(try await agentsJSON())
-                guard let row = roster.sessions.first(where: { $0.id == id }) else {
-                    throw MarkError.noSuchSession(id)
-                }
+                let row = try roster.sessions.session(matching: id)
                 sessionId = row.sessionId
             case .unarchive, .unpin:
                 break
@@ -275,11 +273,9 @@ extension ClaudeCLI {
     }
 
     public enum MarkError: Error, CustomStringConvertible {
-        case noSuchSession(String)
         case noRemoteCCC(String)
         public var description: String {
             switch self {
-            case .noSuchSession(let id): return "no session '\(id)' in the roster"
             case .noRemoteCCC(let host): return "marks live with the session's host, and \(host) has no ccc for them (`ccc hosts add \(host)` finds one)"
             }
         }

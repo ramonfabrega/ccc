@@ -176,10 +176,11 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// on **12 of 18** live rows and right on none (`docs/EVIDENCE.md`
     /// "item 17 — the roster says nothing about `--rc`"). Two causes, both
     /// in the source rather than in the rule: a typed `auto` comes back
-    /// `default` once a session that named a `--model` initializes, and
-    /// the twelve rows carrying no `--permission-mode` at all — everything
-    /// ccc did not spawn — are on `auto` per their own transcripts, so
-    /// absent never meant "the harness default" either.
+    /// `default` once a **haiku** session initializes (which is every
+    /// fixture this fleet makes), and the twelve rows carrying no
+    /// `--permission-mode` at all — everything ccc did not spawn — are on
+    /// `auto` per their own transcripts, so absent never meant "the
+    /// harness default" either.
     ///
     /// So `default` and nil now say nothing, and the mark is kept for the
     /// three values that can only have been typed. The cost is a
@@ -252,11 +253,12 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// wrong because of it** — queue item 31, measured 2026-09-07
     /// (`docs/EVIDENCE.md` "item 17 — the roster says nothing about
     /// `--rc`"). Once a session initializes, the harness rewrites an
-    /// `auto` into `default` whenever a `--model` was named, which is
-    /// every ccc spawn that obeys the fan-out rule; and the twelve live
-    /// rows carrying no `--permission-mode` at all are on `auto` per
-    /// their own transcripts, so nil does not mean "the mode that asks"
-    /// either. The session's truth is its transcript's last
+    /// `auto` into `default` on **Haiku 4.5** — alias or full id, and on
+    /// no other model, which lore established the same night by failing
+    /// to reproduce it on twenty live jobs; and the twelve live rows
+    /// carrying no `--permission-mode` at all are on `auto` per their own
+    /// transcripts, so nil does not mean "the mode that asks" either. The
+    /// session's truth is its transcript's last
     /// `{"type":"permission-mode"}` record.
     static func permissionMode(in object: [String: Any]) -> String? {
         guard let flags = (object["respawnFlags"] as? [Any])?.compactMap({ $0 as? String }) else { return nil }

@@ -350,7 +350,7 @@ public struct ClaudeCLI: Sendable {
     /// session `claude rm` may know how to delete.
     private func localCwd(id: String) async -> String? {
         guard let data = try? await agentsJSON() else { return nil }
-        return RosterDecoder.decode(data).sessions.first { $0.id == id }?.cwd
+        return RosterDecoder.decode(data).sessions.sessionIfAny(matching: id)?.cwd
     }
 
     /// A remote `rm` goes through the far side's own `ccc` when it has

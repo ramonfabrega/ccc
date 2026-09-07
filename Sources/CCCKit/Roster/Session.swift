@@ -156,3 +156,58 @@ public struct RosterDecodeResult: Sendable, Equatable {
         self.issues = issues
     }
 }
+
+/// A `<ref>`'s id half, resolved against the roster the way every other
+/// verb's is.
+///
+/// **The convention was prose, and prose lost** (reported by lore
+/// 2026-09-07, `docs/EVIDENCE.md` "the ref that was only an id"): `ccc
+/// clear lore` answered *"no session 'lore' in the roster"* in the same
+/// second `ccc list` drew the row, because the verbs ccc resolves itself
+/// matched `$0.id == id` while the verbs it hands to the harness —
+/// `stop`, `send`, `attach` — got name resolution from `claude` for free.
+/// Half the verb list took a name and half did not, which is this repo's
+/// own rule about twins arriving as a defect: *a verb with fewer surfaces
+/// than its opposite will be reported missing.*
+///
+/// The id wins over the name, always: an id is minted unique and a name
+/// is not, so a name that happens to look like an id can never shadow the
+/// row it names. Two live rows answering to one name is a real state —
+/// `ccc spawn` refuses a duplicate live name but `--allow-duplicate`
+/// means it — and it is **named rather than guessed at**, because picking
+/// one would clear, archive or merge the wrong session.
+public enum RefLookupError: Error, CustomStringConvertible, Equatable {
+    case noSuchSession(String)
+    case ambiguousName(String, [String])
+    public var description: String {
+        switch self {
+        case .noSuchSession(let ref): return "no session '\(ref)' in the roster"
+        case .ambiguousName(let name, let ids):
+            return "'\(name)' is the name of \(ids.count) live sessions (\(ids.joined(separator: ", "))); use an id"
+        }
+    }
+}
+
+extension Collection where Element == Session {
+    /// The row a `<ref>` names: its daemon id, else its name. Throws
+    /// rather than answers on both failures, so the sentence a user reads
+    /// has one definition (`RefLookupError`).
+    public func session(matching ref: String) throws -> Session {
+        if let byID = first(where: { $0.id == ref }) { return byID }
+        let byName = filter { $0.name == ref }
+        guard let one = byName.first else { throw RefLookupError.noSuchSession(ref) }
+        guard byName.count == 1 else {
+            throw RefLookupError.ambiguousName(ref, byName.map(\.id))
+        }
+        return one
+    }
+
+    /// The same resolution where not finding a row is ordinary rather than
+    /// an error — `claude rm`'s cwd read, which works on a session the
+    /// roster has already forgotten. An ambiguous name answers nil: there
+    /// is no sentence to print here, and guessing is what the throwing
+    /// half exists to refuse.
+    public func sessionIfAny(matching ref: String) -> Session? {
+        try? session(matching: ref)
+    }
+}

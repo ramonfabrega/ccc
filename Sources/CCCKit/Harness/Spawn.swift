@@ -43,7 +43,8 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
     /// harness a plain cwd.
     public var base: String?
     /// `--rc`: Remote Control, so the session is answerable from the
-    /// Claude app (item 17's box). Passed through as typed; no default.
+    /// Claude app (item 17's box). Nil takes `defaultRemoteControl`;
+    /// `--no-rc` is the explicit false.
     public var rc: Bool?
 
     public init(cwd: String? = nil, prompt: String? = nil, name: String? = nil, model: String? = nil,
@@ -79,6 +80,24 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         (permissionMode ?? "").isEmpty ? Self.defaultPermissionMode : permissionMode!
     }
 
+    /// Remote Control is **on** unless a spawn says otherwise, at the
+    /// user's word 2026-09-07 — the first night the flag was askable,
+    /// since until that morning `--rc` ate the prompt and made every
+    /// spawn it touched a draft (`docs/EVIDENCE.md` "item 17 — the roster
+    /// says nothing about `--rc`"). The argument for the default is the
+    /// one the mobile survey made: the phone in the pocket is where a
+    /// worker gets answered, and a worker that is not on RC can only be
+    /// answered from this Mac. `--no-rc` is the explicit opt-out, and it
+    /// is a real one — an RC session registers with the API and its
+    /// transcript lives on Anthropic servers while connected
+    /// (`docs/HARNESS.md` "Remote Control").
+    public static let defaultRemoteControl = true
+
+    /// Whether this request runs remote-controlled: what it said, else
+    /// the default. The sheet leaves `rc` nil the way it leaves the
+    /// permission mode nil, so both surfaces inherit one definition.
+    public var effectiveRemoteControl: Bool { rc ?? Self.defaultRemoteControl }
+
     /// The harness's words after `claude`. The prompt is one argument, last.
     ///
     /// **Order is load-bearing, and it cost item 17 its box** (measured
@@ -101,7 +120,7 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         if let name, !name.isEmpty { out += ["--name", name] }
         if let model, !model.isEmpty { out += ["--model", model] }
         if let agent, !agent.isEmpty { out += ["--agent", agent] }
-        if rc == true { out.append("--rc") }
+        if effectiveRemoteControl { out.append("--rc") }
         if let worktree { out += worktree.isEmpty ? ["--worktree"] : ["--worktree", worktree] }
         out += ["--permission-mode", effectivePermissionMode]
         if let effort, !effort.isEmpty { out += ["--effort", effort] }

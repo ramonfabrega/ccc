@@ -19,9 +19,9 @@ import Testing
     /// until 2026-09-07 and what the roster drew on twelve of eighteen
     /// rows that were all on `auto` (`docs/EVIDENCE.md` "item 17 — the
     /// roster says nothing about `--rc`"). Nor is `default`, which is what
-    /// the harness writes a typed `auto` as once a session that named a
-    /// `--model` initializes. Only a value nothing could have rewritten
-    /// into place earns the mark.
+    /// the harness writes a typed `auto` as once a **haiku** session
+    /// initializes — every fixture this fleet makes. Only a value nothing
+    /// could have rewritten into place earns the mark.
     @Test func onlyATypedAskingModeEarnsTheMark() {
         let json = #"{"detail":"x","respawnFlags":["--rc","--name","ccc","--model","opus[1m]"]}"#
         let info = JobInfo.decode(Data(json.utf8))

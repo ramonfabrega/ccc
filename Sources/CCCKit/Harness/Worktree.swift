@@ -1202,9 +1202,7 @@ extension ClaudeCLI {
     public func merge(_ strategy: MergeStrategy, id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
         if host.isLocal {
             let roster = RosterDecoder.decode(try await agentsJSON())
-            guard let row = roster.sessions.first(where: { $0.id == id }) else {
-                throw MergeError.noSuchSession(id)
-            }
+            let row = try roster.sessions.session(matching: id)
             guard let info = probe.fresh(forCwd: row.cwd) else {
                 throw MergeError.notAWorktree(id, row.cwd)
             }
@@ -1247,9 +1245,7 @@ extension ClaudeCLI {
                      probe: WorktreeProbe = WorktreeProbe()) async throws -> BaseReading {
         if host.isLocal {
             let roster = RosterDecoder.decode(try await agentsJSON())
-            guard let row = roster.sessions.first(where: { $0.id == id }) else {
-                throw MergeError.noSuchSession(id)
-            }
+            let row = try roster.sessions.session(matching: id)
             guard let layout = WorktreeProbe.layout(of: row.cwd), let branch = layout.branch else {
                 throw MergeError.notAWorktree(id, row.cwd)
             }
@@ -1293,9 +1289,7 @@ extension ClaudeCLI {
     public func push(_ target: PushTarget, id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
         if host.isLocal {
             let roster = RosterDecoder.decode(try await agentsJSON())
-            guard let row = roster.sessions.first(where: { $0.id == id }) else {
-                throw MergeError.noSuchSession(id)
-            }
+            let row = try roster.sessions.session(matching: id)
             guard let info = probe.fresh(forCwd: row.cwd) else {
                 throw MergeError.notAWorktree(id, row.cwd)
             }
@@ -1325,9 +1319,7 @@ extension ClaudeCLI {
     public func update(id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
         if host.isLocal {
             let roster = RosterDecoder.decode(try await agentsJSON())
-            guard let row = roster.sessions.first(where: { $0.id == id }) else {
-                throw MergeError.noSuchSession(id)
-            }
+            let row = try roster.sessions.session(matching: id)
             guard let info = probe.fresh(forCwd: row.cwd) else {
                 throw MergeError.notAWorktree(id, row.cwd)
             }
@@ -1350,9 +1342,7 @@ extension ClaudeCLI {
     /// a fresh count. What every worktree verb starts from.
     func localWorktree(id: String, probe: WorktreeProbe) async throws -> (cwd: String, info: WorktreeInfo) {
         let roster = RosterDecoder.decode(try await agentsJSON())
-        guard let row = roster.sessions.first(where: { $0.id == id }) else {
-            throw MergeError.noSuchSession(id)
-        }
+        let row = try roster.sessions.session(matching: id)
         guard let info = probe.fresh(forCwd: row.cwd) else {
             throw MergeError.notAWorktree(id, row.cwd)
         }
@@ -1399,12 +1389,10 @@ extension ClaudeCLI {
     }
 
     public enum MergeError: Error, CustomStringConvertible {
-        case noSuchSession(String)
         case notAWorktree(String, String)
         case noRemoteCCC(String)
         public var description: String {
             switch self {
-            case .noSuchSession(let id): return "no session '\(id)' in the roster"
             case .notAWorktree(let id, let cwd): return "\(id) is not in a worktree on a branch (\(cwd))"
             case .noRemoteCCC(let host): return "the merge runs where the repository is, and \(host) has no ccc for it (`ccc hosts add \(host)` finds one)"
             }
