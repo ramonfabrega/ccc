@@ -88,7 +88,7 @@ import Testing
         "docs/CHECKS.md", "docs/QUEUE.md", "docs/EVIDENCE.md",
     ]
 
-    private static var root: URL {
+    static var root: URL {
         URL(filePath: #filePath)          // Tests/CCCKitTests/DocsGuardTests.swift
             .deletingLastPathComponent()  // Tests/CCCKitTests
             .deletingLastPathComponent()  // Tests
@@ -97,7 +97,7 @@ import Testing
 
     /// `name` is relative to the repository root, so a failure message
     /// names a path a reader can open.
-    private static func read(_ name: String) throws -> String {
+    static func read(_ name: String) throws -> String {
         try String(contentsOf: root.appending(path: name), encoding: .utf8)
     }
 

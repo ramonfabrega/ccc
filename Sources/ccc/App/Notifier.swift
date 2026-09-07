@@ -65,7 +65,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             while !Task.isCancelled {
                 guard let self else { return }
                 self.reloadMutesIfMoved()
-                for event in self.detector.observe(self.poller.state) where !self.muted.contains(event.ref.host) {
+                // `drawsBanner` is the one definition of "worth the
+                // phone" (item 25): the detector reports every tip that
+                // moves, and `ccc watch` prints every one, but a bare
+                // commit does not wake anybody.
+                for event in self.detector.observe(self.poller.state)
+                where event.drawsBanner && !self.muted.contains(event.ref.host) {
                     self.post(event)
                 }
                 // Re-read each tick: the user answers the permission banner

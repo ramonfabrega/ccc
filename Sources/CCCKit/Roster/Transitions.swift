@@ -7,7 +7,12 @@ import Foundation
 /// forwarded. One event feeds both faces: a macOS notification in the
 /// window face, a line from `ccc watch` for an agent.
 public struct SessionEvent: Codable, Sendable, Equatable {
-    public enum Kind: String, Codable, Sendable {
+    /// `CaseIterable` so the kinds are a **list a test can walk** rather
+    /// than a sentence three files repeat: `ccc watch`'s manifest entry
+    /// and README both name them, and this fleet has already lost a merge
+    /// to a help string that went a release stale because nothing read it
+    /// (`CLAUDE.md`, "Rules earned"). See `everyEventKindIsDocumented`.
+    public enum Kind: String, Codable, Sendable, CaseIterable {
         /// Became blocked, or blocked on something new. The one that is
         /// actionable: attach and answer.
         case blocked
@@ -17,6 +22,17 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         /// *non-*event: nothing happened to the row for long enough that
         /// the not-happening is the news. See `StallWindow`.
         case stalled
+        /// **The branch tip moved** (item 25) — the only kind here that
+        /// does not come from the daemon's word, and the reason it
+        /// exists: on 2026-09-07 a night of `ccc watch --json --all` over
+        /// ten landings emitted *zero* `stalled` events at either window
+        /// while three sessions finished quietly, and `loop-284` sat at
+        /// `working idle` with its work committed, pushed and two commits
+        /// ahead of base. A clock cannot catch those at any duration —
+        /// they are not stalled, they are done and mislabelled — and
+        /// `stallEvent`'s clock is the daemon's own `updatedAt`, which
+        /// keeps ticking under a dormant session. Git does not.
+        case landed
     }
 
     public var kind: Kind
@@ -26,13 +42,16 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     public var waitingFor: String?
     /// How long the session had been still, for `stalled`.
     public var stillFor: TimeInterval?
+    /// What git said, for `landed`. Nil on every other kind.
+    public var landing: Landing?
     /// What the daemon's job file said at the moment of the transition
     /// (v10). The roster says *that* it is your turn; this is what for.
     public var job: JobInfo?
     public var at: Date
 
     public init(kind: Kind, ref: SessionRef, name: String?, waitingFor: String? = nil,
-                job: JobInfo? = nil, at: Date, stillFor: TimeInterval? = nil) {
+                job: JobInfo? = nil, at: Date, stillFor: TimeInterval? = nil,
+                landing: Landing? = nil) {
         self.kind = kind
         self.ref = ref
         self.name = name
@@ -40,6 +59,7 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         self.job = job
         self.at = at
         self.stillFor = stillFor
+        self.landing = landing
     }
 
     /// The session as a person would name it: its name, else its ref.
@@ -58,6 +78,16 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         case .stopped: return "\(subject) stopped"
         case .stalled:
             return "\(subject) has not moved in \(Self.spell(stillFor ?? 0))"
+        case .landed:
+            // The numbers come first and they are git's, not the
+            // daemon's. `loop-252` read "shutdown assertions failing"
+            // while its work was merged and pushed — state and `↳` went
+            // stale in the *same* direction, so the pair agreed and left
+            // a reader no contradiction to notice. A headline that
+            // cannot go stale beside a body that can is that
+            // contradiction, drawn.
+            guard let landing else { return "\(subject) moved its branch tip" }
+            return "\(subject) \(landing.half.rawValue) — \(landing.standing)"
         }
     }
 
@@ -92,7 +122,12 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         // A stall's body is the last thing the session said it was doing
         // — which is exactly the sentence that stopped changing, and the
         // most useful thing to read when deciding whether to look.
-        let state: Session.State = kind == .blocked ? .blocked : kind == .stalled ? .working : .done
+        // A landing's body is the live activity line for the same reason
+        // a stall's is: it is what the session last said about itself,
+        // and next to a number git computed it is either corroboration
+        // or the contradiction item 25 was written about.
+        let state: Session.State = kind == .blocked ? .blocked
+            : (kind == .stalled || kind == .landed) ? .working : .done
         guard let said = job?.say(for: state) else {
             let fallback = kind == .blocked ? waitingFor : nil
             return (fallback?.isEmpty == false) ? fallback : nil
@@ -122,6 +157,11 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         case .failed: return "✗"
         case .stopped: return "◼"
         case .stalled: return "⏳"
+        // The roster's own glyph for the thing being reported: a row
+        // draws `↑3` for three commits the base lacks, so the event
+        // about that number wears the same mark. Two surfaces
+        // disagreeing about a symbol is how one definition becomes two.
+        case .landed: return "↑"
         }
     }
 
@@ -142,6 +182,22 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         var line = headline
         if let body, !headline.hasSuffix(body) { line += " — \(body)" }
         return line
+    }
+
+    /// **Whether this one is worth the phone.** One definition, read by
+    /// the `Notifier`; `ccc watch` and the roster take everything the
+    /// detector says, because a log is not a buzz.
+    ///
+    /// Every kind draws except a bare `committed` landing. A worker
+    /// commits mid-item as a matter of course, and "the phone buzzes for
+    /// everything" is the failure this fleet fixed one release ago; the
+    /// moment worth waking someone for is when the work reaches origin,
+    /// because that is when a merge decision exists on the other Mac.
+    /// The commit half is still an event — it is one line in `ccc watch`,
+    /// which is where a commander is watching anyway.
+    public var drawsBanner: Bool {
+        guard kind == .landed else { return true }
+        return landing?.half == .pushed
     }
 
     /// A sentence whose beginning was cut off. **A closing bracket with no
@@ -173,6 +229,59 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     }
 }
 
+/// What git said at the moment a tip moved (item 25) — the payload of a
+/// `landed` event, read straight off `SessionRow.worktree`.
+///
+/// **This detector is a join, not a probe.** `WorktreeProbe` already runs
+/// one `git rev-list` per row per tick, because that is where the row's
+/// `↑↓ ⇡⇣` marks come from, and the result is already carried across the
+/// hop in the far side's `ccc list --json`. Nothing here reaches for the
+/// filesystem, and no host pays a second read for the notification.
+public struct Landing: Codable, Sendable, Equatable {
+    /// The two moments a tip can move, and they are different news.
+    public enum Half: String, Codable, Sendable {
+        /// Commits appeared that the base lacks. There is work here; it
+        /// is on this Mac only.
+        case committed
+        /// Everything on the branch is on `origin` and the base still
+        /// lacks it — the moment the work becomes something the other
+        /// Mac can merge, which is why it is the half that notifies.
+        case pushed
+    }
+
+    public var half: Half
+    public var branch: String
+    /// What `ahead` is counted against — `master`, or `origin/master`
+    /// (`WorktreeInfo.baseTipName`).
+    public var base: String
+    /// Commits the base lacks: what a merge would bring.
+    public var ahead: Int
+    /// Commits on no `origin/*` ref. Nil where the repository has no
+    /// origin, and the word means nothing there — such a repo can only
+    /// ever report the `committed` half.
+    public var unpushed: Int?
+
+    public init(half: Half, branch: String, base: String, ahead: Int, unpushed: Int?) {
+        self.half = half
+        self.branch = branch
+        self.base = base
+        self.ahead = ahead
+        self.unpushed = unpushed
+    }
+
+    /// "2 commits ahead of master, all on origin" — the sentence a
+    /// merge decision is made from, in the roster's own vocabulary.
+    public var standing: String {
+        var out = "\(ahead) commit\(ahead == 1 ? "" : "s") ahead of \(base)"
+        switch unpushed {
+        case .some(0): out += ", all on origin"
+        case .some(let n): out += ", \(n) unpushed"
+        case nil: break
+        }
+        return out
+    }
+}
+
 /// Turns successive roster states into events. Pure and value-typed: the
 /// tests feed it two rosters and read the events, the app and `ccc watch`
 /// feed it every tick. Dedup is structural — an event is a *change* in a
@@ -199,7 +308,17 @@ public struct TransitionDetector: Sendable, Equatable {
         var draft = false
     }
 
+    /// The branch tip as of the last tick, per session — the whole state
+    /// a `landed` event needs (item 25). Deliberately *not* part of
+    /// `Key`: a commit landing while a session is blocked must not
+    /// re-fire the question it is blocked on.
+    private struct Tip: Sendable, Equatable {
+        var ahead: Int
+        var unpushed: Int?
+    }
+
     private var seen: [SessionRef: Key] = [:]
+    private var tips: [SessionRef: Tip] = [:]
     private var primed: Set<String> = []
     /// Refs already reported stalled, so one stall is one event. Cleared
     /// the moment the session moves again, which re-arms it.
@@ -234,28 +353,46 @@ public struct TransitionDetector: Sendable, Equatable {
                 // The standing ones are context, and the surfaces say them
                 // as context (`ccc watch`'s opening line).
                 if let event = stallEvent(row, now: now), !first { events.append(event) }
-                guard !first, before != key else { continue }
-                switch key.state {
-                case .blocked:
-                    // A draft is blocked on you starting it — the one
-                    // "blocked" that is not your turn (v5). It becomes news
-                    // when it is prompted and then asks something.
-                    guard !key.draft else { continue }
-                    events.append(SessionEvent(kind: .blocked, ref: ref, name: s.name, waitingFor: key.waitingFor,
-                                               job: row.job, at: now))
-                case .done, .failed, .stopped:
-                    // Only a session that was live is news when it ends; a
-                    // new row that arrives already finished is history.
-                    guard let was = before, was.state == .working || was.state == .blocked else { continue }
-                    events.append(SessionEvent(kind: key.state == .done ? .done : key.state == .failed ? .failed : .stopped,
-                                               ref: ref, name: s.name, job: row.job, at: now))
-                case .working, nil:
-                    continue
+                // Read every tick whether or not it is news, so that a
+                // row arriving already ahead is history — the rule every
+                // other kind here follows.
+                let landing = landingEvent(row, now: now)
+                guard !first else { continue }
+                var terminal = false
+                if before != key {
+                    switch key.state {
+                    case .blocked:
+                        // A draft is blocked on you starting it — the one
+                        // "blocked" that is not your turn (v5). It becomes news
+                        // when it is prompted and then asks something.
+                        if !key.draft {
+                            events.append(SessionEvent(kind: .blocked, ref: ref, name: s.name, waitingFor: key.waitingFor,
+                                                       job: row.job, at: now))
+                        }
+                    case .done, .failed, .stopped:
+                        // Only a session that was live is news when it ends; a
+                        // new row that arrives already finished is history.
+                        if let was = before, was.state == .working || was.state == .blocked {
+                            events.append(SessionEvent(kind: key.state == .done ? .done : key.state == .failed ? .failed : .stopped,
+                                                       ref: ref, name: s.name, job: row.job, at: now))
+                            terminal = true
+                        }
+                    case .working, nil:
+                        break
+                    }
                 }
+                // A tip that moves in the same tick the daemon finally
+                // says `done` is one piece of news twice, and the
+                // terminal event is the better half — the row already
+                // draws `↑N` beside it. When the daemon says nothing,
+                // which is item 25's whole case, this is the only news
+                // there is.
+                if let landing, !terminal { events.append(landing) }
             }
             for ref in seen.keys where ref.host == host.host && !present.contains(ref) {
                 seen.removeValue(forKey: ref)
                 stalled.remove(ref)
+                tips.removeValue(forKey: ref)
             }
         }
         return events
@@ -291,6 +428,54 @@ extension TransitionDetector {
         guard stalled.insert(row.ref).inserted else { return nil }
         return SessionEvent(kind: .stalled, ref: row.ref, name: row.session.name,
                             job: row.job, at: now, stillFor: still)
+    }
+
+    /// The branch tip, if it moved since the last tick (item 25).
+    /// Mutating for the same reason `stallEvent` is — "one landing is one
+    /// event" is state — but with no clock anywhere in it, which is the
+    /// entire point: the two signals it replaces both read the daemon,
+    /// and on 2026-09-07 both went stale in the same direction at once.
+    ///
+    /// **Two moments, and the stronger one wins when they coincide.** A
+    /// worker that commits and pushes seconds apart crosses one 2 s poll,
+    /// so `ahead` grows and `unpushed` is already 0 in the same tick;
+    /// reporting that as `committed` would be true and would cost the
+    /// event its banner, since only `pushed` notifies. It reports
+    /// `pushed`.
+    ///
+    /// Says nothing about a session with no worktree — a research or
+    /// review worker moves no tip, and a claim about one it does not have
+    /// is exactly the unverified claim this detector exists to avoid.
+    private mutating func landingEvent(_ row: SessionRow, now: Date) -> SessionEvent? {
+        guard let worktree = row.worktree, !row.draft else {
+            tips.removeValue(forKey: row.ref)
+            return nil
+        }
+        let tip = Tip(ahead: worktree.ahead, unpushed: worktree.unpushed)
+        let before = tips[row.ref]
+        tips[row.ref] = tip
+        // No previous reading is a baseline, not a landing: whatever is
+        // already on the branch when ccc first looks is history.
+        guard let before else { return nil }
+
+        let grew = tip.ahead > before.ahead
+        let onOrigin = tip.ahead > 0 && tip.unpushed == 0
+        let half: Landing.Half
+        if onOrigin && (grew || (before.unpushed ?? 0) > 0) {
+            half = .pushed
+        } else if grew {
+            half = .committed
+        } else {
+            // Everything else the numbers can do is not a landing: a
+            // merge or a reset that drops `ahead`, a base that moved
+            // under it, a tick where nothing changed at all. The new
+            // reading is recorded, so the next commit is news again.
+            return nil
+        }
+        let landing = Landing(half: half, branch: worktree.branch, base: worktree.baseTipName,
+                              ahead: tip.ahead, unpushed: tip.unpushed)
+        return SessionEvent(kind: .landed, ref: row.ref, name: row.session.name,
+                            job: row.job, at: now, landing: landing)
     }
 }
 

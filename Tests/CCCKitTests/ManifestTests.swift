@@ -175,4 +175,33 @@ import Testing
         #expect(spawn["exit"] is String)
         #expect((spawn["aliases"] as? [String]) == ["new"])
     }
+
+    /// **Every event kind is named where a reader looks for it.** The
+    /// rule cost a merge once already (`CLAUDE.md`, "Rules earned"):
+    /// `ccc update`'s help went a release stale because it was a string
+    /// no test read. `ccc watch`'s kinds are that same shape — one list,
+    /// repeated in the manifest that prints `--help` and in README — and
+    /// `landed` was added on 2026-09-07, which is exactly the moment such
+    /// a list is easy to keep and cheap to forget.
+    ///
+    /// It walks `SessionEvent.Kind.allCases` rather than a literal, so a
+    /// kind added tomorrow fails here until it is documented. The list is
+    /// a type; that is the whole trick.
+    @Test func everyEventKindIsDocumented() throws {
+        let about = (CommandManifest.verb(named: "watch")?.about ?? []).joined(separator: " ")
+        #expect(!about.isEmpty, "the watch verb has left the manifest; this guard is now blind")
+        let readme = try DocsGuardTests.read("README.md")
+        var missing: [String] = []
+        for kind in SessionEvent.Kind.allCases {
+            if !about.contains(kind.rawValue) { missing.append("manifest: \(kind.rawValue)") }
+            if !readme.contains(kind.rawValue) { missing.append("README.md: \(kind.rawValue)") }
+        }
+        #expect(
+            missing.isEmpty,
+            """
+            \(missing.joined(separator: "; ")) — a kind `ccc watch` can print \
+            and nothing documents. Name it in the manifest's `about`, which is \
+            what `ccc watch --help` prints, and in README's verb list.
+            """)
+    }
 }

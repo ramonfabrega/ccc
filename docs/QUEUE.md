@@ -17,46 +17,35 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 **ccc is v1, and the swarm is why.** The first real commander swarm ran
 2026-09-06 and **every gap it exposed was at the spawner/roster layer,
 none in the terminal embed** (`docs/EVIDENCE.md` "the swarm's five
-findings"). Items 24 and 27 have left since; the stale-`↳` finding 27
-left behind is now a rule on the surface it constrains (`docs/HARNESS.md`
-"Rules", the convention in `docs/DESIGN.md` §9).
+findings"). v13 is done, items 17, 24 and 27 have left, and Remote Control
+is `ccc spawn`'s default with `--no-rc` to opt out.
 
-**v13 is done and the frontier is item 25.** Item 17 left on 2026-09-07:
-both its unmeasured halves were run that night and both its remaining
-questions were decided (`docs/EVIDENCE.md` "item 17 closes"). Remote
-Control is now `ccc spawn`'s default — every worker is answerable from the
-phone, `--no-rc` opts out — and slice 3 was dropped rather than deferred,
-because the buzz it would suppress is wanted.
+**The frontier is item 25, and it is now code waiting on a live count.**
 
-Three **questions, not items**. `suggestedReply` is on the row and shown
-nowhere; using it means answering without attaching (see "Later"). The
-banner receipt's only correct form is the **run-delta**, whose own
-measurement says it would draw an empty line 19 in 20. And **the CLI
-could be a different language** — already a thin client over the socket,
-and a Bun `ccc` on incur would get `--llms` and `--schema` free — but the
-price is Bun on every ssh host: argue it before a second host is added.
+Two **questions, not items**. `suggestedReply` is on the row and shown
+nowhere; using it means answering without attaching (see "Later"). And
+**the CLI could be a different language** — already a thin client over the
+socket, and a Bun `ccc` on incur would get `--llms` and `--schema` free —
+but the price is Bun on every ssh host: argue it before a second host.
 
 Below the frontier: **item 6 is air's** and happens the next time the lid
-closes overnight. Items 5 and 16 are leftovers and one missing twin, none
-with a forcing function. **Items 4, 7 and 14 have left** — item 4 on
-2026-09-04 (`docs/EVIDENCE.md` "item 4 — the far side answers from the
-app"), and air's measurement of it is owed from the next lid night. Item
-33 is an afternoon and knows its own ceiling; it does **not** relieve
-item 25, which is why it is written down beside it rather than instead.
+closes overnight. Items 5 and 16 are leftovers with no forcing function;
+item 33 is an afternoon that knows its own ceiling. Item 4's measurement
+from air is still owed (`docs/EVIDENCE.md` "item 4 — the far side answers
+from the app").
 
 ### 5. Small leftovers
 
 A sort by model. The Session menu's archive/pin items (the context menu
-has them). **`ccc window show` when another app holds
-focus**: `NSApp.activate()` is cooperative since macOS 14 (measured
-2026-09-02), so `show`'s CLI side should go through `NSWorkspace`.
-**Twin gaps from the audit**
-(`docs/EVIDENCE.md` "the audit"): `ccc ask <ref>` (the socket has it; the
-CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
-remove|check` in the window, an age column. **From item 18**: the New
-Session sheet has no worktree or base field, and a remote `--base` is
-refused rather than routed to the far side's ccc. **From item 31**: the
-`asks` mark trusts only a typed asking mode now, so a deliberate
+has them). **`ccc window show` when another app holds focus**: since
+macOS 14 `NSApp.activate()` is cooperative (measured 2026-09-02), so
+`show`'s CLI side should go through `NSWorkspace`. **Twin gaps from the
+audit** (`docs/EVIDENCE.md` "the audit"): `ccc ask <ref>` (the socket has
+it; the CLI reaches it only through `update --ask`), a mouse-button
+`send`, `hosts remove|check` in the window, an age column. **From item
+18**: the New Session sheet has no worktree or base field, and a remote
+`--base` is refused rather than routed to the far side's ccc. **From item
+31**: the `asks` mark trusts only a typed asking mode, so a deliberate
 `--permission-mode default` is invisible; the transcript's last
 `permission-mode` record would see one, at a tail read per tick.
 
@@ -91,9 +80,8 @@ which is why no ccc depends on another ccc. The shared PTY is
 **last-resize-wins**, and what is open is whether a secondary viewer should
 resize it at all or render the grid at whatever size the first one set.
 
-**It comes due the first time air joins a session studio already has up**
-— the ordinary case the moment the lid opens somewhere else — so this is
-the one item that will announce itself rather than wait to be picked.
+**It comes due the first time air joins a session studio already has up**,
+so it will announce itself rather than wait to be picked.
 
 ### 16. The shell pane has no twins but open and close
 
@@ -108,30 +96,20 @@ it matters beyond tidiness: the shell pane is the only place ccc can paint
 **chosen bytes** into a real window. `focus` already reaches both panes; a
 target on the request, not a second verb set, is the shape to copy.
 
-### 25. The detector is wrong, and it is not the window
+### 25. The landing detector is built and unproved
 
-**Measured, not argued** (`docs/EVIDENCE.md` "the stall stream's first
-run"): a night of `ccc watch --json --all` over ten landings emitted
-**zero** `stalled` events at either window, while **three** sessions
-finished quietly, each found by a human eyeballing the roster. A timer
-cannot catch those at any duration — they are not stalled, they are done
-and mislabelled. Worse, `loop-252` read *"shutdown assertions failing"*
-while its work was merged and pushed: state and `↳` went stale **in the
-same direction**, so the pair agreed and left no contradiction to
-notice. The **branch tip** answered, which ccc already reads every tick for the ⇡⇣ marks. The product is a `done`
-detector keyed on the tip, not a timer; `StallWindow` stays.
+`stalled` gates on the *daemon's* `updatedAt`, which keeps ticking under a
+dormant session: ten landings, two windows, **zero** stall events, three
+quiet finishes, and `loop-284` at `working idle` with its work pushed two
+ahead. Built 2026-09-07 as `SessionEvent.landed`, keyed on the branch tip
+— a join on the reading the ⇡⇣ marks already pay for (`docs/EVIDENCE.md`
+"the stall stream's first run", "the landing detector").
 
-**A fourth, from attrition 2026-09-07, and it is the consumer's side of
-the same defect**: `loop-284` finished its item, committed, pushed, and
-sat **two commits ahead of base** with its row reading **`working
-idle`**. No transition ever came, so `ccc watch` had nothing to emit and
-a watch correctly armed on that session's ref reported nothing — a human
-had to say it. Two of attrition's four missed landings that day were
-*not* watch-side at all (see item 33), and this is one of them: **the
-event never existed**, so no flag, window or filter on the watching end
-reaches it. It also separates the detector's two jobs — the **trigger**
-may not come from a state transition, while the **payload** must still
-be computed from refs, because a worker's own typed claim is unverified.
+**What is left is the count**, before the phone keeps it: a commander loop
+with `ccc watch --json --all`, asking whether `pushed` fired once per
+landing and whether `committed` was noise. A worker with no branch moves
+no tip, and **that residue is all a peer's "done" ping should cover** — a
+typed claim where a commit is evidence.
 
 ### 28. The fd rule is prose, and it has already failed once
 
@@ -161,11 +139,9 @@ of a thread on 09-06. Proposed: a `<repo>-<role>-<item>` default in `ccc
 spawn`, refused on a live collision by the guard that exists, and
 **parent + role in the per-worktree record** beside the base — the
 spawner's bridge id, which survives clears — so `ccc list --tree` and
-lore read one record instead of inferring. **Half of it is lore's**
-(2026-09-07): `lore jobs` carries `parent`, read off the spawner's own
-transcript, and 19 of 28 jobs since 09-06 hang under one with no ccc
-change. The record is optional; **the name grammar is the part only ccc
-can enforce**.
+lore read one record instead of inferring. **Half of it is lore's** and already shipped — `lore jobs` carries
+`parent`, read off the spawner's transcript. **The name grammar is the
+part only ccc can enforce.**
 
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 
@@ -208,23 +184,14 @@ spawned the session" is a real answer.
 
 ### 33. `ccc watch`'s only filter is the host
 
-From attrition, 2026-09-07, with its worth already bounded. An agent
-watching one worker has no way to say which, so it pipes `ccc watch`
-through `grep <name>` — and the state line and the payload share the
-stream, so a name mentioned in some *other* session's detail matches a
-row that is not it. That cost attrition landings twice on 09-07.
-`--json` already escapes it (`.ref`, `.name` are fields; `jq` filters
-exactly), so the footgun lives entirely in the text form that an agent
-reaches for first, and `--name`/`--ref` on `watch` — the same shape
-`--host` already has — closes it.
-
-**Build it, but not as a fix for a watching agent's misses**: attrition's
-own audit of four failures puts this at exactly one of three classes. The
-other two were a filter enumerated once from a *snapshot* of refs (live
-workers were never in the list — upstream of ccc), and a state that never
-moved (item 25, where no event exists to filter). A worker keyed on refs
-rather than names avoids this class already; the flag is for everyone who
-does not.
+From attrition, 2026-09-07. An agent watching one worker cannot say which,
+so it pipes through `grep <name>` — and the state line and the payload
+share the stream, so another session's detail text matches; it cost two
+landings. `--json` escapes it already (`.ref` and `.name` are fields), so
+the footgun is entirely in the text form an agent reaches for first, and
+`--name`/`--ref` — the shape `--host` has — closes it. **Ceiling**: of four misses it fixes one class, the others being a filter
+built from a *snapshot* of refs (upstream of ccc) and a state that never
+moved (item 25). Build it for whoever keys on names, not as anyone's fix.
 
 ## Later
 

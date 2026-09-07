@@ -4721,3 +4721,59 @@ sat **70 minutes with zero bytes of output**, and `sample` put 2401 of
 2401 samples in `Git.Drain.data` → `semaphore_wait_trap`. `--no-parallel`
 is 523 tests in 63 suites in 22 s. Zero output is indistinguishable from
 progress, which is what made it cost an hour rather than a minute.
+
+## the landing detector (2026-09-07)
+
+Item 25's product, built the day after "the stall stream's first run"
+measured that no timer could ever be its product. The defect in one
+sentence: `TransitionDetector.stallEvent` gates on `row.job?.updatedAt`,
+the *daemon's* clock, and the daemon keeps timestamping a dormant
+session — so a finished-and-mislabelled session is still, by that clock,
+moving. Ten landings, two windows, zero `stalled` events.
+
+**What it is.** `SessionEvent.Kind.landed`, produced by
+`TransitionDetector.landingEvent` from `SessionRow.worktree` — the
+`WorktreeInfo` that `WorktreeProbe` already computes once per row per
+tick for the `↑↓ ⇡⇣` marks, and that the far side already ships across
+the hop in `ccc list --json`. **No new probe and no new git call on any
+host**: the detector is a join on a reading that was already paid for,
+which is the only reason a per-tick git-keyed notifier is affordable.
+
+Rules, each with a test in `Tests/CCCKitTests/LandingTests.swift`:
+
+- **Two halves.** `committed` (`ahead` grew) and `pushed` (`ahead > 0`
+  and `unpushed` fell to 0). A worker commits and pushes seconds apart —
+  one 2 s poll — so when both cross a single tick the **stronger** is
+  reported, else the coincidence would silently cost the event its
+  banner.
+- **Only `pushed` draws a banner** (`SessionEvent.drawsBanner`, read by
+  `Notifier`; every other kind draws). A mid-item commit is not worth a
+  phone; work reaching origin is the moment a merge decision exists on
+  the other Mac. Both halves reach `ccc watch`, which is where a
+  commander is already looking.
+- **A terminal event in the same tick swallows it.** When the daemon
+  does say `done`, that is the better half of the same news and the row
+  already draws `↑N`.
+- **The tip is not part of the change key.** A commit landing while a
+  session is `blocked` must not re-fire the question it is blocked on.
+- **A first reading is a baseline**, so a branch that is already ahead
+  when ccc starts is history, not five banners at launch — the rule
+  `blocked`, `done` and `stalled` all follow here.
+- **No worktree, no opinion.** A research or review worker moves no tip,
+  and this detector never claims one it cannot see.
+
+The headline carries git's numbers and the body carries the daemon's
+sentence, deliberately: `loop-252` read *"shutdown assertions failing; 5
+tests need fix"* while its work was merged and pushed, and the pair of
+stale signals agreed with each other. `loop-252 pushed — 3 commits ahead
+of master, all on origin — shutdown assertions failing` is that
+contradiction drawn, and it is the suite's second fixture.
+
+```
+swift test --no-parallel --filter LandingTests   # 12 tests, 1 suite
+```
+
+**Unmeasured: the rate.** No live run has fired one. The shape to run is
+attrition's own — a commander loop, two workers, `ccc watch --json --all`
+as a Monitor — counting whether `pushed` fired once per landing and
+whether `committed` was noise, before the phone keeps it.
