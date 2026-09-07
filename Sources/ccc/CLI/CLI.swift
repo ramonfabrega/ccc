@@ -1786,11 +1786,13 @@ enum CLI {
             // aligned. The word is the flag the user typed, so nothing has
             // to be looked up to read it.
             let rc = (row.job?.remoteControl ?? false) ? "rc" : "  "
-            // Launched without a mode that answers for itself: this one
-            // stops at its first permission prompt, which on a phone is
-            // "until someone is at a laptop". Drawn only when it asks —
-            // the v11 rule — and only for a background job, since an
-            // interactive session has someone at it by definition.
+            // Launched with a mode that asks: this one stops at its
+            // first permission prompt, which on a phone is "until someone
+            // is at a laptop". Drawn only when it asks — the v11 rule —
+            // and only for a background job, since an interactive session
+            // has someone at it by definition. `default` and no mode at
+            // all say nothing, because `respawnFlags` writes a typed
+            // `auto` as `default` (item 31).
             let asks = (row.job?.asksForPermission ?? false) && row.session.kind == .background ? "asks" : "    "
             // The worktree (v6): the repository, then the branch and its
             // standing — the same reading as the window's row.

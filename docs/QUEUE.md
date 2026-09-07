@@ -25,7 +25,8 @@ left behind is now a rule on the surface it constrains (`docs/HARNESS.md`
 that **the phone's job is already shipped** — Remote Control puts most
 live workers in the Claude app, where they are messaged and answered — so
 ccc builds what RC leaves out (`docs/EVIDENCE.md` "the mobile survey").
-What is left of it is a measurement only the user can run.
+Both of its unmeasured halves were run on 2026-09-07; what is left is a
+decision, not a measurement.
 
 Three **questions, not items**. `suggestedReply` is on the row and shown
 nowhere; using it means answering without attaching (see "Later"). The
@@ -52,7 +53,13 @@ focus**: `NSApp.activate()` is cooperative since macOS 14 (measured
 CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
 remove|check` in the window, an age column. **From item 18**: the New
 Session sheet has no worktree or base field, and a remote `--base` is
-refused rather than routed to the far side's ccc.
+refused rather than routed to the far side's ccc. **From item 31** (fixed
+2026-09-07, `docs/EVIDENCE.md` "item 17 — the roster says nothing about
+`--rc`"): the `asks` mark now trusts only a value `respawnFlags` cannot
+have invented, which makes a deliberate `--permission-mode default`
+invisible; the transcript's last `permission-mode` record is the source
+that would see one, at a tail read per tick, and is worth it only if a
+non-`auto` worker ever becomes ordinary here.
 
 ### 6. The remote pane's reattach has still never met a lid
 
@@ -107,19 +114,22 @@ target on the request, not a second verb set, is the shape to copy.
 None of this is the phone; all of it makes the phone the user already has
 work better (`docs/EVIDENCE.md` "the mobile survey").
 
-**Slices 1 and 2 and the roster half are done** ("the pane that could not
-say it had looked away", "Cut as v0.1.23", "item 17 — the roster says
-nothing about `--rc`"): an rc row differs from a plain one in nothing but
-identity, so `respawnFlags` is the only source; and `--rc` had been eating
-the prompt of every spawn, so **whether it should be the default** was
-never really asked.
+**Everything measurable here is measured.** Slices 1 and 2 shipped ("the
+pane that could not say it had looked away", "Cut as v0.1.23"); the roster
+half says an rc row differs from a plain one in nothing but identity, so
+`respawnFlags` is the only source, and that `--rc` had been eating the
+prompt of every spawn until 2026-09-07 ("item 17 — the roster says nothing
+about `--rc`"); and four `--rc` fixtures blocked on a question, one held by
+ccc's pane before its first turn, **all four buzzed** ("item 17 — the phone
+buzzes for everything").
 
-**What is left is the user's half**: whether the phone buzzes for a
-session ccc holds while nobody watches. **Slice 3,
-`CLAUDE_CLIENT_PRESENCE_FILE`** — `ccc presence on|off|status`, `--settings`
-printing the settings.json `env` entry and never writing it, keyed on
-**idle time** rather than the lock since studio is always-on — is gated on
-that answer being no: the bug just fixed was too *much* suppression.
+**What is left is two decisions.** Whether `--rc` should be the default,
+never really asked since the flag made every spawn a draft. And **slice 3,
+`CLAUDE_CLIENT_PRESENCE_FILE`** — `ccc presence on|off|status`,
+`--settings` printing the settings.json `env` entry and never writing it,
+keyed on **idle time** rather than the lock since studio is always-on —
+whose premise is now inverted: nothing is over-suppressed, so the
+complaint available is the phone buzzing for what the user is watching.
 
 ### 25. The detector is wrong, and it is not the window
 
@@ -175,23 +185,6 @@ parallel, and is 510 tests in 19 s with `--no-parallel`. **Production is
 nowhere near the limit** — the poller probes serially, a verb is one call
 — so the cost is a suite nobody can trust on a busy Mac. Fix is one
 reader without a per-call thread, or `Subprocess` behind the sync face.
-
-### 31. The `asks` mark is wrong on every row that can be judged
-
-Found 2026-09-07 under item 17 (`docs/EVIDENCE.md` "item 17 — the roster
-says nothing about `--rc`"). `asksForPermission` reads `--permission-mode`
-out of `respawnFlags`, an array that is **resolved, not echoed**: a typed
-`auto` comes back `default` whenever a `--model` was named — every spawn
-the fan-out rule allows — and absent does not mean asks either, since the
-twelve live rows carrying no mode are on `auto` per their transcripts.
-Measured: **12 of 18 live rows draw `asks` on an `auto` session; none
-draws it correctly**, and the tooltip contradicts itself in one line.
-
-The source is the choice: the **transcript's last `permission-mode`
-record** is the session's own word and follows a mid-session change, at a
-tail read per tick; the cheap move trusts `respawnFlags` only for
-`plan`/`manual`/`acceptEdits` and goes silent on `default` and on absent —
-0 wrong, at the price of an invisible deliberate one.
 
 ## Later
 

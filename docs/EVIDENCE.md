@@ -4433,9 +4433,15 @@ is right. By the v11 rule (every line carries payload or is not drawn) it
 is worse than absent: it is drawn on most rows and says the opposite of
 what is true.
 
-That is a detector, not a badge, and it wants the same treatment item 25's
-did — a source that is the session's own word rather than an inference off
-a launch flag. Queue item 31.
+**Fixed the same night, at the user's word that the fleet runs `auto`
+always.** `asksForPermission` now marks only `plan`, `manual` and
+`acceptEdits` — the values `respawnFlags` cannot have rewritten into place
+— and says nothing about `default` or about a missing flag. That takes the
+count to 0 wrong, and its price is that a deliberate `--permission-mode
+default` is now invisible: the source that would see one is the
+transcript's last `permission-mode` record, which is a tail read per tick
+and stays a leftover in queue item 5 until a non-`auto` worker is ordinary
+here.
 
 **When the rewrite happens**, from the one fixture that never got that
 far: `ccc spawn --worktree "<prompt>"` failed `exit 1 before init`, and
@@ -4467,3 +4473,37 @@ End to end on the built binary, same shape as the fixture that failed:
 Every fixture in this section was removed with `claude stop` + `claude rm`
 and its cwd deleted; `claude agents --json --all | grep -c rcfix` answers
 `0`.
+
+## item 17 — the phone buzzes for everything, ccc's pane included (2026-09-07)
+
+The user's half, run the same night as the roster half and answered by the
+user watching his phone. Four `--rc` haiku fixtures in a throwaway cwd,
+each given one job — *use `AskUserQuestion` to ask red or blue and wait* —
+so each lands in `blocked` with a real "your turn".
+
+Round 1, the baseline: two of them, **neither attached**, blocked within
+seconds of each other. Round 2, the variable: one spawned as an `--rc`
+**draft**, `ccc attach`ed *first* so ccc held it before it ever ran, then
+started through the pane with `ccc send` + `--key enter`; the second
+spawned with the prompt inline and never attached. Both blocked at
+01:38:11, one with `attached: true` and one with `attached: false`,
+otherwise identical.
+
+**All four buzzed** — the user's words, unprompted: *"yeah im getting all
+of em!!"*. So a ccc pane holding a session does not suppress its push, and
+the ordering was controlled for: `ccc-push-held2` was attached before its
+first turn, not after it blocked.
+
+**That closes the slice-2 worry and inverts slice 3's premise.** Nothing
+is being over-suppressed any more; the complaint available now is the
+opposite one — the phone buzzes for a session the user is *watching on the
+Mac*, which is exactly what `CLAUDE_CLIENT_PRESENCE_FILE` exists to stop.
+The gate on slice 3 was "only if slice 2 was not enough", and the measured
+answer is that it was enough for the direction it fixed and leaves the
+other direction wide open. Whether that is a bug or the right default is
+the user's call, and the "idle time, not the lock" note still holds: on an
+always-on studio, "unlocked" would suppress push all day.
+
+Fixtures removed with `claude stop` + `claude rm`, the throwaway cwd
+deleted, and the pane put back on the session it was holding before
+(`ccc attach a18a763f`, which `attach` had left on the way in).

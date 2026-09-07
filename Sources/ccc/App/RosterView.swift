@@ -499,14 +499,17 @@ struct RosterRow: View {
                             .foregroundStyle(.tertiary)
                             .help("Remote Control: dispatched --rc, so this session can be answered from the Claude app or claude.ai/code, not only here")
                     }
-                    // Launched with a permission mode that asks (or none):
-                    // it will stop at its first prompt. Same rule as the
-                    // phone badge — drawn only when it is the payload.
+                    // Launched with a permission mode that asks: it will
+                    // stop at its first prompt. Same rule as the phone
+                    // badge — drawn only when it is the payload, which
+                    // since item 31 excludes `default` and no mode at
+                    // all: `respawnFlags` writes a typed `auto` as
+                    // `default`, so neither is evidence of anything.
                     if row.session.kind == .background, row.job?.asksForPermission == true {
                         Image(systemName: "questionmark.bubble")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
-                            .help("Launched --permission-mode \(row.job?.permissionMode ?? "default"): permission prompts block it until answered here or in the Claude app; `ccc spawn` defaults to auto")
+                            .help("Launched --permission-mode \(row.job?.permissionMode ?? "?"): permission prompts block it until answered here or in the Claude app; `ccc spawn` defaults to auto")
                     }
                     Spacer()
                     // The worktree (v6): the branch, with what it holds over

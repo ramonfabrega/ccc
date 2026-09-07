@@ -168,14 +168,28 @@ public struct JobInfo: Codable, Sendable, Equatable {
         tempo = try? container.decodeIfPresent(String.self, forKey: .tempo)
     }
 
-    /// Whether a permission prompt will stop this job: launched without a
-    /// mode (the harness prompts by default) or with one that asks.
-    /// `auto` and `bypassPermissions` answer for themselves; everything
-    /// else — `default`, `plan`, `acceptEdits` — still asks for something.
+    /// Whether a permission prompt will stop this job — true **only** for a
+    /// mode `respawnFlags` could not have invented.
+    ///
+    /// It used to read the other way round, "anything but `auto` and
+    /// `bypassPermissions` asks", and measured 2026-09-07 that was wrong
+    /// on **12 of 18** live rows and right on none (`docs/EVIDENCE.md`
+    /// "item 17 — the roster says nothing about `--rc`"). Two causes, both
+    /// in the source rather than in the rule: a typed `auto` comes back
+    /// `default` once a session that named a `--model` initializes, and
+    /// the twelve rows carrying no `--permission-mode` at all — everything
+    /// ccc did not spawn — are on `auto` per their own transcripts, so
+    /// absent never meant "the harness default" either.
+    ///
+    /// So `default` and nil now say nothing, and the mark is kept for the
+    /// three values that can only have been typed. The cost is a
+    /// deliberate `--permission-mode default` going unmarked, which is
+    /// what queue item 31's other candidate — the transcript's own
+    /// `permission-mode` record — would see.
     public var asksForPermission: Bool {
         switch permissionMode {
-        case "auto", "bypassPermissions": return false
-        default: return true
+        case "plan", "manual", "acceptEdits": return true
+        default: return false
         }
     }
 

@@ -15,13 +15,22 @@ import Testing
     }
 
     /// The fleet's commanders as measured: `--rc`, a name, a model, no mode.
-    /// That is the harness's default, which asks.
-    @Test func noModeIsTheOneThatAsks() {
+    /// **No mode is not the one that asks**, which is what this test said
+    /// until 2026-09-07 and what the roster drew on twelve of eighteen
+    /// rows that were all on `auto` (`docs/EVIDENCE.md` "item 17 — the
+    /// roster says nothing about `--rc`"). Nor is `default`, which is what
+    /// the harness writes a typed `auto` as once a session that named a
+    /// `--model` initializes. Only a value nothing could have rewritten
+    /// into place earns the mark.
+    @Test func onlyATypedAskingModeEarnsTheMark() {
         let json = #"{"detail":"x","respawnFlags":["--rc","--name","ccc","--model","opus[1m]"]}"#
         let info = JobInfo.decode(Data(json.utf8))
         #expect(info?.permissionMode == nil)
-        #expect(info?.asksForPermission == true)
+        #expect(info?.asksForPermission == false)
+        #expect(JobInfo(permissionMode: "default").asksForPermission == false)
         #expect(JobInfo(permissionMode: "plan").asksForPermission)
+        #expect(JobInfo(permissionMode: "manual").asksForPermission)
+        #expect(JobInfo(permissionMode: "acceptEdits").asksForPermission)
         #expect(JobInfo(permissionMode: "bypassPermissions").asksForPermission == false)
     }
 
