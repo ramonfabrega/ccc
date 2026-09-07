@@ -105,11 +105,11 @@ ahead. Built 2026-09-07 as `SessionEvent.landed`, keyed on the branch tip
 — a join on the reading the ⇡⇣ marks already pay for (`docs/EVIDENCE.md`
 "the stall stream's first run", "the landing detector").
 
-**Both halves fired live** on studio the day it was built, from a session
-whose row never left `working`. **What is left is the rate**: one session
-is not a night, so a commander loop with `ccc watch --json --all` is owed
-— did `pushed` fire once per landing, was `committed` noise. A worker with
-no branch moves no tip, and that residue is all a peer's ping should cover.
+**Both halves fired live** on studio, and history priced the rate first:
+over 21 of attrition's worker branches, **24 pushes against 32 commits on
+the four unmerged** — the banner half ~1.1 per landing (`docs/EVIDENCE.md`
+"the landing rate"). **One live run is left**, gated on a release: does
+`pushed` fire per *landing* or per *push* (`loop-280` pushed twice, 42 s)?
 
 ### 28. The fd rule is prose, and it has already failed once
 

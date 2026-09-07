@@ -4794,3 +4794,48 @@ tip said it twice. The `job` payload rode along on both.
 run is attrition's own — a commander loop, two workers, `ccc watch --json
 --all` as a Monitor — counting whether `pushed` fired once per landing
 and whether `committed` was noise, before the phone keeps it.
+
+## the landing rate, from history rather than a night (2026-09-07)
+
+Item 25's open question is the rate, and attrition — the only fleet with a
+commander loop — cannot run it until a release carries `landed` to its
+installed `ccc` (0.1.32 (218) has no `landed` in `watch --help`; it
+declined to `swift build` another session's worktree, correctly). Its
+*prediction* was that `pushed` fires once per landing while `committed`
+fires several times, mid-item commits being routine.
+
+That is answerable now, because both halves are functions of git history
+and the history exists. Read-only, in `~/code/fun/attrition`:
+
+```
+git for-each-ref --format='%(refname:short)' refs/remotes/origin   # 21 worker branches
+git reflog show <ref> | grep -c "update by push"                   # pushes: the `pushed` half
+git rev-list --count $(git merge-base main <ref>)..<ref>           # commits: the `committed` half
+```
+
+**24 pushes across 21 worker branches** — 18 branches pushed once, three
+twice (`lane-272`, `lane-run88`, `loop-280`; `loop-280`'s two were 42 s
+apart). Every reflog entry reads `update by push`, so these are the
+worker's own pushes and not fetches.
+
+The commit column is only meaningful for the **four branches not yet
+merged** (`git branch -r --no-merged main`): merging moves `merge-base` to
+the branch tip, so the other 17 read 0 and measure nothing.
+
+```
+lane-272   6 commits  2 pushes
+loop-276   8 commits  1 push
+loop-280   3 commits  2 pushes
+loop-284  15 commits  1 push
+```
+
+**32 commits, 6 pushes.** So the banner half would have drawn ~1.1 times
+per landing and the CLI half up to 8 times — an upper bound, since commits
+inside one 2 s poll collapse into one `ahead` increase.
+
+The prediction holds, and with it the split: `committed` is not noise, it
+is **progress rather than completion**, and it is why only `pushed` draws
+a banner (`SessionEvent.drawsBanner`). What this does *not* answer is
+whether `pushed` fires once per *landing* as against once per *push* —
+`loop-280` pushed twice 42 s apart and would have drawn twice. A live run
+with attrition's merge log as independent ground truth is still owed.
