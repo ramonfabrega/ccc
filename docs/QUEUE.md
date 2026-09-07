@@ -170,16 +170,13 @@ event per stall, re-armed only by movement.
 
 ## Later
 
-**What a `/clear` does to a session's background work is half measured.**
-A `local_bash` task survives one; a **Monitor** has never been tested
-across a clear, and `state.json` counts `drainableMonitors` beside
-`tasks` — a concept a shell has no equivalent of. It matters because
-item 25's own evidence stream is a Monitor owned by a commander that
-will clear itself: a wrong answer blinds the stream at the moment the
-window starts being exercised. The experiment is `inFlight` plus each
-stream file's mtime either side of one armed clear — "still tracked" and
-"still writing" are different questions (`docs/EVIDENCE.md` "what a
-clear does to background work"). attrition's next boundary runs it.
+**A Monitor survives a clear** — measured 2026-09-07 on the commander
+whose Monitor *is* item 25's evidence stream: hand-cleared at 04:02:27Z,
+and the Monitor's file still growing at 04:10:17Z, so it survives both
+tracked and writing (`docs/EVIDENCE.md` "what a clear does to background
+work"). What is left is free: the same reading under `ccc clear`'s
+programmatic keystrokes rather than a human's, which the next armed fire
+takes with a built-in control.
 
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,
 for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness

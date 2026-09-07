@@ -4121,10 +4121,28 @@ backgrounded `sleep 600`; its job file read `inFlight = {tasks: 1, kinds:
 either side (12442 across both of the boots' clears). A clear resets the
 conversation, not the process.
 
-**A Monitor has never been tested across one**, and the two are not
-obviously alike: `state.json` counts `drainableMonitors` beside `tasks`,
-which is the harness having a concept of draining monitors that a
-background shell has no equivalent of.
+**And so does a Monitor**, which was the half that mattered — item 25's
+evidence stream is one, owned by a commander that will clear itself. The
+measurement arrived by accident, from a clear the commander's user typed
+by hand: current transcript's first record **04:02:27Z**, against
+04:02:02Z for the pre-clear one's last, and the Monitor's output file
+`watch.jsonl` carrying an mtime of **04:10:17Z** — eight minutes on the
+far side. Tracked *and* writing, which is the distinction a `sleep` that
+writes nothing could never have shown.
+
+What that leaves is free rather than open: the same reading under `ccc
+clear`'s keystrokes rather than a human's. The two are the same operation
+by construction — the verb presses `end`, reads the box, types `/clear`
+and presses enter, and there is no other path into that TUI — so the
+prior is "survives", not "unmeasured".
+
+**The instrument has a control in it, unplanned.** Both `ccc watch`
+streams there are the same command shape under different task kinds —
+one a Monitor writing `watch.jsonl`, one a background shell writing
+`watch-stall10.jsonl` — the residue of wiring the streams up three times.
+So if `watch.jsonl` alone goes quiet across the next armed fire while the
+other two keep growing, that is the monitor dying and nothing else, with
+no inference in between.
 
 ### `kinds` discriminates, and `drainableMonitors` is a state
 
