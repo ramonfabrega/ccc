@@ -50,9 +50,13 @@ ccc list [--host <n>] [--archived] [--group none|host|repo|state] [--sort activi
                                     # is one (≤ one tick old, joins warm); --fresh polls once more first, and
                                     # with no app it polls here
 ccc archive|unarchive|pin|unpin <ref>  # a mark on a session, kept with the session's host
-ccc watch [--host <n>] [--interval S] [--all] [--json]
-                                    # one line per transition (blocked, done, failed, stopped); muted hosts
-                                    # are skipped unless --all or named
+ccc watch [--host <n>] [--interval S] [--all] [--stall <minutes>] [--json]
+                                    # one line per transition (blocked, done, failed, stopped, stalled); muted
+                                    # hosts are skipped unless --all or named.
+                                    # `stalled` is the non-event: WORKING, and the daemon has not written the
+                                    # job's file for N minutes (default 30, CCC_STALL_MINUTES, 0 off). One line
+                                    # per stall, re-armed only when the session moves; sessions already still
+                                    # when the watch starts are named on the opening line instead
 ccc hook [--settings]               # the harness's Notification hook: JSON on stdin → a banner from the app;
                                     # --settings prints the settings.json entry (ccc never writes it)
 ccc rm <ref> [--json]               # delete a session and its worktree, when the harness says that is safe

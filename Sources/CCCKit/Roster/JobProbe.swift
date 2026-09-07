@@ -70,6 +70,20 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// which worker would block on its first prompt was to open seven
     /// state files; the row now says which ones ask.
     public var permissionMode: String?
+    /// **When the daemon last wrote this job's file** (`updatedAt`), which
+    /// is the only clock ccc has for a session that is *working* (item
+    /// 21). The roster's `startedAt` says when it began and nothing says
+    /// when it last moved; this does, and it moves on every turn — read
+    /// live 2026-09-06 against a session eight seconds into a tool call.
+    ///
+    /// It exists for the transition the watcher did not have. cuanto's
+    /// Lane B was contracted to report at each landing point, sent zero
+    /// messages, and sat with two unpushed commits for two days: nothing
+    /// fired, because `blocked`/`done`/`failed`/`stopped` are the only
+    /// things that ever happen to a row and it was `working` throughout.
+    /// A stall is a *non-event*, and a non-event can only be detected
+    /// against a clock.
+    public var updatedAt: Date?
     // `children` — the job's pull requests and published artifacts — is
     // **not read**. It was, for a day: v11 slice 3 dropped the PR half of
     // the banner's receipt line and slice 4 dropped the rest, because the
@@ -90,13 +104,15 @@ public struct JobInfo: Codable, Sendable, Equatable {
     // earns itself.
 
     public init(detail: String? = nil, needs: String? = nil, result: String? = nil,
-                suggestedReply: String? = nil, remoteControl: Bool = false, permissionMode: String? = nil) {
+                suggestedReply: String? = nil, remoteControl: Bool = false, permissionMode: String? = nil,
+                updatedAt: Date? = nil) {
         self.detail = detail
         self.needs = needs
         self.result = result
         self.suggestedReply = suggestedReply
         self.remoteControl = remoteControl
         self.permissionMode = permissionMode
+        self.updatedAt = updatedAt
     }
 
     /// Nothing worth carrying. The join yields `nil` rather than an empty
@@ -106,7 +122,8 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// not remote-controlled has said nothing, and a reading of "no" for
     /// every field is the empty reading this guards against.
     public var isEmpty: Bool {
-        detail == nil && needs == nil && result == nil && suggestedReply == nil && !remoteControl && permissionMode == nil
+        detail == nil && needs == nil && result == nil && suggestedReply == nil && !remoteControl
+            && permissionMode == nil && updatedAt == nil
     }
 
     /// Hand-written and lenient, for the same reason `SessionRow`'s is:
@@ -125,6 +142,7 @@ public struct JobInfo: Codable, Sendable, Equatable {
         suggestedReply = try? container.decodeIfPresent(String.self, forKey: .suggestedReply)
         remoteControl = (try? container.decodeIfPresent(Bool.self, forKey: .remoteControl)) ?? false
         permissionMode = try? container.decodeIfPresent(String.self, forKey: .permissionMode)
+        updatedAt = try? container.decodeIfPresent(Date.self, forKey: .updatedAt)
     }
 
     /// Whether a permission prompt will stop this job: launched without a
@@ -170,8 +188,22 @@ public struct JobInfo: Codable, Sendable, Equatable {
                            result: string("result", in: (object["output"] as? [String: Any]) ?? [:]),
                            suggestedReply: string("suggestedReply"),
                            remoteControl: remoteControl(in: object),
-                           permissionMode: permissionMode(in: object))
+                           permissionMode: permissionMode(in: object),
+                           updatedAt: string("updatedAt").flatMap(Self.instant))
         return info.isEmpty ? nil : info
+    }
+
+    /// The daemon writes `updatedAt` with fractional seconds
+    /// (`2026-09-07T00:58:17.563Z`), which `.iso8601` alone does not
+    /// parse; both shapes are tried, and an unparseable one is simply no
+    /// clock — the stall detector then says nothing about that session
+    /// rather than calling it stalled. Statically-let format styles, so
+    /// no shared mutable formatter (ModelProbe's rule).
+    private static let fractionalInstant = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let plainInstant = Date.ISO8601FormatStyle(includingFractionalSeconds: false)
+
+    static func instant(_ text: String) -> Date? {
+        (try? fractionalInstant.parse(text)) ?? (try? plainInstant.parse(text))
     }
 
     /// The value after `--permission-mode` in `respawnFlags`, if any.

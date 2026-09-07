@@ -57,7 +57,9 @@ enum CLI {
                                       group: group, sort: sort, fresh: rest.contains("--fresh"), json: json)
             case "watch":
                 return try await watch(host: stringFlag("--host", rest), interval: intFlag("--interval", rest) ?? 2,
-                                       all: rest.contains("--all"), json: json)
+                                       all: rest.contains("--all"),
+                                       stall: intFlag("--stall", rest).map { StallWindow(minutes: Double($0)) },
+                                       json: json)
             case "hook":
                 return hook(settings: rest.contains("--settings"), json: json)
             case "hosts":
@@ -757,7 +759,8 @@ enum CLI {
     /// Needs no running app, like `list`. The first poll is the baseline
     /// and prints what is already blocked to stderr, so a reader knows the
     /// standing state without it counting as news.
-    static func watch(host name: String?, interval: Int, all: Bool, json: Bool) async throws -> Int32 {
+    static func watch(host name: String?, interval: Int, all: Bool,
+                      stall: StallWindow? = nil, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
         let config: HostConfig
@@ -775,7 +778,7 @@ enum CLI {
         // `--host` is what was asked for).
         let filter = (all || name != nil) ? HostConfig(hosts: []) : config
         let poller = RosterPoller(hosts: config, interval: .seconds(interval))
-        var detector = TransitionDetector()
+        var detector = TransitionDetector(stallWindow: stall ?? .fromEnvironment())
         await poller.tick()
         var state = poller.state
         for failed in state.failures { stderr("ccc: \(failed.host): \(failed.error ?? "unreachable")") }
@@ -783,9 +786,25 @@ enum CLI {
         _ = detector.observe(state)
         let blocked = state.rows.filter(\.isWaiting)
         let muted = filter.mutedHosts
-        stderr("ccc: watching \(config.hosts.count) host\(config.hosts.count == 1 ? "" : "s"), \(state.rows.count) sessions, \(blocked.count) blocked"
-               + (blocked.isEmpty ? "" : ": " + blocked.map { "\($0.session.name ?? $0.ref.description)" }.joined(separator: ", "))
-               + (muted.isEmpty ? "" : "; muted: \(muted.joined(separator: ", ")) (--all hears them)"))
+        // Standing stalls are context, not news (`StallWindow`): a session
+        // still for two days when the watch starts is a thing to know now,
+        // and firing it as an event would be indistinguishable from one
+        // that stalled while you watched.
+        let standing = state.standingStalls(detector.stallWindow)
+        let hostCount = config.hosts.count
+        var opening = "ccc: watching \(hostCount) host\(hostCount == 1 ? "" : "s"), \(state.rows.count) sessions, \(blocked.count) blocked"
+        if !blocked.isEmpty {
+            let names: [String] = blocked.map { $0.session.name ?? $0.ref.description }
+            opening += ": " + names.joined(separator: ", ")
+        }
+        if !standing.isEmpty {
+            let names: [String] = standing.map { "\($0.row.session.name ?? $0.row.ref.description) (\(SessionEvent.spell($0.still)))" }
+            opening += "; already still: " + names.joined(separator: ", ")
+        }
+        if !muted.isEmpty {
+            opening += "; muted: " + muted.joined(separator: ", ") + " (--all hears them)"
+        }
+        stderr(opening)
         let clock = DateFormatter()
         clock.dateFormat = "HH:mm:ss"
         var reported = Set<String>()
@@ -1818,9 +1837,14 @@ enum CLI {
                                                   the Claude app, not only here
                ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host
                                                   (archived rows fold away unless blocked; pinned sort first)
-               ccc watch [--host <name>] [--interval S] [--all] [--json]
-                                                  one line per transition (blocked, done, failed, stopped);
-                                                  muted hosts are skipped unless --all or named with --host
+               ccc watch [--host <name>] [--interval S] [--all] [--stall <minutes>] [--json]
+                                                  one line per transition (blocked, done, failed, stopped, stalled);
+                                                  muted hosts are skipped unless --all or named with --host.
+                                                  `stalled` is the non-event: WORKING and the daemon has not written
+                                                  the job's file for N minutes (default 30, CCC_STALL_MINUTES, 0 off).
+                                                  One line per stall, re-armed only when the session moves again;
+                                                  sessions already still when the watch starts are named on the
+                                                  opening line instead
                ccc hook [--settings]              the harness's Notification hook: JSON on stdin → a banner from the app
                                                   for what the roster cannot show; --settings prints the settings.json entry
                ccc attach <ref> [--headless [--cols N --rows N]]

@@ -13,6 +13,10 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         case blocked
         /// Left `working`/`blocked` for a terminal state.
         case done, failed, stopped
+        /// **Working, and not moving** (item 21). The one event that is a
+        /// *non-*event: nothing happened to the row for long enough that
+        /// the not-happening is the news. See `StallWindow`.
+        case stalled
     }
 
     public var kind: Kind
@@ -20,19 +24,22 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     public var name: String?
     /// What it is waiting on, for `blocked`.
     public var waitingFor: String?
+    /// How long the session had been still, for `stalled`.
+    public var stillFor: TimeInterval?
     /// What the daemon's job file said at the moment of the transition
     /// (v10). The roster says *that* it is your turn; this is what for.
     public var job: JobInfo?
     public var at: Date
 
     public init(kind: Kind, ref: SessionRef, name: String?, waitingFor: String? = nil,
-                job: JobInfo? = nil, at: Date) {
+                job: JobInfo? = nil, at: Date, stillFor: TimeInterval? = nil) {
         self.kind = kind
         self.ref = ref
         self.name = name
         self.waitingFor = waitingFor
         self.job = job
         self.at = at
+        self.stillFor = stillFor
     }
 
     /// The session as a person would name it: its name, else its ref.
@@ -49,7 +56,22 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         case .done: return "\(subject) finished"
         case .failed: return "\(subject) failed"
         case .stopped: return "\(subject) stopped"
+        case .stalled:
+            return "\(subject) has not moved in \(Self.spell(stillFor ?? 0))"
         }
+    }
+
+    /// "45s", "35m", "2h10m", "2 days" — a duration a person reads at a
+    /// glance, which is the whole content of a stall. Seconds only below a
+    /// minute: no honest window is that short, but a test one is, and
+    /// "has not moved in 0m" reads as a bug rather than as a small number.
+    public static func spell(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        if minutes < 1 { return "\(max(0, Int(seconds)))s" }
+        if minutes < 90 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 48 { return hours * 60 == minutes ? "\(hours)h" : "\(hours)h\(minutes % 60)m" }
+        return "\(hours / 24) days"
     }
 
     /// The payload: what the session is asking, or what it did. Whole and
@@ -67,7 +89,10 @@ public struct SessionEvent: Codable, Sendable, Equatable {
     /// nothing distinguishes them at the boundary, so it is the fallback
     /// for when there is no job file at all.
     public var body: String? {
-        let state: Session.State = kind == .blocked ? .blocked : .done
+        // A stall's body is the last thing the session said it was doing
+        // — which is exactly the sentence that stopped changing, and the
+        // most useful thing to read when deciding whether to look.
+        let state: Session.State = kind == .blocked ? .blocked : kind == .stalled ? .working : .done
         guard let said = job?.say(for: state) else {
             let fallback = kind == .blocked ? waitingFor : nil
             return (fallback?.isEmpty == false) ? fallback : nil
@@ -96,6 +121,7 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         case .done: return "✓"
         case .failed: return "✗"
         case .stopped: return "◼"
+        case .stalled: return "⏳"
         }
     }
 
@@ -175,8 +201,15 @@ public struct TransitionDetector: Sendable, Equatable {
 
     private var seen: [SessionRef: Key] = [:]
     private var primed: Set<String> = []
+    /// Refs already reported stalled, so one stall is one event. Cleared
+    /// the moment the session moves again, which re-arms it.
+    private var stalled: Set<SessionRef> = []
+    /// How long a `working` session may stay still before it is news.
+    public var stallWindow: StallWindow
 
-    public init() {}
+    public init(stallWindow: StallWindow = .fromEnvironment()) {
+        self.stallWindow = stallWindow
+    }
 
     /// Hosts that have answered at least once.
     public var primedHosts: Set<String> { primed }
@@ -193,6 +226,14 @@ public struct TransitionDetector: Sendable, Equatable {
                 let key = Key(state: s.state, waitingFor: s.waitingFor.flatMap { $0.isEmpty ? nil : $0 }, draft: row.draft)
                 let before = seen[ref]
                 seen[ref] = key
+                // The stall check runs *before* the change guard, because
+                // a stall is precisely what happens when the key does not
+                // change. A host's first answer still arms it silently,
+                // the way every other kind is armed: launching in front of
+                // three long-still sessions must not fire three banners.
+                // The standing ones are context, and the surfaces say them
+                // as context (`ccc watch`'s opening line).
+                if let event = stallEvent(row, now: now), !first { events.append(event) }
                 guard !first, before != key else { continue }
                 switch key.state {
                 case .blocked:
@@ -214,8 +255,96 @@ public struct TransitionDetector: Sendable, Equatable {
             }
             for ref in seen.keys where ref.host == host.host && !present.contains(ref) {
                 seen.removeValue(forKey: ref)
+                stalled.remove(ref)
             }
         }
         return events
+    }
+}
+
+extension TransitionDetector {
+    /// The stall, if this row is one now. Mutating, because "one stall is
+    /// one event" is state: a ref is marked when it fires and unmarked the
+    /// moment it moves, which re-arms it for the next one.
+    ///
+    /// Three things must all hold, and each excludes a false alarm:
+    /// - the row says **working**. A `blocked` session that sits is not
+    ///   stalled, it is waiting for you, and it already fired its own
+    ///   event; a finished one is not doing anything by definition.
+    /// - the job file carries an **`updatedAt`**. No clock, no claim: a
+    ///   session ccc cannot time is never called stalled, which is the
+    ///   same leniency every other read at this boundary has.
+    /// - the gap exceeds the window, and the window is **on**.
+    private mutating func stallEvent(_ row: SessionRow, now: Date) -> SessionEvent? {
+        guard row.session.state == .working, !row.draft else {
+            stalled.remove(row.ref)
+            return nil
+        }
+        guard let window = stallWindow.seconds, let moved = row.job?.updatedAt else { return nil }
+        let still = now.timeIntervalSince(moved)
+        guard still >= window else {
+            // It moved since we last looked: whatever this is, it is not
+            // the stall we reported.
+            stalled.remove(row.ref)
+            return nil
+        }
+        guard stalled.insert(row.ref).inserted else { return nil }
+        return SessionEvent(kind: .stalled, ref: row.ref, name: row.session.name,
+                            job: row.job, at: now, stillFor: still)
+    }
+}
+
+/// **How long a working session may stay still before the stillness is the
+/// news** (item 21).
+///
+/// The transition ccc did not have. `blocked`, `done`, `failed` and
+/// `stopped` are the only things that ever happen to a row, and on
+/// 2026-09-04 cuanto's Lane B — contracted to report at each landing point
+/// — sent zero messages and sat with two unpushed commits for two days
+/// while every one of those four stayed silent, because it was `working`
+/// the whole time. Nothing was wrong with the watcher; there was simply no
+/// event for "nothing is happening".
+///
+/// **30 minutes is a constant, not a measurement**, and it is the only
+/// honest thing to say about it: no number here can distinguish a wedged
+/// session from one twenty minutes into a release suite. What makes it
+/// safe to ship at a guess is the *shape* rather than the value — one
+/// event per stall, re-armed only by real movement, so a long legitimate
+/// step costs exactly one line and never a stream. `CCC_STALL_MINUTES`
+/// moves it and `0` turns it off; the next version of this is
+/// cadence-relative (each session against its own median gap), and the
+/// thing to do before building that is count how often the fixed one was
+/// useful — this fleet's own rule about UI noise, applied in advance.
+public struct StallWindow: Sendable, Equatable {
+    /// Nil is off.
+    public var seconds: TimeInterval?
+
+    public init(minutes: Double?) {
+        seconds = (minutes ?? 0) > 0 ? minutes! * 60 : nil
+    }
+
+    public static let defaultMinutes = 30.0
+    public static let off = StallWindow(minutes: nil)
+
+    public static func fromEnvironment(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> StallWindow {
+        guard let raw = environment["CCC_STALL_MINUTES"], let value = Double(raw), value >= 0 else {
+            return StallWindow(minutes: defaultMinutes)
+        }
+        return StallWindow(minutes: value)
+    }
+}
+
+extension RosterPoller.State {
+    /// The sessions that are `working` and have not moved inside `window`
+    /// — the standing stalls, which a surface reports as context at start
+    /// rather than as news (see `StallWindow`). Newest movement last, so
+    /// the worst offender reads first.
+    public func standingStalls(_ window: StallWindow, now: Date = Date()) -> [(row: SessionRow, still: TimeInterval)] {
+        guard let seconds = window.seconds else { return [] }
+        return rows.compactMap { row in
+            guard row.session.state == .working, !row.draft, let moved = row.job?.updatedAt else { return nil }
+            let still = now.timeIntervalSince(moved)
+            return still >= seconds ? (row, still) : nil
+        }.sorted { $0.still > $1.still }
     }
 }
