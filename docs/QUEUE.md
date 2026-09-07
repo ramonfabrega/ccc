@@ -40,7 +40,9 @@ Below the frontier: **item 6 is air's** and happens the next time the lid
 closes overnight. Items 5 and 16 are leftovers and one missing twin, none
 with a forcing function. **Items 4, 7 and 14 have left** — item 4 on
 2026-09-04 (`docs/EVIDENCE.md` "item 4 — the far side answers from the
-app"), and air's measurement of it is owed from the next lid night.
+app"), and air's measurement of it is owed from the next lid night. Item
+33 is an afternoon and knows its own ceiling; it does **not** relieve
+item 25, which is why it is written down beside it rather than instead.
 
 ### 5. Small leftovers
 
@@ -119,6 +121,18 @@ same direction**, so the pair agreed and left no contradiction to
 notice. The **branch tip** answered, which ccc already reads every tick for the ⇡⇣ marks. The product is a `done`
 detector keyed on the tip, not a timer; `StallWindow` stays.
 
+**A fourth, from attrition 2026-09-07, and it is the consumer's side of
+the same defect**: `loop-284` finished its item, committed, pushed, and
+sat **two commits ahead of base** with its row reading **`working
+idle`**. No transition ever came, so `ccc watch` had nothing to emit and
+a watch correctly armed on that session's ref reported nothing — a human
+had to say it. Two of attrition's four missed landings that day were
+*not* watch-side at all (see item 33), and this is one of them: **the
+event never existed**, so no flag, window or filter on the watching end
+reaches it. It also separates the detector's two jobs — the **trigger**
+may not come from a state transition, while the **payload** must still
+be computed from refs, because a worker's own typed claim is unverified.
+
 ### 28. The fd rule is prose, and it has already failed once
 
 From lore, 2026-09-07. `DispatchIO` and `DispatchSource` take ownership of
@@ -191,6 +205,26 @@ git said no, which turns a refusal into a decision instead of something a
 `--force` routes around. **Argue whose it is first**: the harness's
 worktree flow has the same seam, and "the tree belongs to whatever
 spawned the session" is a real answer.
+
+### 33. `ccc watch`'s only filter is the host
+
+From attrition, 2026-09-07, with its worth already bounded. An agent
+watching one worker has no way to say which, so it pipes `ccc watch`
+through `grep <name>` — and the state line and the payload share the
+stream, so a name mentioned in some *other* session's detail matches a
+row that is not it. That cost attrition landings twice on 09-07.
+`--json` already escapes it (`.ref`, `.name` are fields; `jq` filters
+exactly), so the footgun lives entirely in the text form that an agent
+reaches for first, and `--name`/`--ref` on `watch` — the same shape
+`--host` already has — closes it.
+
+**Build it, but not as a fix for a watching agent's misses**: attrition's
+own audit of four failures puts this at exactly one of three classes. The
+other two were a filter enumerated once from a *snapshot* of refs (live
+workers were never in the list — upstream of ccc), and a state that never
+moved (item 25, where no event exists to filter). A worker keyed on refs
+rather than names avoids this class already; the flag is for everyone who
+does not.
 
 ## Later
 
