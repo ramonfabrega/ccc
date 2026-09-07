@@ -4237,3 +4237,39 @@ That is queue item 30, and production is nowhere near the limit — the
 poller probes serially and a verb is one call — so the cost today is a
 suite that cannot be trusted on a loaded Mac, which is a guard nobody
 has rather than a bug anybody sees.
+
+## the stall stream's first run (2026-09-07)
+
+Item 25 was gated on a count — this fleet's rule: measure how often the
+fixed window was *useful* before replacing it. attrition ran the capture
+through a full commander loop (ten landings, two workers at width two, a
+~256 s release gate, sessions living 5–40 minutes) with three streams:
+`ccc watch --json --all` as a Monitor, a second watch at `--stall 10` as
+a shell, and a 60 s `ccc list --json` sampler.
+
+**Zero `stalled` events in the whole run**, at either window. And in the
+same run **three sessions finished quietly** — `loop-239`, `loop-249`,
+`loop-252` — every one found by the user eyeballing the roster, none by a
+watch.
+
+So the constant was never the problem. **A timer cannot catch a finished
+session at any duration**: it is not stalled, it is done and mislabelled,
+which is a different detector, not a longer timeout. The cadence-relative
+window item 25 proposed would have measured the same nothing more
+precisely.
+
+**The two signals fail together, which is the worst shape.** `loop-252`'s
+row read *"shutdown assertions failing; 5 tests need fix"* — a mid-work
+note — while the job had finished, gated green and pushed. State and `↳`
+went stale in the same direction, so the pair agreed with each other and
+a reader had no contradiction to notice.
+
+What answered was the **branch tip**: `.git/worktrees/<name>/HEAD`, and
+`HEAD..origin/<branch>` for whether anything was unmerged. ccc already
+reads exactly that every tick — it is where the ⇡⇣ marks come from — so
+the detector is a join it can already make and does not draw.
+
+Reported by attrition on its way into a Fable steering pass, with the
+verdicts in its own `verdicts.txt`. Its other note from the same run:
+0.1.29's gate held all night across four landings driven by `ccc update`
+and `ccc rm`.

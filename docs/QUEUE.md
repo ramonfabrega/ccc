@@ -29,17 +29,11 @@ see any of it** (`docs/EVIDENCE.md` "the mobile survey").
 
 Three **questions, not items**. `suggestedReply` is on the row and shown
 nowhere; using it means answering without attaching (see "Later"). The
-banner receipt's only correct form is the **run-delta** — hold each job's
-link count when it enters `working`, draw what appeared since — and its
-own measurement says it draws an empty line 19 in 20. And **the CLI could
-be a different language now**: since v0.1.24 it answers from the running
-app over the socket, so it is already a thin client, and superterminal
-ships its CLI as a separate crate over exactly that seam. A Bun `ccc` on
-incur would get `--llms`, `--schema` and `--format toon` for free instead
-of the hand-written `CommandManifest`. **The price is Bun on every ssh
-host** — and the hop's design is that a remote roster comes from the far
-side's own `ccc`, so it trades one binary to install for two. Argue it
-before a second host is added.
+banner receipt's only correct form is the **run-delta**, whose own
+measurement says it would draw an empty line 19 in 20. And **the CLI
+could be a different language** — already a thin client over the socket,
+and a Bun `ccc` on incur would get `--llms` and `--schema` free — but the
+price is Bun on every ssh host: argue it before a second host is added.
 
 Below the frontier: **item 6 is air's** and happens the next time the lid
 closes overnight. Items 5 and 16 are leftovers and one missing twin, none
@@ -137,21 +131,18 @@ and is the rest of this item's title.
 recorded"). Left open there: the sheet has no worktree or base field, and
 a remote `--base` is refused rather than routed to the far side's ccc.
 
-### 25. The stall window is a guess, and the next one is not
+### 25. The detector is wrong, and it is not the window
 
-30 minutes is a constant (`StallWindow`), and nothing at that boundary
-distinguishes a wedged session from one twenty minutes into a release
-suite. The honest next version is **cadence-relative**: each session
-against its own median gap between job-file writes, which is a number the
-poll already sees every tick.
-
-**Do not build it on the argument that a constant is crude.** Build it
-when the constant has been noisy, and say so with a count — this fleet's
-own rule (`docs/EVIDENCE.md` "the swarm's five findings"): count how often
-the fixed window was useful before replacing it. The instrument is `ccc
-watch --json`, whose `stalled` lines carry `stillFor`; a week of them is
-the whole measurement. Until then the shape is what makes it safe — one
-event per stall, re-armed only by movement.
+**Measured, not argued** (`docs/EVIDENCE.md` "the stall stream's first
+run"): a night of `ccc watch --json --all` over ten landings emitted
+**zero** `stalled` events at either window, while **three** sessions
+finished quietly, each found by a human eyeballing the roster. A timer
+cannot catch those at any duration — they are not stalled, they are done
+and mislabelled. Worse, `loop-252` read *"shutdown assertions failing"*
+while its work was merged and pushed: state and `↳` went stale **in the
+same direction**, so the pair agreed and left no contradiction to
+notice. The **branch tip** answered, which ccc already reads every tick for the ⇡⇣ marks. The product is a `done`
+detector keyed on the tip, not a timer; `StallWindow` stays.
 
 ### 28. The fd rule is prose, and it has already failed once
 
@@ -169,20 +160,31 @@ both booleans structural. The 0.1.27 drain regression is its fixture.
 **Argue the ceremony first**: two call sites is a small blast radius, and
 the counter is that one of them already cost a release on the other Mac.
 
+### 29. A worker has no parent, and its name is three things at once
+
+From lore, 2026-09-07, at Ramon's ask and **gated on him**. In the
+2.1.260 job records `repo` comes from cwd, the item from the branch, the
+role from the opener — but the **parent is in no record**, living only in
+the spawner's transcript, so "which workers do I have out" is answerable
+only from memory. The name is at once the SendMessage address, the roster
+label and lore's peer attribution; a collision mis-attributed both halves
+of a thread on 09-06. Proposed: a `<repo>-<role>-<item>` default in `ccc
+spawn`, refused on a live collision by the guard that exists, and
+**parent + role in the per-worktree record** beside the base — the
+spawner's bridge id, which survives clears — so `ccc list --tree` and
+lore read one record instead of inferring.
+
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 
 Found 2026-09-07 by `sample`ing a wedged suite (`docs/EVIDENCE.md` "the
 suite's own deadlock"). Each call's `Drain` holds a global-queue thread
 for the child's whole life while the caller waits on its semaphore, so
-one `git status` needs two threads to make progress. Run enough in
-parallel and libdispatch's pool is all waiters: measured, the suite
-cannot finish parallel and takes 20.7 s with `--no-parallel`.
-
-**Production is nowhere near the limit** — the poller probes serially, a
-verb is one call — so the cost today is a suite that cannot be trusted on
-a loaded Mac. Fix is one reader without a per-call thread, or `Subprocess`
-(which the async runners already use) behind the sync face. The
-reproduction is the whole suite on a busy machine.
+one `git status` needs two threads to progress; enough in parallel and
+libdispatch's pool is all waiters. Measured: the suite cannot finish
+parallel, and is 510 tests in 19 s with `--no-parallel`. **Production is
+nowhere near the limit** — the poller probes serially, a verb is one call
+— so the cost is a suite nobody can trust on a busy Mac. Fix is one
+reader without a per-call thread, or `Subprocess` behind the sync face.
 
 ## Later
 
