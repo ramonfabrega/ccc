@@ -4066,3 +4066,46 @@ opt-in is the shape.
 The two things shipped that evening were mutually exclusive for the one
 user they were both built for. That is the cost of a gate read from the
 nearest field rather than the right one.
+
+## Cut as v0.1.29 (2026-09-06)
+
+The gate fix, an hour behind the verb it fixes. `spctl` accepted, both
+CDN keys, the live feed equal to the zip, the Release with the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 200 length 5289296
+ota verify --feed ccc    →  ok: … version 200 length 5289296
+gh release view v0.1.29  →  {"assets":["ccc-v0.1.29.zip"], "tag":"v0.1.29"}
+ccc version              →  ccc 0.1.29 (200)
+```
+
+`tempo` reaches the row, on the two live sessions the bug was found on:
+
+```
+attrition roster: state=working  status=busy    job: tempo=active
+lore      roster: state=working  status=idle    job: tempo=idle
+```
+
+**And the shape that was unclearable is clearable.** attrition was
+genuinely generating by then, so the regression was rebuilt on a fixture
+instead: a haiku session told to start `sleep 600` in the background and
+stop, which parks it in exactly the state v0.1.28 could never clear —
+
+```
+roster: state=done status=busy   job: tempo=idle
+inFlight = {'tasks': 1, 'kinds': ['local_bash']}
+```
+
+Armed at 23:08:49, **fired at 23:08:54** — one poll tick, where the old
+build would have waited on `status` until the `sleep` ended ten minutes
+later, and forever for a Monitor:
+
+```
+❯ /clear
+❯ In one line: what command did you start in the background? …
+⏺ NO MEMORY
+```
+
+The background task is still in flight afterwards (`inFlight` unchanged),
+which is the deliberate half: the turn was over, the box was free, and
+the `sleep` outlives the context that started it.
