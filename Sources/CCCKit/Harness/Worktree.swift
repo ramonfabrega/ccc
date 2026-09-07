@@ -799,6 +799,64 @@ public final class WorktreeProbe: @unchecked Sendable {
         return info(forCwd: cwd)
     }
 
+    /// The reading for a **root checkout on its default branch**, which
+    /// `info(forCwd:)` cannot make and should not learn to.
+    ///
+    /// That reading is worktree-shaped twice over: `layout(of:)` refuses a
+    /// main checkout outright (`.git` there is a directory, not a
+    /// gitdir-pointer file), and `info` returns nil the moment `branch ==
+    /// base` because a worktree on master has nothing to land. Both are
+    /// right for the question they answer. `ccc pull --repo` asks a
+    /// different one — *how does this checkout's default branch stand
+    /// against origin* — so it gets its own entry point rather than a flag
+    /// threaded through the old one.
+    ///
+    /// **A path anywhere inside the repository answers, and the answer
+    /// always names the root.** `pull <ref>` already takes a session's
+    /// worktree cwd and pulls the root — that is the whole verb — so a
+    /// `--repo` that refused a worktree path would be one verb disagreeing
+    /// with itself about the same input. What the caller gets back names
+    /// the checkout it will write to, and `said` repeats it, so there is
+    /// no silent substitution.
+    ///
+    /// `branch` is the base, level with itself: there is no worktree
+    /// branch in this reading and borrowing one would be a lie. The
+    /// branch's own ⇡⇣ stay nil for the same reason — they would only
+    /// restate the base's, and `originStanding` would say it twice.
+    /// Uncached: this is a one-shot the verbs call, and `fresh` is what
+    /// they would have asked for anyway.
+    public func root(forRepo path: String) -> WorktreeInfo? {
+        guard let layout = Self.rootLayout(of: path),
+              let base = Self.defaultBranch(commonDir: layout.commonDir) else { return nil }
+        var info = WorktreeInfo(branch: base, base: base, ahead: 0, behind: 0, repo: layout.repo)
+        if Self.hasOrigin(commonDir: layout.commonDir),
+           let standing = originStanding(of: base, in: layout.repo) {
+            info.baseUnpushed = standing.unpushed
+            info.baseUnpulled = standing.unpulled
+        }
+        return info
+    }
+
+    /// The repository root and its common dir for any path inside it: the
+    /// worktree reading when there is one (`layout` already resolves a
+    /// worktree to its root), else the first ancestor whose `.git` is a
+    /// directory — the main checkout, which `layout` alone returns nil for.
+    public static func rootLayout(of path: String) -> (repo: String, commonDir: String)? {
+        if let layout = layout(of: path) { return (layout.repo, layout.commonDir) }
+        var dir = URL(filePath: path).standardizedFileURL
+        while true {
+            let dotGit = dir.appending(path: ".git")
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return (dir.path, dotGit.path)
+            }
+            let parent = dir.deletingLastPathComponent()
+            guard parent.path != dir.path, dir.path != "/" else { return nil }
+            dir = parent
+        }
+    }
+
     /// `git rev-list --left-right --count <baseRef>...branch` → (ahead,
     /// behind). `baseRef` is a full ref because it is not always the local
     /// base branch (see `WorktreeInfo.baseTip`).

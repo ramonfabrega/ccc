@@ -162,17 +162,51 @@ enum CLI {
                     return 2
                 }
                 return try await update(ref: ref, ask: rest.contains("--ask"), json: json)
-            case "fetch", "pull":
-                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+            case "fetch", "pull", "ff":
+                // `ff` is `pull` under the name that says ff-only; the
+                // manifest carries it as an alias so there is one verb.
+                let verbName = verb == "ff" ? "pull" : verb
+                // `--repo` is bare (this folder), `--repo <path>` or
+                // `--repo=<path>`. It excludes a ref rather than combining
+                // with one: the two are different ways of naming the same
+                // checkout, and a caller that gave both meant one of them.
+                var repo: String?
+                var byRepo = false
+                var words: [String] = []
+                var i = 0
+                while i < rest.count {
+                    let arg = rest[i]
+                    if arg == "--repo" {
+                        byRepo = true
+                        if i + 1 < rest.count, !rest[i + 1].hasPrefix("--") {
+                            repo = rest[i + 1]
+                            i += 2
+                            continue
+                        }
+                    } else if arg.hasPrefix("--repo=") {
+                        byRepo = true
+                        repo = String(arg.dropFirst("--repo=".count))
+                    } else if arg.hasPrefix("--") {
+                        stderr("ccc: unknown flag '\(arg)' (--repo)")
+                        return 2
+                    } else {
+                        words.append(arg)
+                    }
+                    i += 1
+                }
+                if byRepo {
+                    guard words.isEmpty else {
+                        stderr("ccc: \(verbName) takes a ref or --repo, not both")
+                        return 2
+                    }
+                    return originRepoVerb(verbName, repo: repo ?? FileManager.default.currentDirectoryPath, json: json)
+                }
+                guard let text = words.first else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
                     stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
                     return 2
                 }
-                for flag in rest.filter({ $0.hasPrefix("--") }) where flag != "--json" {
-                    stderr("ccc: unknown flag '\(flag)'")
-                    return 2
-                }
-                return try await originVerb(verb, ref: ref, json: json)
+                return try await originVerb(verbName, ref: ref, json: json)
             case "clear":
                 // `--then` takes a whole prompt, so the words are walked
                 // rather than filtered: `ccc clear --then "carry on" a1b2`
@@ -636,6 +670,48 @@ enum CLI {
         let outcome = verb == "fetch" ? try await cli.fetch(id: ref.id) : try await cli.pull(id: ref.id)
         if json {
             printJSON(["ref": ref.description, verb == "fetch" ? "fetched" : "pulled": outcome.merged ? "true" : "false", "said": outcome.said])
+        } else {
+            print(outcome.said)
+        }
+        return outcome.merged ? 0 : 1
+    }
+
+    /// `ccc fetch|pull --repo <path>`: the same two verbs addressed by the
+    /// checkout instead of by a session.
+    ///
+    /// **The reap is what needs this.** A commander's last act is stop →
+    /// merge → push → fetch → pull → `git worktree remove` → `ccc rm`, and
+    /// the ref form has to run before those last two steps because it
+    /// resolves through a live roster row and its cwd — remove either and
+    /// there is nothing left to name. `--repo` is how the ff is still
+    /// available afterwards, and for a repository whose sessions are all
+    /// gone.
+    ///
+    /// No gesture twin, and that is the rule's own answer rather than an
+    /// omission: the verb already has one (the row submenu's Pull), and
+    /// the case `--repo` exists for is exactly the case where no row
+    /// exists to carry it. A repo header button would duplicate the row's
+    /// gesture while a row is there and vanish when it is not.
+    ///
+    /// Local only. The repository is where it is; a remote one is named by
+    /// a ref, which is what carries the host.
+    static func originRepoVerb(_ verb: String, repo path: String, json: Bool) -> Int32 {
+        let probe = WorktreeProbe()
+        guard let info = probe.root(forRepo: path) else {
+            stderr("ccc: no git repository with a default branch at \(path)")
+            return 1
+        }
+        var outcome: MergeOutcome
+        if verb == "fetch" {
+            outcome = GitFetch.perform(repo: info.repo, git: probe.git)
+            if outcome.merged, let after = probe.root(forRepo: info.repo) {
+                outcome.said += "; " + after.originStanding
+            }
+        } else {
+            outcome = GitPull.perform(on: info, git: probe.git)
+        }
+        if json {
+            printJSON(["repo": info.repo, verb == "fetch" ? "fetched" : "pulled": outcome.merged ? "true" : "false", "said": outcome.said])
         } else {
             print(outcome.said)
         }

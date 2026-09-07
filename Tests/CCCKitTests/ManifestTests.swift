@@ -20,7 +20,7 @@ import Testing
     static let dispatched = [
         "hosts", "list", "archive", "unarchive", "pin", "unpin", "watch", "hook",
         "spawn", "new", "attach", "detach", "stop", "rm",
-        "base", "merge", "update", "fetch", "pull", "push", "shell", "clear",
+        "base", "merge", "update", "fetch", "pull", "ff", "push", "shell", "clear",
         "snapshot", "send", "select", "copy", "links", "focus", "resize",
         "peek", "capture", "pixel", "geometry", "theme", "window",
         "stats", "replay", "bench", "version", "install-cli",
@@ -66,6 +66,27 @@ import Testing
                         "`ccc \(verb.name)` describes a --json answer its synopsis does not offer")
             }
         }
+    }
+
+    /// `--repo` and `ff`, read by a test on the day they land rather than a
+    /// release later. The rule this obeys is the one `update`'s help broke:
+    /// a string nothing reads is a string nothing keeps true.
+    @Test func pullCarriesTheRepoFormAndTheFFAlias() throws {
+        let pull = try #require(CommandManifest.verb(named: "pull"))
+        #expect(CommandManifest.verb(named: "ff")?.name == "pull", "`ccc ff` must reach `pull`, not a second verb")
+        let text = CommandManifest.help(for: pull)
+        #expect(text.contains("ccc pull --repo [<path>] [--json]"))
+        #expect(text.contains("(also: ff)"))
+        // Why the form exists at all — the ordering that makes the ref form
+        // unusable at the end of a reap.
+        #expect(text.contains("BEFORE `git worktree remove`"))
+        #expect(text.contains("{ repo, pulled, said }"))
+        // Its twin on the fetch side: the pair is only useful together.
+        let fetch = try #require(CommandManifest.verb(named: "fetch"))
+        let fetchText = CommandManifest.help(for: fetch)
+        #expect(fetchText.contains("ccc fetch --repo [<path>] [--json]"))
+        #expect(fetchText.contains("{ repo, fetched, said }"))
+        #expect(fetchText.contains("that repository's ROOT"))
     }
 
     @Test func namesAreUniqueAcrossVerbsAndAliases() {

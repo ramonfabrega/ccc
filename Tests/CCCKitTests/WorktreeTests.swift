@@ -661,6 +661,88 @@ import Testing
         #expect(!GitFetch.perform(repo: "/nowhere").merged)
     }
 
+    // MARK: the root reading — `ccc pull --repo`, which has no session
+
+    private func resolved(_ path: String) -> String {
+        URL(filePath: path).resolvingSymlinksInPath().path
+    }
+
+    /// The reading `info(forCwd:)` refuses to make: a main checkout sitting
+    /// on its own default branch. `layout` returns nil for it (a directory
+    /// `.git`) and `info` would return nil again on `branch == base`, so
+    /// this is its own door — and it must carry the base's standing, which
+    /// is the only thing `GitPull` reads.
+    @Test func theRootReadingAnswersForACheckoutOnItsDefaultBranch() throws {
+        try withOrigin { root, wt, other, git in
+            let probe = WorktreeProbe()
+            #expect(probe.fresh(forCwd: root.path) == nil, "the worktree reading still declines the root")
+            let before = try #require(probe.root(forRepo: root.path))
+            #expect(before.base == "master" && before.branch == "master")
+            #expect(resolved(before.repo) == resolved(root.path))
+            #expect(before.baseUnpulled == 0 && before.baseUnpushed == 0)
+            #expect(before.originStanding == "level with origin")
+            try commit("theirs.txt", in: other, git)
+            _ = try git("push -q origin master", other)
+            _ = GitFetch.perform(repo: root.path)
+            let after = try #require(probe.root(forRepo: root.path))
+            #expect(after.baseUnpulled == 1 && after.canPull && after.baseMark == "⇣1")
+            // The branch's own ⇡⇣ stay nil: they would only say the base's
+            // twice, and `originStanding` would print it twice with them.
+            #expect(after.unpushed == nil && after.unpulled == nil)
+            #expect(after.originStanding == "master has 1 unpulled")
+        }
+    }
+
+    /// The root form fast-forwards the same checkout the ref form does,
+    /// through the same `GitPull.perform` — that is what "GitPull
+    /// untouched" has to mean.
+    @Test func theRootFormFastForwardsTheMainCheckout() throws {
+        try withOrigin { root, wt, other, git in
+            try commit("theirs.txt", in: other, git)
+            _ = try git("push -q origin master", other)
+            _ = GitFetch.perform(repo: root.path)
+            let info = try #require(WorktreeProbe().root(forRepo: root.path))
+            let outcome = GitPull.perform(on: info)
+            #expect(outcome.merged && outcome.said.hasPrefix("pulled origin/master → master (1 commit, now "), "\(outcome.said)")
+            #expect(try git("rev-parse master", root) == git("rev-parse origin/master", root))
+        }
+    }
+
+    /// A path inside a worktree answers for the ROOT, because `pull <ref>`
+    /// already does exactly that with a session's cwd. One verb, one
+    /// answer, whichever way the checkout was named.
+    @Test func aWorktreePathAnswersForItsRoot() throws {
+        try withOrigin { root, wt, other, git in
+            let probe = WorktreeProbe()
+            let fromWorktree = try #require(probe.root(forRepo: wt.path))
+            let fromRoot = try #require(probe.root(forRepo: root.path))
+            #expect(resolved(fromWorktree.repo) == resolved(fromRoot.repo))
+            #expect(fromWorktree.base == "master" && fromWorktree.branch == "master")
+        }
+    }
+
+    /// The root checkout is only pullable while it is ON the base — the
+    /// guard `GitPull` already had, now reachable without a session.
+    @Test func aRootOffItsDefaultBranchIsRefused() throws {
+        try withOrigin { root, wt, other, git in
+            try commit("theirs.txt", in: other, git)
+            _ = try git("push -q origin master", other)
+            _ = GitFetch.perform(repo: root.path)
+            _ = try git("checkout -q -b elsewhere", root)
+            let info = try #require(WorktreeProbe().root(forRepo: root.path))
+            let outcome = GitPull.perform(on: info)
+            #expect(!outcome.merged && outcome.said.contains("is on elsewhere, not master"), "\(outcome.said)")
+        }
+    }
+
+    @Test func aFolderThatIsNoRepositoryHasNoRootReading() throws {
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-norepo-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(WorktreeProbe().root(forRepo: dir.path) == nil)
+        #expect(WorktreeProbe.rootLayout(of: dir.path) == nil)
+    }
+
     @Test func theRowCarriesTheMarksAcrossTheWire() throws {
         let info = WorktreeInfo(branch: "worktree-v2", base: "master", ahead: 3, behind: 0, repo: "/x/ccc",
                                 unpushed: 1, baseUnpushed: 0, unpulled: 2, baseUnpulled: 1)
