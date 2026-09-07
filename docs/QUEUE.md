@@ -21,7 +21,9 @@ none in the terminal embed**. Seven landed that night and left without
 entering here (`docs/EVIDENCE.md` "the swarm's five findings"): the name
 guard and `ccc stop`, the free-space floor, `ccc update`'s tip, the stall
 transition, the command manifest, `.worktreeinclude`, `claude rc`'s
-paragraph. They left items 24 and 25 and one question.
+paragraph. They left items 24 and 25 and one question. **24 has left
+too**: `ccc rm` cleans the worktrees ccc cut, and measuring that found
+item 26.
 
 **v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
 that **the phone's job is already shipped** — Remote Control puts most
@@ -152,25 +154,22 @@ and is the rest of this item's title.
 recorded"). Left open there: the sheet has no worktree or base field, and
 a remote `--base` is refused rather than routed to the far side's ccc.
 
-### 24. A worktree ccc cut is nobody's to clean
+### 26. A draft's worktree is the harness's litter
 
-`ccc rm` passes `claude rm` through, and the harness deletes the worktree
-it made. **It did not make this one**: `--base` cuts the tree here and
-hands the harness a plain cwd, so the daemon never learns it is a
-worktree. Measured 2026-09-06 while proving item 23 — `ccc rm 0f7b8c26`
-answered `removed`, exit 0, and left the tree, the branch and the
-`ccc-base` record on disk; `git worktree remove --force` and `git branch
--D` finished it by hand. Every ccc-cut worktree on the fleet is in that
-state, and the count only grows.
+**Item 24 left on 2026-09-06** (`docs/EVIDENCE.md` "item 24 — a ccc-cut
+worktree is ccc's to clean") and left this. Measured the same hour, on
+worktrees the **harness** cut: a session that ran is cleaned and `claude
+rm` names the tree in its answer; a **draft that never started** is not —
+the tree stays, twice, still `locked` by a lock whose pid is dead. The
+fleet drafts constantly, so this litters at item 24's old rate.
 
-The shape is already decided by everything around it: `SpawnResult`
-records what ccc made, `ccc base` records the branch's base, so **ccc
-knows exactly which trees are its own** and can clean those and only
-those, after the harness's `rm` returns and with git's own refusals
-(dirty, unpushed) as the guard — never ccc's judgment. The one open
-question is whether it needs asking first, and the answer is probably not:
-`ccc rm` is already the destructive verb, and leaving half of it undone is
-the surprise.
+**ccc cannot fix it with what it has**, and that is the item. Without a
+record it cannot tell a tree the harness cut *for this session* from one
+the user pointed `--cwd` at by hand, and deleting the second is exactly
+what item 24's `ccc-cut` mark exists to prevent. The shape, if it earns
+it: ccc asked for `--worktree`, so ccc can record what came back as its
+own cut. **Argue that first** — it is a harness bug, and `rm` already
+names the tree in the case that works.
 
 ### 25. The stall window is a guess, and the next one is not
 

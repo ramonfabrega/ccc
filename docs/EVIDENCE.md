@@ -3621,3 +3621,103 @@ ccc version --json   →  0.1.26, build 188, dev: false
 ccc spawn --help     →  ccc spawn (also: new)          [was: unknown flag '--help' for spawn]
 ccc --schema         →  35 verbs in the manifest
 ```
+
+## item 24 — a ccc-cut worktree is ccc's to clean (2026-09-06)
+
+`ccc rm` passed `claude rm` through and the harness deleted the worktree
+*it* made. It did not make the ones ccc cuts: `--base` cuts the tree here
+and hands the harness a plain cwd, so the daemon never learns there is a
+worktree. Measured 2026-09-06 while proving item 23 — `ccc rm 0f7b8c26`
+answered `removed`, exit 0, and left the tree, the branch and the
+`ccc-base` record on disk. Every ccc-cut worktree on the fleet was in
+that state and the count only grew.
+
+**The mark is the whole ownership test.** `createWorktree` now writes
+`branch.<b>.ccc-cut = <path>` beside the base it already recorded, and
+nothing else writes that key. It is deliberately *not* `ccc-base`:
+`ccc base <ref> <branch>` exists to record a base for a worktree cut **by
+hand**, and reading that as ownership would let `ccc rm` delete a tree
+ccc never made. The record names the path, so a branch whose tree was
+replaced under it is no longer ours either. One config parser reads both
+keys, and VS Code's `vscode-merge-base` through it.
+
+The cwd is read from the roster **before** the session goes — afterwards
+there is no row to ask — and the cleanup runs only when the harness
+actually removed the session.
+
+### `git branch -d` asks the wrong question in a worktree fleet
+
+The first real fixture caught it. A tree cut off `trunk` with `master`
+checked out, on a branch with **no commits of its own**:
+
+```
+said: removed the worktree …/item24; kept the branch worktree-item24:
+      error: the branch 'worktree-item24' is not fully merged
+```
+
+`-d` measures against the current HEAD, which in this fleet is whatever
+the main checkout happens to be sitting on — and item 18's whole point is
+that the base is usually *not* the default branch. So the ref the work is
+measured against is the recorded base, and the question is git's own
+`merge-base --is-ancestor`. A branch fully pushed to `origin/<branch>`
+passes too: that is the harness's second word ("unpushed") taken
+literally. `-D` then executes what git already answered.
+
+Re-cut off `trunk` and removed, same repository:
+
+```
+removed 515329f9; removed the worktree …/item24 and its branch worktree-item24
+worktrees: 1   branches: master trunk   on disk: no   records: none
+```
+
+And the guard, with one untracked file in the tree — git's sentence, not
+ccc's judgment, and the tree still standing afterwards:
+
+```
+removed 2f92f0dd; kept …/worktrees/dirty: fatal: '…/dirty' contains
+modified or untracked files, use --force to delete it
+on disk: yes
+```
+
+ccc adds no `--force` anywhere. A kept tree keeps its `ccc-cut` record;
+a branch that outlives its tree keeps its `ccc-base` and loses only the
+`ccc-cut` that named the tree.
+
+### What the harness does with its own, measured the same hour
+
+Two spawns into the same fixture repo from its default branch, so the
+**harness** cut both worktrees:
+
+- **started** (a haiku prompt, run to `done`): `ccc rm` →
+  `removed a3a7ddeb\n  worktree: …/worktrees/started`, and the tree was
+  gone. The harness names it and cleans it.
+- **a draft** (no prompt, `--worktree=draft2`): the harness cut the tree,
+  `ccc rm` answered `removed c6a2d081` naming no worktree, **and the tree
+  was still there** — twice, and still `locked` by a `claude session`
+  lock whose pid was already dead.
+
+So "the harness deletes the worktree it made" holds for a session that
+ran and not for one that never started. ccc leaves both alone: without a
+record it cannot tell a tree the harness cut for this session from one
+the user pointed `--cwd` at by hand. That is queue item 26.
+
+### Across the hop, studio → studio
+
+A ccc-cut tree only exists on the host that cut it (`prepareWorktree`
+refuses `--base` for a remote spawn), so a remote `ccc rm` goes through
+the far side's own `ccc rm --json` — the shape `fetch` and `pull` already
+use — and falls back to the `claude rm` passthrough where a host has no
+ccc. Proved on a `selftest` host (`ssh localhost`), a fixture cut off
+`trunk`, removed by its remote ref:
+
+```
+ccc rm selftest:c50a2d86 --json
+  said: removed c50a2d86; removed the worktree …/hoprepo/.claude/worktrees/hop
+        and its branch worktree-hop
+  worktree: { removed: true, branchDeleted: true }
+on disk: no   branches: master trunk
+```
+
+An id the far side does not know comes back as its sentence and its
+status, not ours: `{"removed": "false", "said": "No job matching
+'deadbeef'"}`, exit 1. The host was removed after.

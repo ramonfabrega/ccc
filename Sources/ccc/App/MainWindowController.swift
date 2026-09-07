@@ -683,6 +683,11 @@ final class MainWindowController: NSWindowController {
             // What the row already knows (slice 2): say it before the
             // harness does, so "kept" is never a surprise.
             + ((row?.worktree?.unpushed ?? 0) > 0 ? "\n\(row!.worktree!.branch) has \(row!.worktree!.unpushed!) unpushed commit\(row!.worktree!.unpushed! == 1 ? "" : "s"); the harness will keep it." : "")
+            // Item 24: a tree ccc cut is one the harness will not touch,
+            // so ccc removes it after — named here, because this alert
+            // exists to say what goes.
+            + (ref.isLocal ? (row.flatMap { WorktreeProbe.cut(at: $0.session.cwd) }
+                .map { "\nccc cut \($0.branch) and removes it after, as far as git allows." } ?? "") : "")
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")

@@ -51,8 +51,19 @@ behind `ssh`.
   worktree, exit 1, and the row stayed in the roster (measured
   2026-09-02). No `--force`; resolving means commit/push or removing the
   worktree by hand, then `rm` again. `ccc rm <ref>` is that command
-  behind the host prefix and nothing more — the agents view's Delete is
-  this same check, so ccc inherits it rather than re-deciding it.
+  behind the host prefix — the agents view's Delete is this same check,
+  so ccc inherits it rather than re-deciding it — **plus the worktree ccc
+  cut itself** (item 24), which the harness never knew about because
+  `--base` hands it a plain cwd.
+  **"Its worktree" means the one it made, for a session that ran.**
+  Measured 2026-09-06 on one fixture repo, both trees cut by the harness:
+  a session that had run was cleaned and the answer named the tree
+  (`removed <id>` then `  worktree: …/worktrees/started`); a **draft that
+  never started** was not — `rm` named no worktree and the tree stayed,
+  twice, still `locked` by a `claude session` lock whose pid was dead.
+  ccc leaves both alone: without a record it cannot tell a tree the
+  harness cut for this session from one the user pointed `--cwd` at by
+  hand. Queue item 26.
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.

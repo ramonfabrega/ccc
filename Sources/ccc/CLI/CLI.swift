@@ -553,10 +553,11 @@ enum CLI {
     }
 
     /// Delete a session: `claude rm` behind the ref's host prefix, its
-    /// answer and exit status passed through. The dirty-worktree guard is
-    /// the harness's (docs/HARNESS.md); ccc adds no `--force` because the
-    /// harness has none, and "kept" is the correct answer, not an error
-    /// of ours.
+    /// answer and exit status passed through, **plus the worktree ccc cut
+    /// for it** (item 24). The dirty-worktree guard is the harness's
+    /// (docs/HARNESS.md) and git's for ccc's own trees; ccc adds no
+    /// `--force` because neither has one, and "kept" is the correct
+    /// answer, not an error of ours.
     static func rm(ref: SessionRef, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
@@ -570,11 +571,22 @@ enum CLI {
         }
         let result = try await cli.rm(id: ref.id)
         if json {
-            printJSON(["ref": ref.description, "removed": result.removed ? "true" : "false", "said": result.said])
+            printJSON(RmAnswer(ref: ref.description, removed: result.removed ? "true" : "false",
+                               said: result.said, worktree: result.worktree))
         } else {
             print(result.said)
         }
         return result.removed ? 0 : 1
+    }
+
+    /// `ccc rm --json`. `removed` stays the string it has always been —
+    /// the shape crosses the hop, and an older ccc on either side reads
+    /// it. `worktree` is absent unless ccc cut one for this session.
+    struct RmAnswer: Encodable {
+        var ref: String
+        var removed: String
+        var said: String
+        var worktree: WorktreeProbe.Cleanup?
     }
 
     /// Stop a session: `claude stop` behind the ref's host prefix. The

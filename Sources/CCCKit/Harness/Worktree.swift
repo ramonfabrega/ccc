@@ -279,14 +279,16 @@ public final class WorktreeProbe: @unchecked Sendable {
         return bases[branch]
     }
 
-    /// `[branch "<name>"]` sections of a git config, read for two keys:
-    /// ours, `ccc-base = <branch>`, and VS Code's `vscode-merge-base =
-    /// origin/<branch>` (honoured because it means the same thing and is
-    /// already in the fleet's configs; ours wins where both exist).
-    /// Lenient: anything that is not one of those two lines is skipped.
-    public static func recordedBases(in config: String) -> [String: String] {
-        var ours: [String: String] = [:]
-        var theirs: [String: String] = [:]
+    /// `[branch "<name>"]` sections of a git config, one key read out of
+    /// each: `[branch: value]`. Lenient — anything that is not that key
+    /// under a branch section is skipped, and a `[branch "x"]` line that
+    /// does not close is no section at all.
+    ///
+    /// One parser rather than one per key: `ccc-base` (item 18) and
+    /// `ccc-cut` (item 24) are both branch keys of ours, and VS Code's
+    /// `vscode-merge-base` is read through it too.
+    static func recordedValues(in config: String, key: String) -> [String: String] {
+        var found: [String: String] = [:]
         var section: String?
         for raw in config.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
@@ -300,17 +302,32 @@ public final class WorktreeProbe: @unchecked Sendable {
             }
             guard let section, !line.hasPrefix("#"), !line.hasPrefix(";") else { continue }
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, !parts[1].isEmpty else { continue }
-            switch parts[0].lowercased() {
-            case "ccc-base":
-                ours[section] = parts[1]
-            case "vscode-merge-base":
-                theirs[section] = parts[1].hasPrefix("origin/") ? String(parts[1].dropFirst("origin/".count)) : parts[1]
-            default:
-                break
-            }
+            guard parts.count == 2, !parts[1].isEmpty, parts[0].lowercased() == key else { continue }
+            found[section] = parts[1]
+        }
+        return found
+    }
+
+    /// The recorded base per branch, from two keys: ours, `ccc-base =
+    /// <branch>`, and VS Code's `vscode-merge-base = origin/<branch>`
+    /// (honoured because it means the same thing and is already in the
+    /// fleet's configs; ours wins where both exist).
+    public static func recordedBases(in config: String) -> [String: String] {
+        let ours = recordedValues(in: config, key: "ccc-base")
+        let theirs = recordedValues(in: config, key: "vscode-merge-base").mapValues {
+            $0.hasPrefix("origin/") ? String($0.dropFirst("origin/".count)) : $0
         }
         return theirs.merging(ours) { _, mine in mine }
+    }
+
+    /// Item 24: the worktree path ccc cut for a branch, per branch —
+    /// `branch.<b>.ccc-cut`, written by `createWorktree` and by nothing
+    /// else. **This is the only thing that says a tree is ours to
+    /// remove**, and it is deliberately not `ccc-base`: `ccc base <ref>
+    /// <branch>` records a base for a worktree cut *by hand*, and reading
+    /// that as ownership would let `ccc rm` delete somebody else's tree.
+    public static func recordedCuts(in config: String) -> [String: String] {
+        recordedValues(in: config, key: "ccc-cut")
     }
 
     /// Record — or with `nil`, forget — the base for a branch:
@@ -327,6 +344,142 @@ public final class WorktreeProbe: @unchecked Sendable {
                 // git's "no such key": nothing to forget.
             }
         }
+    }
+
+    // MARK: the trees ccc cut (item 24)
+
+    /// A worktree ccc cut and is therefore ccc's to clean up.
+    public struct CutWorktree: Equatable, Sendable {
+        /// The worktree's own directory, as recorded when it was cut.
+        public var path: String
+        public var branch: String
+        /// The main checkout, where every git command below runs.
+        public var repo: String
+        /// **What the branch's work is measured against** before the
+        /// branch itself is deleted: the recorded base (item 18), else the
+        /// repository's default branch. Nil when neither is known, and
+        /// then only a push can retire the branch.
+        public var base: String?
+    }
+
+    /// Record — or with `nil`, forget — that ccc cut `path` for `branch`.
+    /// The path and not a bare `true`, so `rm` can refuse a branch whose
+    /// tree has since been moved or replaced: the record must still name
+    /// the tree in front of us.
+    public static func recordCut(_ path: String?, for branch: String, repo: String, git: String = defaultGit) throws {
+        if let path {
+            _ = try Git.run(git, ["-C", repo, "config", "branch.\(branch).ccc-cut", path])
+        } else {
+            do {
+                _ = try Git.run(git, ["-C", repo, "config", "--unset", "branch.\(branch).ccc-cut"])
+            } catch let failure as Git.Failure where failure.status == 5 {
+                // git's "no such key": nothing to forget.
+            }
+        }
+    }
+
+    /// Whether the folder a session ran in is a worktree **ccc cut**, and
+    /// so ccc's to remove when the session is deleted. Nil for the main
+    /// checkout, for a plain folder, for a worktree the harness made (it
+    /// cleans its own), and for one cut by hand — the record is the whole
+    /// test, and it must still name this very tree.
+    ///
+    /// Read from the config file rather than `git config`, like
+    /// `recordedBases`. Asked twice: by `rm`, before the session leaves
+    /// the roster, and by the Delete alert, which exists to name what
+    /// goes.
+    public static func cut(at cwd: String) -> CutWorktree? {
+        guard let layout = layout(of: cwd), let branch = layout.branch else { return nil }
+        let config = (try? String(contentsOfFile: layout.commonDir + "/config", encoding: .utf8)) ?? ""
+        guard let recorded = recordedCuts(in: config)[branch] else { return nil }
+        let path = URL(filePath: recorded).standardizedFileURL.path
+        // The worktree's own root, not the cwd, which may be deeper in it.
+        let root = (try? String(contentsOf: URL(filePath: layout.gitdir).appending(path: "gitdir"), encoding: .utf8))
+            .map { URL(filePath: $0.trimmingCharacters(in: .whitespacesAndNewlines)).deletingLastPathComponent().standardizedFileURL.path }
+        guard let root, root == path else { return nil }
+        let base = recordedBases(in: config)[branch] ?? defaultBranch(commonDir: layout.commonDir)
+        return CutWorktree(path: path, branch: branch, repo: layout.repo, base: base)
+    }
+
+    /// What became of a cut worktree when its session was deleted.
+    public struct Cleanup: Codable, Sendable, Equatable {
+        public var path: String
+        public var branch: String
+        /// The tree is off the disk and out of `git worktree list`.
+        public var removed: Bool
+        /// The branch is gone too. False on a removed tree whose branch
+        /// git would not delete — commits nothing else holds. Nothing is
+        /// lost then; the branch is simply still there.
+        public var branchDeleted: Bool
+        /// One sentence for the human: what happened, or git's own refusal.
+        public var said: String
+    }
+
+    /// Remove a worktree ccc cut, **with git's own refusals as the whole
+    /// guard** — never ccc's judgment about what is safe to throw away.
+    ///
+    /// `git worktree remove` (no `--force`) refuses a tree with modified
+    /// or untracked files — the harness's own first question, asked of
+    /// git directly so there is no second policy here to drift from it.
+    ///
+    /// The branch is the harness's second question ("unpushed"), and
+    /// **`git branch -d` is the wrong way to ask it here**. `-d` measures
+    /// the branch against the current HEAD, which in a worktree fleet is
+    /// whatever the main checkout happens to be sitting on: measured
+    /// 2026-09-06 on a fixture cut off `trunk` with `master` checked out,
+    /// a branch with **no commits of its own** came back "not fully
+    /// merged" and was kept. Item 18 is the whole reason — a base that is
+    /// not the default branch is this fleet's ordinary case — so the ref
+    /// the work is measured against is the recorded base, and the
+    /// question is `merge-base --is-ancestor`, which is git's own answer
+    /// to "is this work already in there". A branch fully pushed to
+    /// `origin/<branch>` passes too: that is the harness's word
+    /// ("unpushed") and the row's `unpushed` column, taken literally.
+    ///
+    /// The records go last and only when the branch went with the tree: a
+    /// branch that outlived its worktree keeps its `ccc-base`, and its
+    /// `ccc-cut` is cleared because the tree it named is gone.
+    public static func removeCut(_ cut: CutWorktree, git: String = defaultGit) -> Cleanup {
+        var result = Cleanup(path: cut.path, branch: cut.branch, removed: false, branchDeleted: false, said: "")
+        do {
+            _ = try Git.run(git, ["-C", cut.repo, "worktree", "remove", cut.path])
+        } catch {
+            result.said = "kept \(cut.path): \(Self.gitSaid(error))"
+            return result
+        }
+        result.removed = true
+        let held = heldElsewhere(cut, git: git)
+        if let held {
+            result.said = "removed the worktree \(cut.path); kept the branch \(cut.branch): \(held)"
+        } else if (try? Git.run(git, ["-C", cut.repo, "branch", "-D", cut.branch])) != nil {
+            result.branchDeleted = true
+            result.said = "removed the worktree \(cut.path) and its branch \(cut.branch)"
+            try? recordBase(nil, for: cut.branch, repo: cut.repo, git: git)
+        } else {
+            result.said = "removed the worktree \(cut.path); kept the branch \(cut.branch)"
+        }
+        try? recordCut(nil, for: cut.branch, repo: cut.repo, git: git)
+        return result
+    }
+
+    /// Nil when the branch's commits are somewhere other than the branch —
+    /// in its base, or on origin — and it is therefore safe to delete;
+    /// otherwise the sentence saying what would be lost with it.
+    private static func heldElsewhere(_ cut: CutWorktree, git: String) -> String? {
+        func contains(_ ref: String) -> Bool {
+            (try? Git.run(git, ["-C", cut.repo, "merge-base", "--is-ancestor", cut.branch, ref])) != nil
+        }
+        if let base = cut.base, contains(base) { return nil }
+        if contains("refs/remotes/origin/\(cut.branch)") { return nil }
+        let against = cut.base.map { "not in \($0)" } ?? "no base recorded"
+        return "its commits are \(against) and not on origin"
+    }
+
+    /// git's sentence out of a failure, first line, without the argv echo.
+    static func gitSaid(_ error: Error) -> String {
+        let text = (error as? Git.Failure)?.stderr ?? "\(error)"
+        let line = text.split(separator: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return (line.map(String.init) ?? "git refused").trimmingCharacters(in: .whitespaces)
     }
 
     /// The git checkout a folder is in — a linked worktree, or the main
@@ -400,6 +553,10 @@ public final class WorktreeProbe: @unchecked Sendable {
             throw SpawnError(description: "git worktree add \(branch) off \(base): \(error)")
         }
         try recordBase(base, for: branch, repo: repo, git: git)
+        // Item 24: the mark that makes this tree ccc's to remove when the
+        // session is deleted. Best-effort — a repo whose config refuses
+        // the write costs the cleanup, never the spawn.
+        try? recordCut(path, for: branch, repo: repo, git: git)
         let carried = (try? carryIncluded(from: repo, into: path, git: git)) ?? []
         return SpawnResult.MadeWorktree(path: path, branch: branch, base: base, carried: carried)
     }

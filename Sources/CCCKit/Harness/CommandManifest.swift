@@ -177,9 +177,10 @@ public struct CommandManifest: Sendable {
         Verb(name: "rm",
              synopsis: ["rm <ref> [--json]"],
              about: ["delete a session and its worktree, when the harness says that is safe.",
-                     "The dirty-worktree guard is the harness's; ccc adds no --force because the",
-                     "harness has none, and \"kept\" is a correct answer rather than an error."],
-             json: "{ ref, removed, said }",
+                     "A worktree ccc cut (--base) is one the harness never knew about, so ccc",
+                     "removes that one itself, after. Neither adds a --force: the guards are the",
+                     "harness's and git's, and \"kept\" is a correct answer rather than an error."],
+             json: "{ ref, removed, said, worktree? { path, branch, removed, branchDeleted, said } }",
              exit: "1 when the harness kept it, with its reason in `said`",
              group: "session"),
 

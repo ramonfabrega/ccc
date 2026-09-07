@@ -264,8 +264,19 @@ public struct ClaudeCLI: Sendable {
 
     public struct RmResult: Sendable {
         public var removed: Bool
-        /// What the harness said, stdout and stderr in the order they came.
+        /// What the harness said, stdout and stderr in the order they came,
+        /// with the cleanup's own sentence appended when there was one.
         public var said: String
+        /// Item 24: what became of the worktree **ccc** cut for this
+        /// session, if it cut one. Nil is the ordinary answer — a plain
+        /// cwd, or a worktree the harness made and therefore removed.
+        public var worktree: WorktreeProbe.Cleanup?
+
+        public init(removed: Bool, said: String, worktree: WorktreeProbe.Cleanup? = nil) {
+            self.removed = removed
+            self.said = said
+            self.worktree = worktree
+        }
     }
 
     /// `claude stop <id>` on this host: end a running background session
@@ -297,12 +308,83 @@ public struct ClaudeCLI: Sendable {
         return StopResult(stopped: result.status == 0, said: said)
     }
 
-    public func rm(id: String) async throws -> RmResult {
+    /// Delete a session, and the worktree **ccc** cut for it (item 24).
+    ///
+    /// `claude rm` deletes the session and the worktree *the harness*
+    /// made. When ccc cut the tree itself (`--base`, or `--worktree` from
+    /// a folder off the default branch) it handed the harness a plain
+    /// cwd, so the daemon never learned there was a worktree at all:
+    /// measured 2026-09-06, `ccc rm 0f7b8c26` answered `removed`, exit 0,
+    /// and left the tree, the branch and the `ccc-base` record on disk,
+    /// with nobody but the user to finish it. Every ccc-cut worktree on
+    /// the fleet was in that state.
+    ///
+    /// So the cwd is read from the roster **before** the session goes —
+    /// afterwards there is no row to ask — and the cleanup runs only when
+    /// the harness actually removed the session, only on a tree carrying
+    /// ccc's own `ccc-cut` record, and only as far as git will go.
+    /// Nothing is asked first: `rm` is already the destructive verb, and
+    /// leaving half of it undone is the surprise.
+    public func rm(id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> RmResult {
+        guard host.isLocal else { return try await remoteRm(id: id) }
         try prepareControlDirectory()
+        // Before the session leaves the roster, while its cwd is still
+        // something we can ask for.
+        let cut = (await localCwd(id: id)).flatMap { WorktreeProbe.cut(at: $0) }
         let result = try await run(rmArgv(id: id), accepting: [0, 1], program: "claude")
-        let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
+        var said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return RmResult(removed: result.status == 0, said: said)
+        guard result.status == 0, let cut else {
+            return RmResult(removed: result.status == 0, said: said)
+        }
+        let git = probe.git
+        let cleanup = await Task.detached(priority: .userInitiated) {
+            WorktreeProbe.removeCut(cut, git: git)
+        }.value
+        said = said.isEmpty ? cleanup.said : said + "; " + cleanup.said
+        return RmResult(removed: true, said: said, worktree: cleanup)
+    }
+
+    /// The row's cwd for a local id, or nil when the roster has no such
+    /// row. Never fatal: a session ccc cannot find a row for is still a
+    /// session `claude rm` may know how to delete.
+    private func localCwd(id: String) async -> String? {
+        guard let data = try? await agentsJSON() else { return nil }
+        return RosterDecoder.decode(data).sessions.first { $0.id == id }?.cwd
+    }
+
+    /// A remote `rm` goes through the far side's own `ccc` when it has
+    /// one — a ccc-cut worktree only ever exists on the host that cut it
+    /// (`prepareWorktree` refuses `--base` for a remote spawn), so its
+    /// records, its repository and its git are all over there. The same
+    /// shape as `fetch` and `pull`. With no ccc on the far side this is
+    /// the passthrough it has always been, and the tree is left as before.
+    private func remoteRm(id: String) async throws -> RmResult {
+        try prepareControlDirectory()
+        guard let ccc = host.ccc, let destination = host.ssh else {
+            let result = try await run(rmArgv(id: id), accepting: [0, 1], program: "claude")
+            let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return RmResult(removed: result.status == 0, said: said)
+        }
+        let argv = sshPrefix(tty: false, destination: destination) + [ccc, "rm", id, "--json"]
+        let result = try await run(argv, accepting: [0, 1], program: "ccc")
+        let text = String(decoding: result.stdout, as: UTF8.self)
+        // The far side's own answer, when it is a ccc new enough to speak
+        // it; its plain text otherwise.
+        if let data = text.data(using: .utf8),
+           let answer = try? JSONDecoder().decode(RemoteRmAnswer.self, from: data) {
+            return RmResult(removed: result.status == 0, said: answer.said, worktree: answer.worktree)
+        }
+        return RmResult(removed: result.status == 0,
+                        said: (text + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// `ccc rm --json` as the far side prints it. Lenient like every shape
+    /// that crosses the hop: an older ccc sends no `worktree`.
+    struct RemoteRmAnswer: Decodable {
+        var said: String
+        var worktree: WorktreeProbe.Cleanup?
     }
 
     /// The same command as a line a human can paste into a terminal — what
