@@ -4244,6 +4244,15 @@ in shipped code: `PaneController.fireArmedClears` ran the fire-time
 `git status` on the `@MainActor`, where `merge`, `push`, `update` and
 `fetch` all use `Task.detached`. Fixed with them.
 
+**And the wall time says not to split the suite.** Measured at lore's
+ask: 20.05 s serial for 510 tests, with 432 of them under 50 ms summing
+to 0.95 s and 78 fixture tests taking 95% of the rest — no long pole (the
+slowest single test is 1.33 s), just process-spawning tests that earn
+their cost. A fast lane would save 19 s and buy a second command to
+remember and a "it passed the fast lane" class of mistake, which is the
+shape of the wrong-tool incidents above. The suite is not slow; its
+*default* mode cannot finish, which is a different complaint.
+
 Neither is the root, which is `Git.Drain`'s two-threads-per-call shape.
 That is queue item 30, and production is nowhere near the limit — the
 poller probes serially and a verb is one call — so the cost today is a
