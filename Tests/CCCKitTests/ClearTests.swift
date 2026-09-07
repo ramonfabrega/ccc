@@ -121,6 +121,52 @@ import Testing
         #expect(ClearWindow.of(session(.done, .idle, kind: .interactive)) == .gone)
     }
 
+    /// The regression that made the verb useless to its first real user
+    /// within an hour of shipping. A commander holding a persistent
+    /// Monitor reads `status: busy` for as long as it holds it, and the
+    /// question the gate is asking — is the TURN over — is `tempo`.
+    /// Measured on the two live rows (docs/EVIDENCE.md "item 27 — the gate
+    /// read the wrong field"): attrition `status=busy tempo=idle` with
+    /// three tasks in flight, lore `status=idle tempo=idle` with none.
+    @Test func aBusyRowWhoseTurnIsOverIsStillOurSeat() {
+        let busy = Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(),
+                           state: .done, status: .busy)
+        #expect(ClearWindow.of(busy, job: JobInfo(tempo: "idle")) == .now)
+        #expect(ClearWindow.of(busy, job: JobInfo(tempo: "active")) == .wait)
+        // A word this build has not met is "not idle", never a fire.
+        #expect(ClearWindow.of(busy, job: JobInfo(tempo: "whatever-comes-next")) == .wait)
+        // `blocked` still comes from the roster and outranks any tempo.
+        let blocked = Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(),
+                              state: .blocked, status: .idle)
+        #expect(ClearWindow.of(blocked, job: JobInfo(tempo: "idle")) == .wait)
+    }
+
+    /// No job file, or one from a ccc across the hop that predates
+    /// `tempo`: the daemon's coarser word stands. It never fires early —
+    /// it only ever waits too long.
+    @Test func withoutATempoTheDaemonsWordStands() {
+        func row(_ status: Session.Status) -> Session {
+            Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(), state: .done, status: status)
+        }
+        #expect(ClearWindow.of(row(.idle), job: nil) == .now)
+        #expect(ClearWindow.of(row(.busy), job: nil) == .wait)
+        #expect(ClearWindow.of(row(.idle), job: JobInfo(detail: "no tempo in this reading")) == .now)
+        #expect(ClearWindow.of(row(.busy), job: JobInfo(detail: "no tempo in this reading")) == .wait)
+    }
+
+    /// `tempo` survives the wire between two builds of ccc, which is what
+    /// a remote row rides home on.
+    @Test func tempoCrossesTheHop() throws {
+        let info = JobInfo(detail: "d", tempo: "idle")
+        let wire = try JSONEncoder().encode(info)
+        #expect(try JSONDecoder().decode(JobInfo.self, from: wire).tempo == "idle")
+        // And out of the harness's own file, which is where it starts.
+        let file = Data(#"{"detail":"d","tempo":"idle","inFlight":{"tasks":3}}"#.utf8)
+        #expect(JobInfo.decode(file)?.tempo == "idle")
+        // A file with no tempo says nothing rather than "idle".
+        #expect(JobInfo.decode(Data(#"{"detail":"d"}"#.utf8))?.tempo == nil)
+    }
+
     // MARK: the prompt box
 
     private func grid(_ line: String, cursorCol: Int, rows: Int = 4) -> Grid {

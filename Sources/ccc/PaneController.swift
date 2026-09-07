@@ -590,7 +590,7 @@ final class PaneController {
             // aimed at a session that no longer exists, and the short id
             // it names now belongs to another one.
             let moved = mark.sessionId != nil && row?.session.sessionId != nil && mark.sessionId != row?.session.sessionId
-            let window: ClearWindow = moved ? .gone : (row.map { ClearWindow.of($0.session) } ?? (polled ? .gone : .wait))
+            let window: ClearWindow = moved ? .gone : (row.map { ClearWindow.of($0.session, job: $0.job) } ?? (polled ? .gone : .wait))
             switch window {
             case .wait: continue
             case .gone:

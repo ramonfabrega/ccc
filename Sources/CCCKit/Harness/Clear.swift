@@ -27,10 +27,46 @@ public enum ClearGuard {
     }
 }
 
-/// When an armed clear may fire, read off the roster row. The gate is not
+/// When an armed clear may fire, read off the row. The gate is not
 /// politeness: measured 2026-09-06, a `/clear` typed while the session was
 /// generating took effect immediately and the running turn's output was
 /// gone — no error, no trace, the transcript simply empty.
+///
+/// **It asks the job file, not the daemon.** `ccc clear` shipped reading
+/// the roster's `status`, and within the hour the first commander to use
+/// it sat armed and never fired: `status` means *something live is
+/// attached to this session* — a Monitor, a background bash — where the
+/// question here is *is the turn over and the box free to type into*,
+/// which is `tempo` (`docs/EVIDENCE.md` "item 27 — the gate read the
+/// wrong field"). A commander holding a persistent watch is `busy` for as
+/// long as it holds it, so reading `status` made the verb useless to
+/// exactly the loop it was built for.
+///
+/// Firing with background tasks in flight is deliberate, not tolerated:
+/// the turn is over, the box is free, and a Monitor that fires afterwards
+/// simply opens a fresh turn in the fresh context — which is the point of
+/// clearing.
+///
+/// **There is no `--after-tasks` flag, and the first user is why.** Asked
+/// whether a clear should wait for `inFlight.tasks == 0`, attrition — a
+/// commander that has held one to four live tasks all session — argued
+/// against building it, and the argument is better than the question:
+/// not all background tasks are equal. An ambient watch and a
+/// load-bearing `cargo test --release` gate both surface as `local_bash`
+/// and **cannot be told apart from out here**, so a flag could not
+/// protect the case that needs protecting — a clear landing mid-gate,
+/// handing the fresh context a bare "exit 0" for a merge it has no memory
+/// of making. What prevents that is the caller's own rule, *arm only when
+/// the gate is green and pushed*, which leaves only ambient tasks live at
+/// arm time by construction. The discipline belongs where the knowledge
+/// is. A flag that existed would be used to paper over arming at the
+/// wrong moment; if a second user ever needs it, opt-in is the shape.
+///
+/// `blocked` still comes from the roster. That is the right source for
+/// "a question is up", and it covers both shapes: a permission dialog,
+/// where the cursor is not in a prompt box at all, and a session that
+/// ended its turn by asking something, which has not finished and whose
+/// question a clear would throw away.
 public enum ClearWindow: String, Sendable {
     /// Idle, and ours to type into.
     case now
@@ -40,17 +76,20 @@ public enum ClearWindow: String, Sendable {
     /// the mark should go.
     case gone
 
-    public static func of(_ session: Session) -> ClearWindow {
+    public static func of(_ session: Session, job: JobInfo? = nil) -> ClearWindow {
         guard session.kind == .background else { return .gone }
         switch session.state {
         case .failed, .stopped: return .gone
-        // `blocked` is a session waiting on a question, and the box under
-        // that question is a dialog, not a prompt: typing there answers
-        // it. Never our seat.
         case .blocked: return .wait
         case .working, .done, .none: break
         }
-        // No `status` at all is a row with no live process behind it.
+        // The job file's word when there is one; a word this build has
+        // not met is "not idle", never a crash and never a fire.
+        if let tempo = job?.tempo { return tempo == "idle" ? .now : .wait }
+        // No job file — a row read across the hop from a ccc that does
+        // not carry `tempo` yet, or a job whose file said nothing. The
+        // daemon's `status` is the older, coarser answer: it never fires
+        // early, it only ever waits too long.
         return session.status == .idle ? .now : .wait
     }
 }

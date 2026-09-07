@@ -84,6 +84,27 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// A stall is a *non-event*, and a non-event can only be detected
     /// against a clock.
     public var updatedAt: Date?
+    /// **Whether the model's turn is generating** — the job file's own
+    /// word, and not the same question the roster's `status` answers.
+    ///
+    /// Measured 2026-09-06, the night `ccc clear` shipped, on two rows
+    /// with Remote Control on and everything else alike:
+    ///
+    ///     attrition  roster status=busy   tempo=idle  inFlight={tasks:3, kinds:[monitor, local_bash]}
+    ///     lore       roster status=idle   tempo=idle  inFlight={tasks:0, kinds:[]}
+    ///
+    /// The daemon's `status` means *something live is attached to this
+    /// session*, background tasks included; `tempo` means *the turn is
+    /// running*. A commander holding a persistent Monitor is `busy` for
+    /// as long as it holds it, which is forever by design — so anything
+    /// asking "may I type into this pane now" has to read this field and
+    /// not that one. `ClearWindow` does; `blocked` still comes from the
+    /// roster, which is the right source for "a question is up".
+    ///
+    /// Values seen: `idle`, `active`, `blocked`. Kept as the string the
+    /// file carries rather than an enum — a word this build has not met
+    /// must read as "not idle" and never as a decode failure.
+    public var tempo: String?
     // `children` — the job's pull requests and published artifacts — is
     // **not read**. It was, for a day: v11 slice 3 dropped the PR half of
     // the banner's receipt line and slice 4 dropped the rest, because the
@@ -105,7 +126,7 @@ public struct JobInfo: Codable, Sendable, Equatable {
 
     public init(detail: String? = nil, needs: String? = nil, result: String? = nil,
                 suggestedReply: String? = nil, remoteControl: Bool = false, permissionMode: String? = nil,
-                updatedAt: Date? = nil) {
+                updatedAt: Date? = nil, tempo: String? = nil) {
         self.detail = detail
         self.needs = needs
         self.result = result
@@ -113,6 +134,7 @@ public struct JobInfo: Codable, Sendable, Equatable {
         self.remoteControl = remoteControl
         self.permissionMode = permissionMode
         self.updatedAt = updatedAt
+        self.tempo = tempo
     }
 
     /// Nothing worth carrying. The join yields `nil` rather than an empty
@@ -123,7 +145,7 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// every field is the empty reading this guards against.
     public var isEmpty: Bool {
         detail == nil && needs == nil && result == nil && suggestedReply == nil && !remoteControl
-            && permissionMode == nil && updatedAt == nil
+            && permissionMode == nil && updatedAt == nil && tempo == nil
     }
 
     /// Hand-written and lenient, for the same reason `SessionRow`'s is:
@@ -143,6 +165,7 @@ public struct JobInfo: Codable, Sendable, Equatable {
         remoteControl = (try? container.decodeIfPresent(Bool.self, forKey: .remoteControl)) ?? false
         permissionMode = try? container.decodeIfPresent(String.self, forKey: .permissionMode)
         updatedAt = try? container.decodeIfPresent(Date.self, forKey: .updatedAt)
+        tempo = try? container.decodeIfPresent(String.self, forKey: .tempo)
     }
 
     /// Whether a permission prompt will stop this job: launched without a
@@ -189,7 +212,8 @@ public struct JobInfo: Codable, Sendable, Equatable {
                            suggestedReply: string("suggestedReply"),
                            remoteControl: remoteControl(in: object),
                            permissionMode: permissionMode(in: object),
-                           updatedAt: string("updatedAt").flatMap(Self.instant))
+                           updatedAt: string("updatedAt").flatMap(Self.instant),
+                           tempo: string("tempo"))
         return info.isEmpty ? nil : info
     }
 

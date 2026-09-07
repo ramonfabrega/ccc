@@ -4000,3 +4000,69 @@ Nothing here is owed to air: `clear` is a studio-side verb — it types
 into a pane on the Mac the session lives on — and air's copy of it will
 be exercised the first time air arms one across the hop, which is the
 remote road (`ssh … ccc clear <id>`) and is **unmeasured**.
+
+## item 27 — the gate read the wrong field (2026-09-06)
+
+`ccc clear` shipped in v0.1.28 reading the roster's `status` for "is this
+row idle". Within the hour the first real user armed one and it never
+fired. attrition's commander, and lore's beside it as the control — same
+Remote Control, everything else alike:
+
+```
+attrition 3c382923   roster: state=done    status=busy   rc=true
+                     job:    tempo=idle    inFlight={tasks:3, kinds:[monitor, local_bash]}
+lore      a18a763f   roster: state=working status=idle   rc=true
+                     job:    tempo=idle    inFlight={tasks:0, kinds:[]}
+```
+
+The difference is `inFlight`, and `busy` there is **true, not stale**. The
+two words answer different questions: the daemon's `status` is *something
+live is attached to this session*, background tasks included; `tempo` is
+*the model's turn is generating*. A commander holding a persistent
+Monitor is `busy` for as long as it holds it — which is forever, by
+design — so the gate as shipped made the verb **useless to exactly the
+loop it was built for**, and not late: never.
+
+The three in-flight tasks were `ccc watch --json --all`, the 60 s `ccc
+list --json` sampler and a `--stall 10` watch: the item 25 capture asked
+for an hour earlier in the same conversation. **The advice armed the
+trap.** attrition could not have found it from their side — they read the
+non-firing as "the tick never sampled the row idle because the user kept
+typing", which is plausible and would have survived several attempts.
+
+So `JobProbe` carries `tempo` as a seventh field out of a file it already
+opens every tick, and `ClearWindow` prefers it, falling back to `status`
+where a reading has none — a row from a ccc across the hop that predates
+the field, which then behaves as it did before: never firing early, only
+waiting too long. `blocked` still comes from the roster, which is the
+right source for both its shapes (a permission dialog, and a session that
+ended its turn by asking something, which has not finished).
+
+### Why there is no `--after-tasks`, in the first user's words
+
+Firing with background work live is deliberate. Asked whether a clear
+should wait for `inFlight.tasks == 0`, attrition argued against building
+the flag at all, and the argument is better than the question:
+
+> Not all background tasks are equal: my Monitor and samplers are
+> **ambient**, but a `run_in_background` `cargo test --release` gate is
+> **load-bearing** … A clear firing mid-gate would hand the fresh context
+> a bare "exit code 0" for a merge it has no memory of making. That is
+> genuinely bad. But it is bad in a way **only the caller can prevent**,
+> because you cannot tell them apart: both surface as `local_bash`.
+
+Their own clear-boundary rule — *arm only when the gate is green and
+pushed* — leaves nothing but ambient tasks live at arm time by
+construction. The discipline belongs where the knowledge is; a flag out
+here could not see the difference, and "a flag that exists gets used" to
+paper over arming at the wrong moment. If a second user needs it,
+opt-in is the shape.
+
+### What v0.1.28 cost its first user, stated plainly
+
+> On 0.1.28 there is no configuration under which I can both run your
+> data streams and use the verb.
+
+The two things shipped that evening were mutually exclusive for the one
+user they were both built for. That is the cost of a gate read from the
+nearest field rather than the right one.
