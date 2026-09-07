@@ -70,9 +70,43 @@ import Testing
 
     @Test func everyFlagIsPassedThroughUnchanged() {
         let request = SpawnRequest(prompt: "go", agent: "lean", permissionMode: "plan", effort: "high", worktree: "v6", rc: true)
-        #expect(request.claudeArguments == ["--bg", "--agent", "lean", "--permission-mode", "plan", "--effort", "high", "--rc", "--worktree", "v6", "go"])
-        #expect(SpawnRequest(worktree: "").claudeArguments == ["--bg", "--permission-mode", "auto", "--worktree"])
+        #expect(request.claudeArguments == ["--bg", "--agent", "lean", "--rc", "--worktree", "v6", "--permission-mode", "plan", "--effort", "high", "go"])
+        #expect(SpawnRequest(worktree: "").claudeArguments == ["--bg", "--worktree", "--permission-mode", "auto"])
         #expect(SpawnRequest(worktree: nil).claudeArguments == ["--bg", "--permission-mode", "auto"])
+    }
+
+    /// `--remote-control [name]` and `-w, --worktree [name]` take an
+    /// **optional** value, so a bare one standing last before the
+    /// positional prompt eats it. Both shipped that way and both were
+    /// measured 2026-09-07 (`docs/EVIDENCE.md` "item 17 — the roster says
+    /// nothing about `--rc`"): `--rc` made a draft with `intent: ""` and
+    /// no error at all, `--worktree` died `exit 1 before init` on an
+    /// invalid worktree name that was the prompt.
+    ///
+    /// The invariant is structural rather than positional, so a flag added
+    /// in the wrong place fails here and not on a user's spawn: no
+    /// optional-value flag may be the last word before the prompt, in any
+    /// combination of the flags that can precede it.
+    @Test func anOptionalValueFlagNeverStandsBeforeThePrompt() {
+        for rc in [nil, true] as [Bool?] {
+            for worktree in [nil, "", "v6"] as [String?] {
+                for effort in [nil, "high"] as [String?] {
+                    for model in [nil, "haiku"] as [String?] {
+                        let argv = SpawnRequest(prompt: "go", model: model, effort: effort,
+                                                worktree: worktree, rc: rc).claudeArguments
+                        #expect(argv.last == "go")
+                        let beforePrompt = argv[argv.count - 2]
+                        #expect(!SpawnRequest.optionalValueFlags.contains(beforePrompt),
+                                "\(beforePrompt) would swallow the prompt: \(argv)")
+                        // And the same for a draft, whose last word is a
+                        // flag: a trailing bare `--rc`/`--worktree` is
+                        // harmless there, but only because nothing follows.
+                        let draft = SpawnRequest(model: model, effort: effort, worktree: worktree, rc: rc)
+                        #expect(!draft.claudeArguments.contains("go"))
+                    }
+                }
+            }
+        }
     }
 
     /// The mode defaults to `auto` (2026-09-04, the user's word via lore):

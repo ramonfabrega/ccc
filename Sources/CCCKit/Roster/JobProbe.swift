@@ -233,6 +233,17 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// The value after `--permission-mode` in `respawnFlags`, if any.
     /// Lenient the same way `remoteControl` is: no array, no flag, or a
     /// flag with nothing after it all read as "none was passed".
+    ///
+    /// **This value is not what was typed, and `asksForPermission` is
+    /// wrong because of it** — queue item 31, measured 2026-09-07
+    /// (`docs/EVIDENCE.md` "item 17 — the roster says nothing about
+    /// `--rc`"). Once a session initializes, the harness rewrites an
+    /// `auto` into `default` whenever a `--model` was named, which is
+    /// every ccc spawn that obeys the fan-out rule; and the twelve live
+    /// rows carrying no `--permission-mode` at all are on `auto` per
+    /// their own transcripts, so nil does not mean "the mode that asks"
+    /// either. The session's truth is its transcript's last
+    /// `{"type":"permission-mode"}` record.
     static func permissionMode(in object: [String: Any]) -> String? {
         guard let flags = (object["respawnFlags"] as? [Any])?.compactMap({ $0 as? String }) else { return nil }
         guard let i = flags.firstIndex(of: "--permission-mode"), i + 1 < flags.count else { return nil }
@@ -247,9 +258,17 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// phone rather than claiming a session is reachable there.
     ///
     /// Both spellings are matched because the harness accepts both and
-    /// records what was typed; the fleet writes `--rc`, and a session
-    /// launched with `--remote-control` would otherwise read as a session
-    /// that cannot be answered from the couch when it can.
+    /// keeps the spelling it was given; the fleet writes `--rc`, and a
+    /// session launched with `--remote-control` would otherwise read as a
+    /// session that cannot be answered from the couch when it can.
+    ///
+    /// Reading `respawnFlags` is not a choice among sources but the only
+    /// one, measured 2026-09-07 (`docs/EVIDENCE.md` "item 17 — the roster
+    /// says nothing about `--rc`"): an rc row and a plain row differ in
+    /// nothing but identity, and `bridgeSessionId` — the obviously-named
+    /// near-miss — is present on plain sessions too. **Presence** is what
+    /// this array can be trusted for; its *values* are resolved rather
+    /// than echoed, which is `permissionMode`'s problem above.
     static func remoteControl(in object: [String: Any]) -> Bool {
         guard let flags = object["respawnFlags"] as? [Any] else { return false }
         return flags.contains { ($0 as? String).map { $0 == "--rc" || $0 == "--remote-control" } ?? false }

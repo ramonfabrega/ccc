@@ -4294,3 +4294,176 @@ Reported by attrition on its way into a Fable steering pass, with the
 verdicts in its own `verdicts.txt`. Its other note from the same run:
 0.1.29's gate held all night across four landings driven by `ccc update`
 and `ccc rm`.
+
+## item 17 — the roster says nothing about `--rc`, and the wrong thing about `auto` (2026-09-07)
+
+The open half of item 17's title: *what an `--rc`-spawned session actually
+shows in the daemon's roster versus a plain one*. Eight fixtures in a
+throwaway cwd (`$CLAUDE_JOB_DIR/tmp/rcfix`, 2.1.260, ccc 0.1.29), all
+`--model haiku` except where the point was to omit it, all removed with
+`claude stop` + `claude rm` — `claude agents --json --all | grep -c rcfix`
+answered `0`.
+
+### The row is identical, and `respawnFlags` really is the only signal
+
+`ccc-rcfix-c1` (plain) and `ccc-rcfix-c2` (`--rc`), same cwd, same prompt,
+same model, both `done`:
+
+```
+KEYS EQUAL: True
+DIFFERING KEYS: ['id', 'name', 'pid', 'sessionId', 'startedAt']
+```
+
+Nine keys — `cwd id kind name pid sessionId startedAt state status` — and
+every one that is not identity is equal. `kind` is `background` for both;
+there is no `remote`, no `bridge`, no flag. The same held for the `blocked`
+row and for `state.json`'s key set, which is character-for-character the
+same list on both sides.
+
+So `JobProbe.remoteControl` reading `respawnFlags` is not a choice among
+sources, it is **the only source**, and that is now measured rather than
+assumed. Two near-misses ruled out by the same pair: `bridgeSessionId` is
+present on the plain session too (`cse_01QTSRrzsRTkHB2dd3dNyDG3`), and
+`bridgeOutboundOnly` is `false` on both — neither discriminates, and a
+future reader reaching for the obviously-named field would be wrong.
+
+**One signal exists outside `respawnFlags`, and ccc does not read it.** The
+RC session's transcript carries a record the plain one does not:
+
+```json
+{"type":"system","subtype":"bridge_status",
+ "content":"/remote-control is active · Continue here, on your phone, or at https://claude.ai/code/session_01DtyjcMERthj8PVH2HX2bi8",
+ "url":"https://claude.ai/code/session_01DtyjcMERthj8PVH2HX2bi8"}
+```
+
+It carries payload the row does not have — the **deep link** — and it is
+the far side's own word rather than an inference from a launch flag. It is
+not a reason to move the badge (a transcript tail read per tick is a cost
+the job file is not), but a "open on claude.ai" item on a row that already
+knows it is `rc` is one join away, and `bridgeSessionId` in `state.json` is
+the same id without the read.
+
+### `ccc spawn --rc "<prompt>"` silently loses the prompt
+
+Found by looking at the fixture rather than at the code. The `--rc` spawn
+came back a **draft**:
+
+```
+backgrounded · 22f6d203 · ccc-rcfix-rc (idle — send a prompt to start)
+```
+
+`state.json` says `intent: ""`, `state: working`, `tempo: blocked`, `needs:
+"send a prompt to start"`; the roster says `blocked`; `ccc list` draws it
+`draft`. The prompt is not in the job file, not in the transcript, and not
+in `respawnFlags` — it is gone with no error.
+
+The cause is in `claude --help`:
+
+```
+--remote-control [name]    Start an interactive session with Remote
+                           Control enabled (optionally named)
+```
+
+**An optional value.** `Spawn.claudeArguments` emits `--rc` as the last
+flag, immediately before the positional prompt, so the prompt is parsed as
+the RC session name and the session starts with nothing to do. The control
+is `ccc-rcfix-c2`, the same command with `--rc` moved one flag earlier:
+
+```
+claude --bg --name ccc-rcfix-c2 --model haiku --rc --permission-mode auto '…'
+→ state done, intent = the prompt, output.result = "ok", bridge_status present
+```
+
+RC still activates in both cases; only the prompt is lost. So the box item
+17 says exists has never carried a prompt, and "whether `--rc` should be
+the default" was a question about a flag that made every spawn a draft.
+
+### `respawnFlags` is resolved, not echoed — and it writes `auto` as `default`
+
+Six fixtures, typed order on the left, what `state.json` recorded on the
+right:
+
+| typed | `respawnFlags` | transcript `permission-mode` |
+| --- | --- | --- |
+| `--name c1 --model haiku --permission-mode auto` | `--name c1 --model haiku --permission-mode default` | `auto` |
+| `--name c2 --model haiku --rc --permission-mode auto` | `--name c2 --rc --model haiku --permission-mode default` | `auto` |
+| `--name c3 --model haiku --permission-mode acceptEdits` | `--name c3 --permission-mode acceptEdits --model haiku` | `acceptEdits` |
+| `--name c4 --permission-mode auto --model haiku` | `--name c4 --model haiku --permission-mode default` | `auto` |
+| `--name c5 --permission-mode auto` *(no model)* | `--name c5 --permission-mode auto --model opus[1m]` | `auto` |
+| `ccc spawn --name c7` *(no model)* | `--name c7 --permission-mode auto --model opus[1m]` | `auto` |
+
+Three things at once. The **order is reconstructed** (c4 typed the mode
+before the model and got it back after). The **model is filled in** when
+none was passed (`opus[1m]`, the ambient default). And `auto` came back as
+`default` in all four spawns that named a model and survived in both that
+did not — `acceptEdits` was never touched, so it is the value `auto` that
+is rewritten, not the field. The mechanism is inside the CLI; the matrix
+is the claim, and `default` is not even one of `--permission-mode`'s own
+documented choices.
+
+The transcript is the truth and says so plainly:
+
+```json
+{"type":"permission-mode","permissionMode":"auto","sessionId":"e4143163-…"}
+```
+
+**What it costs ccc.** `JobProbe.asksForPermission` is `permissionMode not
+in {auto, bypassPermissions}`, so every ccc spawn that names a model — the
+normal shape, since the fan-out rule requires an explicit model — reports
+"this one will stop at its first prompt" about a session on `auto`. That
+is the `asks` column in `ccc list` and the ❓ badge in the window, whose
+tooltip reads *"Launched --permission-mode default … `ccc spawn` defaults
+to auto"*: it contradicts itself in one line.
+
+**The rate, per the house rule.** Against the live roster (18 rows, this
+session's fixtures excluded), comparing the badge's answer to the last
+`permission-mode` record in each session's transcript:
+
+```
+live rows compared: 18; `asks` drawn but session is on auto/bypass: 12
+```
+
+Twelve wrong, **zero right**, one unjudgeable (`attrition`, no such record
+in the current transcript), five correctly silent. And the twelve fail for
+a *second* independent reason: none of them carries `--permission-mode` in
+`respawnFlags` at all — they were not spawned by ccc — and `permissionMode`
+returning `nil` reads as "asks" while all twelve transcripts say `auto`. So
+the mark has two causes to be wrong and, on this roster, no case where it
+is right. By the v11 rule (every line carries payload or is not drawn) it
+is worse than absent: it is drawn on most rows and says the opposite of
+what is true.
+
+That is a detector, not a badge, and it wants the same treatment item 25's
+did — a source that is the session's own word rather than an inference off
+a launch flag. Queue item 31.
+
+**When the rewrite happens**, from the one fixture that never got that
+far: `ccc spawn --worktree "<prompt>"` failed `exit 1 before init`, and
+*its* `respawnFlags` kept the `--permission-mode auto` ccc typed, in the
+order ccc typed it, with no `--model` invented. So `respawnFlags` is
+written at dispatch as given and **rewritten once the session
+initializes** — which is also why a job that has been respawned since an
+older CLI still carries the older array.
+
+### The fix, and the fixture that proves it
+
+`Spawn.claudeArguments` now emits `--rc` and `--worktree` before
+`--permission-mode`, which is always present and always carries a value,
+so no optional-value flag can ever be the last word before the prompt.
+`SpawnRequest.optionalValueFlags` names the two, and
+`anOptionalValueFlagNeverStandsBeforeThePrompt` walks the 24 combinations
+of `rc × worktree × effort × model`; on the shipped order it fails **12**
+of them.
+
+End to end on the built binary, same shape as the fixture that failed:
+
+```
+.build/debug/ccc spawn --name ccc-rcfix-fixed --model haiku --rc 'Reply with … ok …'
+→ draft: false; state done, intent = the prompt, output.result = "ok",
+  respawnFlags ["--name","ccc-rcfix-fixed","--rc","--model","haiku",…],
+  bridge_status present
+```
+
+Every fixture in this section was removed with `claude stop` + `claude rm`
+and its cwd deleted; `claude agents --json --all | grep -c rcfix` answers
+`0`.

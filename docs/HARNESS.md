@@ -233,9 +233,19 @@ branch that lags nothing.
 --rc` passes `--rc` to `claude --bg`, which makes a *background job* that is
 also remote-controlled: the daemon owns it, `claude agents` lists it, and
 ccc's row reads its `respawnFlags`. A session an `rc` server spawns is not
-that, and how much of it reaches the daemon's roster is **unmeasured** — the
-open half of queue item 17, "ccc is blind to RC". Nothing here should be
-assumed until a row is looked at.
+that, and how much of it reaches the daemon's roster is still **unmeasured**.
+
+**The `ccc spawn --rc` half was looked at on 2026-09-07** (`docs/EVIDENCE.md`
+"item 17 — the roster says nothing about `--rc`"), and the answer is that the
+row says *nothing*: an rc row and a plain row from the same cwd, prompt and
+model are identical in field set and in every value but `id`, `pid`,
+`sessionId`, `startedAt` and `name`. `kind` stays `background`;
+`bridgeSessionId` and `bridgeOutboundOnly` are present and equal on the plain
+session too, so neither discriminates. `respawnFlags` is the only signal in
+the job file. Outside it there is one more, in the session's own transcript —
+a `{"type":"system","subtype":"bridge_status"}` record whose `url` is
+`https://claude.ai/code/session_<bridgeSessionId>`, the deep link the row
+does not have.
 
 **The session inbox socket** (`cross-session-messaging`, harness v2.1.224+)
 — the sanctioned way for a non-session process to put text into a running

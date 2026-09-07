@@ -24,8 +24,8 @@ left behind is now a rule on the surface it constrains (`docs/HARNESS.md`
 **v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
 that **the phone's job is already shipped** — Remote Control puts most
 live workers in the Claude app, where they are messaged and answered — so
-ccc builds what RC leaves out, starting with the fact that **ccc cannot
-see any of it** (`docs/EVIDENCE.md` "the mobile survey").
+ccc builds what RC leaves out (`docs/EVIDENCE.md` "the mobile survey").
+What is left of it is a measurement only the user can run.
 
 Three **questions, not items**. `suggestedReply` is on the row and shown
 nowhere; using it means answering without attaching (see "Later"). The
@@ -50,7 +50,9 @@ focus**: `NSApp.activate()` is cooperative since macOS 14 (measured
 **Twin gaps from the audit**
 (`docs/EVIDENCE.md` "the audit"): `ccc ask <ref>` (the socket has it; the
 CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
-remove|check` in the window, an age column.
+remove|check` in the window, an age column. **From item 18**: the New
+Session sheet has no worktree or base field, and a remote `--base` is
+refused rather than routed to the far side's ccc.
 
 ### 6. The remote pane's reattach has still never met a lid
 
@@ -105,31 +107,19 @@ target on the request, not a second verb set, is the shape to copy.
 None of this is the phone; all of it makes the phone the user already has
 work better (`docs/EVIDENCE.md` "the mobile survey").
 
-**Slices 1 and 2 are done** and their argument is in `docs/EVIDENCE.md`
-("the mobile survey", "the pane that could not say it had looked away",
-"Cut as v0.1.23"): the row says which sessions the phone can answer, and
-the pane answers DEC 1004 so it can stop over-suppressing push. **The
-user's half is unmeasured** — whether the phone now buzzes for a session
-ccc holds and nobody is watching.
+**Slices 1 and 2 and the roster half are done** ("the pane that could not
+say it had looked away", "Cut as v0.1.23", "item 17 — the roster says
+nothing about `--rc`"): an rc row differs from a plain one in nothing but
+identity, so `respawnFlags` is the only source; and `--rc` had been eating
+the prompt of every spawn, so **whether it should be the default** was
+never really asked.
 
-**Slice 3: `CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses
-push while a marker file exists; the harness docs want "a screen-lock
-listener or similar tool" to write it on unlock and delete it on lock.
-**ccc is that tool**: `ccc presence on|off|status`, plus `--settings`
-printing the settings.json `env` entry and never writing it. **The obvious
-signal is wrong**: studio is always-on, so "unlocked" would suppress push
-all day; idle time is the signal — unlocked *and* recently touched. **Only
-if slice 2 was not enough**: the bug just fixed was too much suppression.
-
-**The box exists** (`ccc spawn --rc`); whether it should be the default is
-still the user's call. **`claude rc` is not this box** and the difference
-cost a day — docs/HARNESS.md carries the paragraph, including what an
-rc-spawned session shows in the daemon's roster, which is **unmeasured**
-and is the rest of this item's title.
-
-**Item 18 left on 2026-09-04** (`docs/EVIDENCE.md` "item 18 — the base is
-recorded"). Left open there: the sheet has no worktree or base field, and
-a remote `--base` is refused rather than routed to the far side's ccc.
+**What is left is the user's half**: whether the phone buzzes for a
+session ccc holds while nobody watches. **Slice 3,
+`CLAUDE_CLIENT_PRESENCE_FILE`** — `ccc presence on|off|status`, `--settings`
+printing the settings.json `env` entry and never writing it, keyed on
+**idle time** rather than the lock since studio is always-on — is gated on
+that answer being no: the bug just fixed was too *much* suppression.
 
 ### 25. The detector is wrong, and it is not the window
 
@@ -186,21 +176,29 @@ nowhere near the limit** — the poller probes serially, a verb is one call
 — so the cost is a suite nobody can trust on a busy Mac. Fix is one
 reader without a per-call thread, or `Subprocess` behind the sync face.
 
+### 31. The `asks` mark is wrong on every row that can be judged
+
+Found 2026-09-07 under item 17 (`docs/EVIDENCE.md` "item 17 — the roster
+says nothing about `--rc`"). `asksForPermission` reads `--permission-mode`
+out of `respawnFlags`, an array that is **resolved, not echoed**: a typed
+`auto` comes back `default` whenever a `--model` was named — every spawn
+the fan-out rule allows — and absent does not mean asks either, since the
+twelve live rows carrying no mode are on `auto` per their transcripts.
+Measured: **12 of 18 live rows draw `asks` on an `auto` session; none
+draws it correctly**, and the tooltip contradicts itself in one line.
+
+The source is the choice: the **transcript's last `permission-mode`
+record** is the session's own word and follows a mid-session change, at a
+tail read per tick; the cheap move trusts `respawnFlags` only for
+`plan`/`manual`/`acceptEdits` and goes silent on `default` and on absent —
+0 wrong, at the price of an invisible deliberate one.
+
 ## Later
 
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,
 for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness
 bug, and ccc has no record letting it clean that tree without risking one
 the user pointed `--cwd` at. Argue it first.
-
-Reply without attach — the session inbox socket, one probe away. RC-free
-approvals via the `PermissionRequest` hook, the *only* write path the
-phone in the pocket does not already have. The phone, if the Mac earns it.
-
-**Answering the "your turn" from a phone is already shipped**, through
-Remote Control (`docs/EVIDENCE.md` "the mobile survey"). RC has no
-third-party entry point, so **a ccc phone must earn its place on something
-other than unblocking.**
 
 **Approvals before reply**, because **a peer message can never approve** —
 "never counts as your consent" — so these are two features and were one
@@ -209,21 +207,23 @@ queue line. `PermissionRequest` is documented with a `decision` object and
 hook that blocks and answers.
 
 **Reply has a documented path** (address and caveats: `docs/HARNESS.md`
-"The session inbox socket"). **What is left is one probe**: the line's
+"The session inbox socket") and **what is left is one probe**: the line's
 format is undocumented and in the CLI's bytecode, and a probe from a
 session was refused by the auto-mode classifier — correctly, since writing
 to an IPC socket reads as injection. Run it as `! python3 …`; `ccc reply
-<ref> "<text>"` is a small twin after it.
+<ref> "<text>"` is a small twin after.
 
-**The phone breaks exactly one locked decision**: *"PTY is always local"*
+**A ccc phone must earn its place on something other than unblocking** (RC
+ships that, with no third-party entry point) and **breaks exactly one
+locked decision**: *"PTY is always local"*
 — a subprocess, and iOS has no fork/exec. An in-process ssh client
 (**`apple/swift-nio-ssh`**) over **libghostty's External termio backend**
 (our seam's shape; builds for iOS upstream) keeps the daemon decision, and
 **`No tmux, ever` is the edge**: every Ghostty-on-iOS client reaches for
-tmux to survive suspension; ccc needs none. Trap: `ccc pixel --cell`'s
-scale arithmetic has never met a Retina panel (studio is 1x).
+tmux to survive suspension; ccc needs none. Trap: `pixel --cell`'s scale
+arithmetic has never met a Retina panel (studio is 1x).
 
-**"The core is shared" is not true yet.** `CCCKit` is one module pinned
-to `.macOS(.v14)` with `PTY/`, SwiftTerm and Sparkle beside `Roster/` and
-`Render/`. Splitting the parts above the seam out is Mac-side work, testable
-today, and what makes a port a port instead of a rewrite.
+**"The core is shared" is not true yet.** `CCCKit` is one module pinned to
+`.macOS(.v14)`, with `PTY/`, SwiftTerm and Sparkle beside `Roster/` and
+`Render/`; splitting the parts above the seam out is Mac-side work,
+testable today, and what makes a port a port instead of a rewrite.

@@ -80,19 +80,42 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
     }
 
     /// The harness's words after `claude`. The prompt is one argument, last.
+    ///
+    /// **Order is load-bearing, and it cost item 17 its box** (measured
+    /// 2026-09-07, `docs/EVIDENCE.md` "item 17 — the roster says nothing
+    /// about `--rc`"). Two of these flags take an *optional* value —
+    /// `--remote-control [name]` and `-w, --worktree [name]` — so a bare
+    /// one standing immediately before the positional prompt eats it.
+    /// `ccc spawn --rc "<prompt>"` made a **draft** with `intent: ""` and
+    /// no error, and `ccc spawn --worktree "<prompt>"` died `exit 1
+    /// before init` on an invalid worktree name that was the prompt.
+    ///
+    /// The rule the layout keeps: **every optional-value flag is followed
+    /// by a flag that carries its own value**, so the prompt is never what
+    /// an optional argument reaches for. `--permission-mode` is always
+    /// emitted, so it is the anchor, and `optionalValueFlags` +
+    /// `SpawnArgumentTests` are what keep this true as flags are added.
     public var claudeArguments: [String] {
         var out = ["--bg"]
         if let from, !from.isEmpty { out += ["--resume", from, "--fork-session"] }
         if let name, !name.isEmpty { out += ["--name", name] }
         if let model, !model.isEmpty { out += ["--model", model] }
         if let agent, !agent.isEmpty { out += ["--agent", agent] }
-        out += ["--permission-mode", effectivePermissionMode]
-        if let effort, !effort.isEmpty { out += ["--effort", effort] }
         if rc == true { out.append("--rc") }
         if let worktree { out += worktree.isEmpty ? ["--worktree"] : ["--worktree", worktree] }
+        out += ["--permission-mode", effectivePermissionMode]
+        if let effort, !effort.isEmpty { out += ["--effort", effort] }
         if !isDraft, let prompt { out.append(prompt) }
         return out
     }
+
+    /// The harness flags whose value is optional, so that a bare one
+    /// swallows whatever follows it. Read from `claude --help`'s
+    /// `[name]` brackets, and the reason `claudeArguments` may never end
+    /// a flag run with one of them before the prompt.
+    public static let optionalValueFlags: Set<String> = [
+        "--rc", "--remote-control", "--worktree", "-w",
+    ]
 }
 
 /// What the harness answered. Measured 2026-09-02 (2.1.259,
