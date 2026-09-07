@@ -184,6 +184,15 @@ stream file's mtime either side of one armed clear — "still tracked"
 and "still writing" are different questions. attrition's next boundary
 runs it.
 
+Two things about that field are already settled, measured 2026-09-07
+across the two live jobs. **`kinds` discriminates rather than
+accumulates**: this session held four background Bash jobs and read
+`['local_bash']` alone, where a session holding one Monitor read
+`['monitor', 'local_bash']` — so a `monitor` in `kinds` means one is
+really there, and a shell never counts as one. And **`drainableMonitors`
+is a state, not a census**: it read 0 beside a live monitor, so it counts
+monitors with output waiting, and 0 is never "no monitors".
+
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,
 for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness
 bug, and ccc has no record letting it clean that tree without risking one
