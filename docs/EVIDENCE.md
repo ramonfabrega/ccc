@@ -4130,8 +4130,20 @@ by hand: current transcript's first record **04:02:27Z**, against
 far side. Tracked *and* writing, which is the distinction a `sleep` that
 writes nothing could never have shown.
 
-What that leaves is free rather than open: the same reading under `ccc
-clear`'s keystrokes rather than a human's. The two are the same operation
+Confirmed a second time the same night, with byte deltas rather than one
+mtime — a steering clear at 06:08:17Z → 06:10:56Z, all three streams
+growing across it and `inFlight` identical on both sides (`tasks: 3`,
+`kinds: ['monitor', 'local_bash']`, `drainableMonitors: 0`):
+
+```
+list.jsonl           3,244,251 → 3,303,290
+watch.jsonl (Monitor)   17,957 →    18,373
+watch-stall10.jsonl     20,261 →    20,677
+```
+
+Both readings are the **hand-typed** clear. What that leaves is free
+rather than open: the same reading under `ccc clear`'s keystrokes rather
+than a human's. The two are the same operation
 by construction — the verb presses `end`, reads the box, types `/clear`
 and presses enter, and there is no other path into that TUI — so the
 prior is "survives", not "unmeasured".
