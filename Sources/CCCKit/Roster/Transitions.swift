@@ -285,6 +285,13 @@ public struct Landing: Codable, Sendable, Equatable {
     /// (`WorktreeInfo.baseTipName`).
     public var base: String
     /// Commits the base lacks: what a merge would bring.
+    ///
+    /// **This is the count; the event stream is not.** Two commits inside
+    /// one poll raise `ahead` by two and emit one `committed` event —
+    /// observed live 2026-09-07, a landing whose `ahead` went 1 → 3 in a
+    /// single tick (`docs/EVIDENCE.md`, "one landing, one banner"). A
+    /// consumer that tallies events to count commits under-counts by
+    /// design; read this field instead.
     public var ahead: Int
     /// Commits on no `origin/*` ref. Nil where the repository has no
     /// origin, and the word means nothing there — such a repo can only
