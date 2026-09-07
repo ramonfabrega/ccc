@@ -170,6 +170,20 @@ event per stall, re-armed only by movement.
 
 ## Later
 
+**What a `/clear` does to a session's background work is half measured.**
+A `local_bash` task survives one — the v0.1.29 fixture's backgrounded
+`sleep 600` was still in `inFlight` after the clear, and the `pid` holds
+either side (`docs/EVIDENCE.md` "Cut as v0.1.29") — but a **Monitor** was
+never in that fixture, and `state.json` counts `drainableMonitors` beside
+`tasks`, which is the harness having a concept of draining monitors that
+a background shell has no equivalent of. It matters because item 25's own
+evidence stream is a Monitor owned by a commander that will clear itself:
+a wrong answer blinds the stream at the moment it starts being exercised.
+The experiment is `inFlight` (tasks, kinds, drainableMonitors) plus each
+stream file's mtime either side of one armed clear — "still tracked"
+and "still writing" are different questions. attrition's next boundary
+runs it.
+
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,
 for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness
 bug, and ccc has no record letting it clean that tree without risking one
