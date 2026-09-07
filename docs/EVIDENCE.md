@@ -4773,7 +4773,24 @@ contradiction drawn, and it is the suite's second fixture.
 swift test --no-parallel --filter LandingTests   # 12 tests, 1 suite
 ```
 
-**Unmeasured: the rate.** No live run has fired one. The shape to run is
-attrition's own — a commander loop, two workers, `ccc watch --json --all`
-as a Monitor — counting whether `pushed` fired once per landing and
-whether `committed` was noise, before the phone keeps it.
+**It fired live the day it was built**, on studio, from this session's
+own commit and push — the honest fixture, because a session that is still
+`working` while its branch moves is exactly item 25's case and this
+session was one:
+
+```
+.build/debug/ccc watch --all --json --interval 2   # 1 host, 21 sessions
+git commit …                                       # then, 5 s later:
+  landed ccc -> committed  ahead 16  unpushed 1
+git push  …                                        # 36 s after the commit:
+  landed ccc -> pushed     ahead 16  unpushed 0
+```
+
+Two halves, in order, with the row's `state` never leaving `working` —
+the daemon said nothing at any point, which is the whole defect, and the
+tip said it twice. The `job` payload rode along on both.
+
+**Still unmeasured: the rate.** One session is not a night. The shape to
+run is attrition's own — a commander loop, two workers, `ccc watch --json
+--all` as a Monitor — counting whether `pushed` fired once per landing
+and whether `committed` was noise, before the phone keeps it.

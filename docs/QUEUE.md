@@ -105,11 +105,11 @@ ahead. Built 2026-09-07 as `SessionEvent.landed`, keyed on the branch tip
 — a join on the reading the ⇡⇣ marks already pay for (`docs/EVIDENCE.md`
 "the stall stream's first run", "the landing detector").
 
-**What is left is the count**, before the phone keeps it: a commander loop
-with `ccc watch --json --all`, asking whether `pushed` fired once per
-landing and whether `committed` was noise. A worker with no branch moves
-no tip, and **that residue is all a peer's "done" ping should cover** — a
-typed claim where a commit is evidence.
+**Both halves fired live** on studio the day it was built, from a session
+whose row never left `working`. **What is left is the rate**: one session
+is not a night, so a commander loop with `ccc watch --json --all` is owed
+— did `pushed` fire once per landing, was `committed` noise. A worker with
+no branch moves no tip, and that residue is all a peer's ping should cover.
 
 ### 28. The fd rule is prose, and it has already failed once
 
