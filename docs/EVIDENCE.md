@@ -4984,3 +4984,52 @@ until a release carries it to the other Mac; this is the next step of the
 same thought — **a release carried to a Mac still has not reached the
 process that was already running there.** The watcher has to be
 restarted, and only its owner can do that.
+
+## one landing, one banner — and the refs beat the ping (2026-09-07)
+
+The live run the rate section said it was owed, from attrition, with its
+own merge log as independent ground truth. One landing end to end,
+`lane-286` (ref `eb192e45`), off the released detector:
+
+```
+20:28:42  committed  ahead 1  unpushed 1   "Committing predictions before the run"
+20:52:06  committed  ahead 3  unpushed 3   "Verifying merge clean and guards pass"
+20:52:27  pushed     ahead 3  unpushed 0   "245 tests pass (11GB peak)"
+20:52:3x  the worker's own SendMessage ping arrives
+then      fetch, `git log base..branch` non-empty, merge
+```
+
+**Three commits, two `committed` events, one `pushed`.** The merge
+confirms the three: `9aa6747` (the predictions stanza), `db8c72e` (the
+item), `4c796ea` (its `ccc update` merge of the base) — exactly the
+`ahead 3` claimed.
+
+**The banner rate was 1.0, not the 1.14 history predicted**, and the gap
+is fully explained: all three double-pushes in the reflog history were
+follow-ups the commander caused by asking for one more thing *after* a
+worker had already pushed. So the honest statement is **`pushed` fires
+once per landing unless the commander reopens the item**, and no detector
+can see that difference, because it is a conversation and not a ref.
+`drawsBanner` needs no change and gets none.
+
+**The 1 → 3 jump is the collapse case, observed live.** Two commits
+inside one 2 s poll produced a single event, exactly as the upper-bound
+caveat predicted. The consequence is worth stating plainly for anyone
+who reads these events: **`ahead` is the count, the event stream is
+not.** A consumer that tallies `committed` events under-counts commits
+by design.
+
+**The ordering was the surprise, and it inverts an assumption.** `pushed`
+landed at 20:52:27, *before* the worker's own completion ping seconds
+later — the detector polls refs while the worker is still finishing its
+turn and composing a message. On a git-shaped landing the refs are not
+merely the evidence behind a ping, they are the **earlier** wake. The
+ping keeps its unconditional place for the two cases refs cannot see —
+a worker whose product is a log outside the repo, one whose product is a
+document section — plus a human-legible summary; what it has lost is the
+claim to being first.
+
+`committed`'s two firings were both informative here — the first caught
+the worker committing its predictions *before* running the capture, which
+is the discipline its brief demanded. Progress, not noise, and still not
+worth a phone.
