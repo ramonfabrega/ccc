@@ -171,27 +171,15 @@ event per stall, re-armed only by movement.
 ## Later
 
 **What a `/clear` does to a session's background work is half measured.**
-A `local_bash` task survives one — the v0.1.29 fixture's backgrounded
-`sleep 600` was still in `inFlight` after the clear, and the `pid` holds
-either side (`docs/EVIDENCE.md` "Cut as v0.1.29") — but a **Monitor** was
-never in that fixture, and `state.json` counts `drainableMonitors` beside
-`tasks`, which is the harness having a concept of draining monitors that
-a background shell has no equivalent of. It matters because item 25's own
-evidence stream is a Monitor owned by a commander that will clear itself:
-a wrong answer blinds the stream at the moment it starts being exercised.
-The experiment is `inFlight` (tasks, kinds, drainableMonitors) plus each
-stream file's mtime either side of one armed clear — "still tracked"
-and "still writing" are different questions. attrition's next boundary
-runs it.
-
-Two things about that field are already settled, measured 2026-09-07
-across the two live jobs. **`kinds` discriminates rather than
-accumulates**: this session held four background Bash jobs and read
-`['local_bash']` alone, where a session holding one Monitor read
-`['monitor', 'local_bash']` — so a `monitor` in `kinds` means one is
-really there, and a shell never counts as one. And **`drainableMonitors`
-is a state, not a census**: it read 0 beside a live monitor, so it counts
-monitors with output waiting, and 0 is never "no monitors".
+A `local_bash` task survives one; a **Monitor** has never been tested
+across a clear, and `state.json` counts `drainableMonitors` beside
+`tasks` — a concept a shell has no equivalent of. It matters because
+item 25's own evidence stream is a Monitor owned by a commander that
+will clear itself: a wrong answer blinds the stream at the moment the
+window starts being exercised. The experiment is `inFlight` plus each
+stream file's mtime either side of one armed clear — "still tracked" and
+"still writing" are different questions (`docs/EVIDENCE.md` "what a
+clear does to background work"). attrition's next boundary runs it.
 
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,
 for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness

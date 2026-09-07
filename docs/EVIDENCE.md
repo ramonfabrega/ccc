@@ -4109,3 +4109,48 @@ later, and forever for a Monitor:
 The background task is still in flight afterwards (`inFlight` unchanged),
 which is the deliberate half: the turn was over, the box was free, and
 the `sleep` outlives the context that started it.
+
+## what a clear does to background work (2026-09-07)
+
+Half of it is settled and the open half is item 25's problem, so both
+halves are here and the queue carries only the question.
+
+**A `local_bash` task survives a clear.** v0.1.29's fixture held a
+backgrounded `sleep 600`; its job file read `inFlight = {tasks: 1, kinds:
+['local_bash']}` before the clear and the same after, and the `pid` holds
+either side (12442 across both of the boots' clears). A clear resets the
+conversation, not the process.
+
+**A Monitor has never been tested across one**, and the two are not
+obviously alike: `state.json` counts `drainableMonitors` beside `tasks`,
+which is the harness having a concept of draining monitors that a
+background shell has no equivalent of.
+
+### `kinds` discriminates, and `drainableMonitors` is a state
+
+Both fell out of two live rows sitting next to each other, 2026-09-07,
+when a peer read `kinds: ['monitor', 'local_bash']` on a session it
+believed held only background shells and reasonably doubted the field —
+either it is a union that outlives its last member, or the harness files
+a shell as a monitor:
+
+```
+ccc        tasks=4  kinds=['local_bash']              drainable=0
+attrition  tasks=3  kinds=['monitor', 'local_bash']   drainable=0
+```
+
+Four background Bash jobs and no Monitor tool call in that session's
+life, against three tasks carrying a `monitor`. So **`kinds`
+discriminates rather than accumulates** — a union that outlived anything
+would have shown one on the four-shell row — and a shell never counts as
+a monitor. The v0.1.29 fixture agrees at n=1: one backgrounded sleep,
+`['local_bash']` alone.
+
+And `drainableMonitors: 0` sat beside that live monitor, so it counts
+**monitors with output waiting to be drained**, not monitors. Zero is
+never "no monitors". Two fields, two questions, separable only because
+two rows were readable side by side.
+
+The consequence is that the open question above is live rather than
+hypothetical: the commander that will clear itself really is holding a
+Monitor.
