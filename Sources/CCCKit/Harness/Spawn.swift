@@ -121,10 +121,28 @@ public struct SpawnResult: Codable, Sendable, Equatable {
         public var path: String
         public var branch: String
         public var base: String
-        public init(path: String, branch: String, base: String) {
+        /// The ignored files `.worktreeinclude` asked to be carried in
+        /// (item 23), relative to the repository. Empty when the repo has
+        /// no such file, which is most of them. Named in the answer
+        /// because a secret that silently did or did not arrive is the
+        /// thing that made this worth building.
+        public var carried: [String]
+        public init(path: String, branch: String, base: String, carried: [String] = []) {
             self.path = path
             self.branch = branch
             self.base = base
+            self.carried = carried
+        }
+
+        /// Lenient on `carried`, like every field ccc has added to a shape
+        /// that crosses the hop: an older ccc on the far side sends none,
+        /// and that must not cost the answer its worktree.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            path = try c.decode(String.self, forKey: .path)
+            branch = try c.decode(String.self, forKey: .branch)
+            base = try c.decode(String.self, forKey: .base)
+            carried = (try? c.decodeIfPresent([String].self, forKey: .carried)) ?? []
         }
     }
 
@@ -140,7 +158,8 @@ public struct SpawnResult: Codable, Sendable, Equatable {
 
     public var description: String {
         let lineage = from.map { " from \($0.prefix(8))" } ?? ""
-        let cut = worktree.map { " in \($0.branch) off \($0.base)" } ?? ""
+        var cut = worktree.map { " in \($0.branch) off \($0.base)" } ?? ""
+        if let n = worktree?.carried.count, n > 0 { cut += " (+\(n) from .worktreeinclude)" }
         return draft ? "drafted \(ref)\(lineage)\(cut) (idle — attach and send a prompt)" : "spawned \(ref)\(lineage)\(cut)"
     }
 }

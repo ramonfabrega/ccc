@@ -78,7 +78,12 @@ ccc spawn [--host <n>] [--cwd <d>] [--name <n>] [--model <m>] [--agent <a>] [--p
                                     # --from forks off <ref>'s transcript (`--resume … --fork-session`).
                                     # --permission-mode defaults to auto. --worktree from a folder on the
                                     # default branch is the harness's; from any other branch (or with --base)
-                                    # ccc cuts the worktree off that branch and records it as the base
+                                    # ccc cuts the worktree off that branch and records it as the base.
+                                    # A worktree CCC cuts honours .worktreeinclude the way the harness's own
+                                    # does: the ignored files it names (a .env, a Rails master.key) are
+                                    # copied in, git does the pattern matching, and files inside a directory
+                                    # git ignores by name (node_modules/) are left. The answer lists what
+                                    # came with it
 ccc spawn … [--replace|--allow-duplicate] [--no-space-check]
                                     # a --name a LIVE job already answers to is refused: messages, the roster
                                     # and lore all resolve to whichever started last. --replace stops that one

@@ -400,7 +400,94 @@ public final class WorktreeProbe: @unchecked Sendable {
             throw SpawnError(description: "git worktree add \(branch) off \(base): \(error)")
         }
         try recordBase(base, for: branch, repo: repo, git: git)
-        return SpawnResult.MadeWorktree(path: path, branch: branch, base: base)
+        let carried = (try? carryIncluded(from: repo, into: path, git: git)) ?? []
+        return SpawnResult.MadeWorktree(path: path, branch: branch, base: base, carried: carried)
+    }
+
+    /// `.worktreeinclude`: the ignored files a worktree needs anyway
+    /// (item 23).
+    ///
+    /// The harness has this feature — a gitignore-syntax file at the
+    /// repository root naming files that are ignored but must be copied
+    /// into a worktree it cuts, which is how a `.env` and a Rails
+    /// `master.key` reach a session that would otherwise not boot. **It
+    /// runs on the harness's path only**, and since v0.1.25 ccc cuts some
+    /// worktrees itself (`--base`, or `--worktree` from a folder off the
+    /// default branch), so those got a tree with the secrets missing and
+    /// nothing said so.
+    ///
+    /// Measured 2026-09-06 across cuanto's 22 worktrees, whose
+    /// `.worktreeinclude` names `api/config/master.key`: **all 3 that ccc
+    /// cut lacked it; 16 of the 19 others had it.** Nothing in the roster,
+    /// the row or the spawn's answer distinguished the two, so the failure
+    /// surfaced as a worker that could not start its API — the worst shape
+    /// a difference can take.
+    ///
+    /// **git does the matching, not ccc.** `ls-files --others --ignored
+    /// --exclude-from` is the same engine that defines the syntax, so
+    /// there is no pattern language here to drift from gitignore's.
+    ///
+    /// One thing is then subtracted: a candidate inside a directory that is
+    /// **itself ignored by name** (`node_modules/`, `build/`). Measured on
+    /// cuanto, the harness copied `ts-monorepo/apps/slackbot/.env` and not
+    /// `…/node_modules/psl/.env`, which a bare `.env` pattern matches
+    /// equally — a vendored copy of somebody else's example file is not
+    /// what anyone meant. `check-ignore` on each candidate's ancestor
+    /// directories is the exact question; `ls-files --directory` is **not**,
+    /// and was tried first: it collapses any wholly-untracked directory, so
+    /// in a fixture where `apps/web/.env` was the only thing under `apps/`
+    /// it reported `apps/` as ignored and dropped the file the test existed
+    /// to carry.
+    ///
+    /// Best-effort throughout: a repo with no `.worktreeinclude`, a git
+    /// that refuses, an unreadable file — all mean nothing is carried, and
+    /// never a failed spawn. The worktree is already made by this point.
+    static func carryIncluded(from repo: String, into worktree: String,
+                              git: String = defaultGit) throws -> [String] {
+        let manifest = repo + "/.worktreeinclude"
+        guard FileManager.default.fileExists(atPath: manifest) else { return [] }
+        func list(_ args: [String]) -> [String] {
+            guard let out = try? Git.run(git, ["-C", repo, "ls-files", "--others", "--ignored", "-z"] + args).stdout
+            else { return [] }
+            return out.split(separator: "\0").map(String.init).filter { !$0.isEmpty }
+        }
+        let wanted = list(["--exclude-from=.worktreeinclude"])
+        guard !wanted.isEmpty else { return [] }
+        let ignoredDirectories = Self.ignoredAncestors(of: wanted, repo: repo, git: git)
+        var carried: [String] = []
+        for relative in wanted {
+            guard !ignoredDirectories.contains(where: { relative.hasPrefix($0 + "/") }) else { continue }
+            let source = repo + "/" + relative
+            let destination = worktree + "/" + relative
+            guard FileManager.default.fileExists(atPath: source),
+                  !FileManager.default.fileExists(atPath: destination) else { continue }
+            let parent = (destination as NSString).deletingLastPathComponent
+            try? FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
+            guard (try? FileManager.default.copyItem(atPath: source, toPath: destination)) != nil else { continue }
+            carried.append(relative)
+        }
+        return carried
+    }
+
+    /// Of every directory on the way to these files, the ones git ignores
+    /// by name. One `check-ignore --stdin` for all of them; a git that
+    /// refuses answers "none", which carries more rather than less.
+    static func ignoredAncestors(of paths: [String], repo: String, git: String) -> Set<String> {
+        var directories = Set<String>()
+        for path in paths {
+            var parts = path.split(separator: "/").map(String.init)
+            parts.removeLast()
+            var prefix: [String] = []
+            for part in parts {
+                prefix.append(part)
+                directories.insert(prefix.joined(separator: "/"))
+            }
+        }
+        guard !directories.isEmpty else { return [] }
+        guard let out = try? Git.run(git, ["-C", repo, "check-ignore", "--stdin"],
+                                     stdin: directories.sorted().joined(separator: "\n") + "\n",
+                                     accepting: [0, 1]).stdout else { return [] }
+        return Set(out.split(separator: "\n").map(String.init))
     }
 
     /// The repository's default branch, local: what `origin/HEAD` names
@@ -896,7 +983,12 @@ public enum Git {
         }
     }
 
-    public static func run(_ git: String, _ args: [String]) throws -> Result {
+    /// `stdin` feeds a command that reads paths (`check-ignore --stdin`);
+    /// `accepting` widens the statuses that are answers rather than
+    /// failures — `check-ignore` exits 1 for "nothing matched", which is a
+    /// result, not an error.
+    public static func run(_ git: String, _ args: [String], stdin: String? = nil,
+                           accepting: Set<Int32> = [0]) throws -> Result {
         let process = Process()
         process.executableURL = URL(filePath: git)
         process.arguments = args
@@ -910,8 +1002,16 @@ public enum Git {
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
-        process.standardInput = FileHandle.nullDevice
+        let input = stdin.map { _ in Pipe() }
+        process.standardInput = input ?? FileHandle.nullDevice
         try process.run()
+        if let input, let stdin {
+            // Written and closed before stdout is read: git buffers the
+            // path list, and a writer that never closes would hang the
+            // read below.
+            try? input.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
+            try? input.fileHandleForWriting.close()
+        }
         // stderr drains on its own thread while this one reads stdout to
         // EOF: read one after the other and a child that fills the 64 KiB
         // stderr pipe before closing stdout blocks in write(2) forever,
@@ -922,7 +1022,7 @@ public enum Git {
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         let result = Result(stdout: String(decoding: stdout, as: UTF8.self), stderr: String(decoding: stderr.data, as: UTF8.self))
-        guard process.terminationStatus == 0 else {
+        guard accepting.contains(process.terminationStatus) else {
             throw Failure(status: process.terminationStatus, stderr: result.stderr + result.stdout)
         }
         return result

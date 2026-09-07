@@ -183,6 +183,34 @@ stored on Anthropic servers while connected. Push is gated by
 while `CLAUDE_CLIENT_PRESENCE_FILE` names an existing file — the hook ccc
 should own (queue item 17). **ccc reads none of this today.**
 
+**`claude rc` is a different thing that shares the name**, and it cost a
+day to find that out, so it is written down here. `claude rc` (long spelling
+`claude remote-control`) is not a flag on a session — it is a **persistent
+per-directory server**: run it in a folder and it accepts sessions created
+from claude.ai/code or the phone, pre-creating one on start and spawning more
+on demand up to `--capacity` (32). `--spawn same-dir|worktree|session` picks
+what each new one gets. Measured 2026-09-06: it has no usable `--help` from a
+script — `claude rc --help` printed the help *and kept running as the server*,
+so a session that asks it a question hangs until something kills it (`claude
+remote-control -h` is the same command; read the text and expect to kill it).
+
+**The user ran it on 2026-09-04 and dropped it for `ccc spawn` the same day**,
+for two reasons that are both about defaults rather than about the feature:
+its spawned sessions were **not on `auto`** — it takes `--permission-mode`,
+but a worker that inherits the asking default blocks on its first prompt, and
+`ccc spawn` has defaulted to `auto` since that day — and `--spawn worktree`
+is **not base-correct**: it cuts off the repository's default branch, which is
+queue item 18's whole problem, since the trunk on both consumer repos is a
+branch that lags nothing.
+
+**ccc uses neither, and the distinction matters for the roster.** `ccc spawn
+--rc` passes `--rc` to `claude --bg`, which makes a *background job* that is
+also remote-controlled: the daemon owns it, `claude agents` lists it, and
+ccc's row reads its `respawnFlags`. A session an `rc` server spawns is not
+that, and how much of it reaches the daemon's roster is **unmeasured** — the
+open half of queue item 17, "ccc is blind to RC". Nothing here should be
+assumed until a row is looked at.
+
 **The session inbox socket** (`cross-session-messaging`, harness v2.1.224+)
 — the sanctioned way for a non-session process to put text into a running
 session, which is what "reply without attaching" needed and what
