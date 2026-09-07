@@ -3798,3 +3798,40 @@ not cost.
 it polls a remote host over ssh, so every tick is a subprocess with two
 of these channels, and `stop()` and `tick(fresh:)` both cancel polls
 mid-flight. Studio polls locally. The same code was on both.
+
+## Cut as v0.1.27 (2026-09-06)
+
+**v0.1.27, build 194**, cut from `worktree-v2` at `19abf5e`, at the
+user's word — **a crash fix for air, so the cut is the instrument and not
+the delivery**. The ad-hoc pass first (it caught nothing, which is the
+point of running it before burning a notarization), then notarization
+`Accepted`, one `<item>`, both CDN keys, the live feed equal to the zip,
+and the GitHub Release with the zip attached:
+
+```
+spctl -a --type execute  →  accepted, Notarized Developer ID
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 194 length 5236205
+ota verify --feed ccc    →  ok: … version 194 length 5236205
+gh release view v0.1.27  →  {"assets":["ccc-v0.1.27.zip"], "tag":"v0.1.27"}
+```
+
+Studio on the released bytes, and the fixed drain under its own load —
+every one of those polls is two `DispatchIO` channels on descriptors that
+are now the channels' own:
+
+```
+ccc version --json  →  0.1.27, build 194, dev: false
+ccc stats           →  roster poll  last 168 ms  mean 197 ms  n=10
+```
+
+**What air must report, and until it does this is unproved.** The bug was
+air's and studio was immune by accident (studio polls locally; air polls a
+remote host over ssh, so it runs two of these channels per tick and
+cancels polls mid-flight). The sentence air owes is: **on build 194, no
+new `ccc-*.ips` carrying `EV_VANISHED` in
+`~/Library/Logs/DiagnosticReports`** after ordinary use — roster open,
+context menus, a lid night. Studio's clean run above is the **control**,
+not the measurement.
+
+This cut also carries item 24 (`ccc rm` cleans the worktrees ccc cut),
+which studio has already proved on its own fixtures.
