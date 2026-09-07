@@ -41,13 +41,27 @@ fi
 APP_DST="$HOME/Applications/ccc.app"
 
 mkdir -p "$HOME/Applications"
+# The APP, not every process called `ccc`. `pgrep -x ccc` was the test until
+# 2026-09-06, when this refused to install with "ccc would not quit" while
+# the app was already down: `ccc watch`, `ccc attach --headless` and every
+# other long-running verb carry the same process name, and one of them
+# belonged to a different agent's session. Worse than a false alarm — the
+# quit had already succeeded, so the abort left the user with no app and no
+# new bundle. Match the bundle's executable path instead; a CLI verb runs
+# from the PATH symlink's target too, so the pattern is the full path of the
+# app binary AND no argument after it.
+app_pids() {
+  pgrep -lf "$APP_DST/Contents/MacOS/ccc" 2>/dev/null \
+    | awk -v exe="$APP_DST/Contents/MacOS/ccc" '$2 == exe && NF == 2 { print $1 }'
+}
 WAS_RUNNING=0
-if pgrep -qx ccc; then
+if [ -n "$(app_pids)" ]; then
   WAS_RUNNING=1
   echo "quitting the running ccc…"
-  osascript -e 'tell application id "com.ramonfabrega.ccc" to quit' 2>/dev/null || pkill -x ccc || true
-  for i in $(seq 1 20); do pgrep -qx ccc || break; sleep 0.25; done
-  pgrep -qx ccc && { echo "ccc would not quit" >&2; exit 1; }
+  osascript -e 'tell application id "com.ramonfabrega.ccc" to quit' 2>/dev/null \
+    || { for pid in $(app_pids); do kill "$pid" 2>/dev/null || true; done; }
+  for i in $(seq 1 20); do [ -z "$(app_pids)" ] && break; sleep 0.25; done
+  [ -n "$(app_pids)" ] && { echo "ccc would not quit (pids: $(app_pids))" >&2; exit 1; }
 fi
 rm -rf "$APP_DST"
 cp -R "$APP_SRC" "$APP_DST"
