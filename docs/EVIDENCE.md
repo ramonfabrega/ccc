@@ -4630,3 +4630,45 @@ The three now-unreachable `noSuchSession` cases went with it — the same
 sentence had been written four times, and a string with no reader is a
 string nothing keeps true. `RefLookupTests` is five tests on fixtures,
 never on a live row.
+
+## Cut as v0.1.31 (2026-09-07)
+
+The two decisions and lore's defect, an hour behind the night that found
+them. `spctl` accepted, both CDN keys, the live feed equal to the zip, the
+Release with the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 215 length 5294991
+ota verify --feed ccc    →  ok: … version 215 length 5294991
+gh release view v0.1.31  →  {"assets":["ccc-v0.1.31.zip"], "tag":"v0.1.31"}
+ccc version              →  ccc 0.1.31 (215)
+ccc stats                →  ccc 0.1.31 (215)  pid 50278
+```
+
+**Remote Control is the default, proved by its absence.** One fixture
+through the installed binary with **no `--rc` typed at all**:
+
+```
+ccc spawn --name ccc-v31-check --model haiku 'Reply with … ok …'
+→ respawnFlags ["--name","ccc-v31-check","--rc","--model","haiku","--permission-mode","default"]
+   state done, intent = the prompt, output.result = "ok"
+ccc list → 3fd7a8d2  done  idle  rc       ccc-v31-check  haiku-4-5-
+```
+
+The `--rc` in `respawnFlags` was never typed, and the row draws `rc`
+without `asks` — a haiku spawn, so its recorded mode is the rewritten
+`default`, which is exactly the case the mark now stays silent on. Both
+of the night's fixes visible in one row.
+
+**And a name is a ref.** The same fixture, addressed by name through a
+verb ccc resolves itself:
+
+```
+ccc archive ccc-v31-check    →  archived ccc-v31-check
+ccc unarchive ccc-v31-check  →  unarchived ccc-v31-check
+ccc archive ghost-session    →  ccc: no session 'ghost-session' in the roster
+```
+
+Before this cut the first two were `no session 'ccc-v31-check' in the
+roster`, which is the sentence lore was given for a session that was on
+screen. Fixture removed.
