@@ -1,0 +1,157 @@
+import Foundation
+import Testing
+
+@testable import CCCKit
+
+/// Item 22: the verb list as data, and the guards that keep it honest.
+///
+/// The defect this exists for is not "no per-verb help" — it is that the
+/// only description of any verb was a 126-line string literal no test could
+/// reach, so `update`'s entry sat a release stale saying "the repo's default
+/// branch" and `ccc spawn --help` answered "unknown flag '--help' for
+/// spawn". A string nothing reads is a string nothing keeps true. These
+/// tests are what now reads it.
+@Suite struct ManifestTests {
+    /// The dispatch switch's words, transcribed from `CLI.run`. This is the
+    /// one place the two lists meet, and it is on purpose: a verb added to
+    /// the switch and not to the manifest fails here, which is the only
+    /// mechanism that stops the manifest going stale the way the string
+    /// literal did.
+    static let dispatched = [
+        "hosts", "list", "archive", "unarchive", "pin", "unpin", "watch", "hook",
+        "spawn", "new", "attach", "detach", "stop", "rm",
+        "base", "merge", "update", "fetch", "pull", "push", "shell",
+        "snapshot", "send", "select", "copy", "links", "focus", "resize",
+        "peek", "capture", "pixel", "geometry", "theme", "window",
+        "stats", "replay", "bench", "version", "install-cli",
+    ]
+
+    @Test func everyDispatchedVerbIsInTheManifest() {
+        for word in Self.dispatched {
+            #expect(CommandManifest.verb(named: word) != nil, "`ccc \(word)` dispatches and the manifest does not know it")
+        }
+    }
+
+    @Test func everyManifestVerbIsDispatched() {
+        for verb in CommandManifest.verbs {
+            for word in [verb.name] + verb.aliases {
+                #expect(Self.dispatched.contains(word), "the manifest offers `ccc \(word)` and nothing dispatches it")
+            }
+        }
+    }
+
+    /// Each verb's synopsis has to begin with its own name, or `ccc <verb>
+    /// --help` prints a command that is not the one asked about.
+    @Test func aSynopsisNamesItsOwnVerb() {
+        for verb in CommandManifest.verbs {
+            let first = verb.synopsis.first ?? ""
+            #expect(first.hasPrefix(verb.name) || verb.aliases.contains(where: { first.hasPrefix($0) }),
+                    "`\(verb.name)`'s synopsis starts \(first)")
+            #expect(!verb.about.isEmpty, "`\(verb.name)` says nothing about itself")
+            #expect(CommandManifest.groups.contains(verb.group), "`\(verb.name)` is in unknown group '\(verb.group)'")
+        }
+    }
+
+    /// A `--json` claim must be in the synopsis, and a synopsis `--json`
+    /// must have its shape described. This is the twin rule pointed at the
+    /// documentation: a verb that answers JSON without saying what shape
+    /// leaves an agent to run it and guess.
+    @Test func everyJSONVerbSaysItsShape() {
+        for verb in CommandManifest.verbs {
+            let offersJSON = verb.synopsis.contains { $0.contains("--json") }
+            if offersJSON {
+                #expect(verb.json != nil, "`ccc \(verb.name)` takes --json and the manifest does not say what it answers")
+            } else {
+                #expect(verb.json == nil || verb.name == "hosts",
+                        "`ccc \(verb.name)` describes a --json answer its synopsis does not offer")
+            }
+        }
+    }
+
+    @Test func namesAreUniqueAcrossVerbsAndAliases() {
+        var seen = Set<String>()
+        for verb in CommandManifest.verbs {
+            for word in [verb.name] + verb.aliases {
+                #expect(seen.insert(word).inserted, "'\(word)' names two verbs")
+            }
+        }
+    }
+
+    // MARK: the rendered faces
+
+    @Test func usageCarriesEveryVerbAndItsOwnDiscovery() {
+        let text = CommandManifest.usage()
+        for verb in CommandManifest.verbs {
+            #expect(text.contains("ccc \(verb.name)"), "usage does not mention `ccc \(verb.name)`")
+        }
+        // The three doors an agent needs, named where a person will see them.
+        #expect(text.contains("--help"))
+        #expect(text.contains("--llms"))
+        #expect(text.contains("--schema"))
+    }
+
+    /// A wrapped synopsis line must not read as a second command. Before
+    /// the continuation rule, `ccc spawn`'s four wrapped lines rendered as
+    /// four `ccc` commands, three of which do not exist.
+    @Test func aWrappedSynopsisIsOneCommand() throws {
+        let spawn = try #require(CommandManifest.verb(named: "spawn"))
+        let text = CommandManifest.help(for: spawn)
+        #expect(text.contains("  ccc spawn [--host"))
+        #expect(text.contains("            [--permission-mode"), "a continuation must not get its own `ccc`")
+        #expect(!text.contains("ccc       [--permission-mode"))
+        // And a verb whose synopsis really is several commands keeps them.
+        let hosts = try #require(CommandManifest.verb(named: "hosts"))
+        let hostsText = CommandManifest.help(for: hosts)
+        #expect(hostsText.contains("ccc hosts discover"))
+        #expect(hostsText.contains("ccc hosts mute|unmute"))
+    }
+
+    @Test func aVerbsHelpCarriesItsJSONAndItsExit() throws {
+        let update = try #require(CommandManifest.verb(named: "update"))
+        let text = CommandManifest.help(for: update)
+        #expect(text.contains("ccc update <ref> [--ask] [--json]"))
+        // The correction that started all of this: the base, not the
+        // default branch, and the sentence that sends a brief here.
+        #expect(text.contains("recorded, else the repo's default branch"))
+        #expect(text.contains("never `git merge`"))
+        #expect(text.contains("--json:"))
+        #expect(text.contains("exit:"))
+        // A verb with no --json says so rather than leaving it blank.
+        let detach = try #require(CommandManifest.verb(named: "detach"))
+        #expect(CommandManifest.help(for: detach).contains("not answered by this verb"))
+    }
+
+    /// `--llms` is one document: the conventions once at the top, then
+    /// every verb under its group. The conventions are the part a per-verb
+    /// page cannot carry — exit codes, `<ref>`, where errors go.
+    @Test func llmsStatesTheConventionsOnceAndThenEveryVerb() {
+        let text = CommandManifest.llms()
+        #expect(text.contains("## Conventions"))
+        #expect(text.contains("`id` (this Mac) or `host:id`"))
+        #expect(text.contains("Exit 0 is success"))
+        #expect(text.contains("prefixed `ccc: `"))
+        for group in CommandManifest.groups {
+            #expect(text.contains("## \(group)"), "no section for '\(group)'")
+        }
+        for verb in CommandManifest.verbs {
+            #expect(text.contains("### ccc \(verb.name)"), "`\(verb.name)` is missing from --llms")
+        }
+    }
+
+    /// The manifest goes out as JSON, which is the "manifest an agent can
+    /// read" the whole item asked for. Round-tripping it is the check that
+    /// it is data and not prose in a trench coat.
+    @Test func theManifestIsJSONAnAgentCanRead() throws {
+        let data = try JSONEncoder().encode(CommandManifest.verbs)
+        let back = try JSONDecoder().decode([CommandManifest.Verb].self, from: data)
+        #expect(back == CommandManifest.verbs)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(object.count == CommandManifest.verbs.count)
+        // Field names are the wire: an agent keys off these.
+        let spawn = try #require(object.first { $0["name"] as? String == "spawn" })
+        #expect(spawn["synopsis"] is [Any])
+        #expect(spawn["json"] is String)
+        #expect(spawn["exit"] is String)
+        #expect((spawn["aliases"] as? [String]) == ["new"])
+    }
+}

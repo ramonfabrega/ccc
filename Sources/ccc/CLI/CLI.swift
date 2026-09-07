@@ -28,10 +28,36 @@ enum CLI {
         args.removeAll { $0 == "--json" }
         guard let verb = args.first else { return usage() }
         let rest = Array(args.dropFirst())
+        // Item 22: a verb's own `--help` beats the verb. It is checked
+        // here rather than inside each parser because "unknown flag
+        // '--help' for spawn" was one parser's honest answer to a question
+        // the CLI had never been taught — and teaching thirty parsers the
+        // same thing is how they disagree.
+        if rest.contains("--help") || rest.contains("-h"), CommandManifest.verb(named: verb) != nil {
+            return help(for: verb)
+        }
         do {
             switch verb {
             case "help", "--help", "-h":
+                // `ccc help spawn` and `ccc --help spawn` are the same ask.
+                if let word = rest.first(where: { !$0.hasPrefix("-") }) { return help(for: word) }
                 return usage(to: .standardOutput, status: 0)
+            case "--llms", "llms":
+                print(CommandManifest.llms())
+                return 0
+            case "--schema", "schema":
+                // The manifest as JSON: the thing an agent reads once and
+                // then never has to guess a flag from prose again.
+                if let word = rest.first(where: { !$0.hasPrefix("-") }) {
+                    guard let one = CommandManifest.verb(named: word) else {
+                        stderr("ccc: no verb '\(word)' (try `ccc --schema`)")
+                        return 2
+                    }
+                    printJSON(one)
+                } else {
+                    printJSON(CommandManifest.verbs)
+                }
+                return 0
             case "version", "--version", "-v":
                 if json { printJSON(BuildInfo.current) } else { print(BuildInfo.current.description) }
                 return 0
@@ -1819,134 +1845,26 @@ enum CLI {
     }
 
     @discardableResult
+    /// The usage block, rendered from `CommandManifest` (item 22). It was
+    /// a 126-line string literal, which is where `update`'s entry went a
+    /// release stale saying "the repo's default branch": a string no test
+    /// can read is a string nothing keeps honest. `ManifestTests` reads
+    /// this one.
     static func usage(to handle: FileHandle = .standardError, status: Int32 = 2) -> Int32 {
-        handle.write(Data("""
-        usage: ccc                              open the app
-               ccc hosts [list|check [<name>]]     the machines ccc can reach (check runs the real poll)
-               ccc hosts discover [--json]         Macs on the tailnet, this one included; add probes over ssh
-               ccc hosts add <name> [--ssh <dest>] [--claude <path>] [--ccc <path>|--no-ccc] | remove <name>
-                                                  (paths are found on the host unless given)
-               ccc hosts reconnect [<name>]        drop the ssh master(s) and poll again (the wake-up gesture)
-               ccc hosts mute|unmute <name>        no banners for that host's sessions (rows and counts stay)
-               ccc list [--host <name>] [--archived] [--group none|host|repo|state] [--sort activity|name|started|folder] [--fresh] [--json]
-                                                  every host's roster; --host narrows to one, --archived shows the
-                                                  folded rows (--json always has every row, sorted, never grouped).
-                                                  Answered by the running app's roster (≤ one tick old, joins warm);
-                                                  --fresh polls once more first, and no app means polling here
-                                                  The `rc` column marks a session dispatched --rc: answerable from
-                                                  the Claude app, not only here
-               ccc archive|unarchive|pin|unpin <ref>   a mark on a session, kept with the session's host
-                                                  (archived rows fold away unless blocked; pinned sort first)
-               ccc watch [--host <name>] [--interval S] [--all] [--stall <minutes>] [--json]
-                                                  one line per transition (blocked, done, failed, stopped, stalled);
-                                                  muted hosts are skipped unless --all or named with --host.
-                                                  `stalled` is the non-event: WORKING and the daemon has not written
-                                                  the job's file for N minutes (default 30, CCC_STALL_MINUTES, 0 off).
-                                                  One line per stall, re-armed only when the session moves again;
-                                                  sessions already still when the watch starts are named on the
-                                                  opening line instead
-               ccc hook [--settings]              the harness's Notification hook: JSON on stdin → a banner from the app
-                                                  for what the roster cannot show; --settings prints the settings.json entry
-               ccc attach <ref> [--headless [--cols N --rows N]]
-                                                  <ref> is `id` (this Mac) or `host:id`; the pane follows: an attached
-                                                  session is left (Ctrl+Z, the harness's detach) for the new one
-               ccc snapshot [--json] [--color]    --color adds resolved RGB per run (`#RRGGBB`, the
-                                          spelling `ccc pixel` prints), so a colour can be judged
-                                          with no window and no Screen Recording permission
-               ccc links [--open N] [--json]      the URLs on the pane's grid, numbered from 1; --open N opens
-                                                  the Nth — the twin of Command-clicking that link
-               ccc send <text> | --key <name>... | --wheel N | --paste <text>|-
-                                                              (N>0 scrolls up; --paste frames as a paste, - reads stdin)
-               ccc detach
-               ccc focus [in|out]                 what the window last told the child about focus (DEC 1004),
-                                                  or assert it. The harness suppresses your phone's push while
-                                                  a terminal reports focus, so `out` is what says nobody is here
-               ccc spawn [--host <name>] [--cwd <dir>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>]
-                         [--rc] [--effort <e>] [--worktree[=<name>]] [--base <branch>] [--from <ref>] [--attach] [--json]
-                         [--replace|--allow-duplicate] [--no-space-check] [<prompt>... | -]
-                                                  `claude --bg` on a host (cwd: here, or the far side's home); the
-                                                  prompt is the remaining words, or stdin for `-`; none makes a
-                                                  draft that waits for one; --from forks a new session off <ref>'s
-                                                  transcript, on its host and in its folder unless told otherwise
-                                                  (`--resume <session id> --fork-session`); --attach opens it in the app.
-                                                  --permission-mode defaults to auto. --worktree from a folder on the
-                                                  default branch is the harness's; from any other branch, or with
-                                                  --base, ccc cuts the worktree off that branch and records the base.
-                                                  A --name a LIVE job already answers to is refused (messages and the
-                                                  roster would resolve to whichever started last): --replace stops
-                                                  that one first, --allow-duplicate means it. A local spawn under
-                                                  the free-space floor is refused too (CCC_SPAWN_FLOOR_GB, default
-                                                  10; 0 or --no-space-check turns it off)
-               ccc base <ref> [<branch> | --clear]  what the worktree branch is measured against and lands on: read,
-                                                  record (a worktree cut by hand), or forget — `branch.<b>.ccc-base`
-                                                  in the repo's config; VS Code's vscode-merge-base is honoured too
-               ccc merge <ref> [--ff-only|--no-ff|--squash] [--json]
-                                                  land the session's worktree branch on its base — recorded, else
-                                                  the repo's default branch — where the repo is; --ff-only (default) refuses when the base moved;
-                                                  every strategy refuses a dirty or wrong-branch checkout and backs
-                                                  out of a conflict (exit 1 with the reason; nothing is ever lost)
-               ccc shell <ref> [--repo] | --close a shell pane under the session pane, in <ref>'s folder (over ssh -t
-                                                  when remote) — ⌘T's twin; --repo is the repository's main checkout
-                                                  instead of the worktree (⌥⌘T); --close is ⇧⌘T
-               ccc update <ref> [--ask] [--json]  merge the session's BASE — recorded, else the repo's default branch —
-                                                  into its worktree branch, in the worktree (GitHub's "Update branch").
-                                                  THIS IS THE VERB A SESSION USES ON ITS OWN BASE: it is `git merge`
-                                                  with the guards, and it reaches origin/<base> when the local ref is
-                                                  behind it (the ↓ column counts the same tip and the answer names it).
-                                                  Refuses uncommitted changes and backs out of a conflict (exit 1);
-                                                  --ask then hands the session the merge as a prompt through the pane
-                                                  (needs the app)
-               ccc fetch <ref> [--json]           `git fetch origin` in the session's repository — the one network call;
-                                                  every ⇡⇣ mark reads "as of the last fetch" (the app fetches once at
-                                                  launch and once on wake; `ccc stats` measures those)
-               ccc pull <ref> [--json]            fast-forward the repo's default branch to origin's, never a merge
-                                                  commit; a diverged master is refused with the way out named
-               ccc push <ref> [--base] [--json]   push the session's worktree branch — or, with --base, the repo's
-                                                  default branch — to origin, never forced; git's own refusal is the
-                                                  answer (exit 1; nothing changes anywhere)
-               ccc stop <ref> [--json]            end a running session; its conversation and its worktree are kept
-                                                  (`ccc attach` resumes it). `ccc rm` is the one that deletes
-               ccc rm <ref> [--json]              delete a session and its worktree when the harness says that is safe
-               ccc resize <cols> <rows>
-               ccc stats [--json]
-               ccc peek [out.png]                 PNG of the app window (no screen permission)
-               ccc capture [out.png] [--json]      PNG of the window as it is ON SCREEN, through
-                                                  `screencapture -l` — the presentation oracle; needs
-                                                  Screen Recording permission for whoever runs it
-               ccc pixel <png> --cell <c> <r> | --at <x> <y> [--expect #RRGGBB [--tolerance N]] [--json]
-                                                  the colour at one pixel; --cell aims at a grid cell
-                                                  through the window's geometry, --expect makes the
-                                                  exit code the answer
-               ccc select <col> <row> <col> <row> [--rect] | --clear
-                                                  select a region of the pane (both ends inclusive); it
-                                                  paints the theme's selection colours, which
-                                                  `ccc snapshot --color` and `ccc pixel` both read.
-                                                  The pane's own gesture is shift-drag (plain drag when
-                                                  the child is not tracking the mouse), ⌥ for a rectangle
-               ccc select --word <col> <row> | --line <col> <row>
-                                                  the double- and triple-click's twins: the word or the
-                                                  line at one point (a second point drags the grain)
-               ccc copy [--json]                  ⌘C's twin: the selected text, onto the pasteboard
-               ccc geometry [--json]              where the window and its pane are, the roster's width, the
-                                                  cell size, and whether anyone can see any of it. x and y
-                                                  are the desktop's top-left down — what `ccc window move`
-                                                  takes back
-               ccc theme [--json]                 the pane's 16 + 6 colours; --json is the shape CCC_THEME reads
-               ccc window show|hide|close|minimize|zoom|fullscreen|center
-               ccc window move X Y | resize W H | frame X Y W H | split W
-               ccc window add-host|new-session
-                                                  the window's own gestures, one verb each: close is Cmd-W,
-                                                  minimize/zoom/fullscreen are the three buttons, move and
-                                                  resize are the two drags (and frame is both), split is the
-                                                  roster's divider. move, resize, frame and split are remembered
-                                                  across a relaunch, the same as the drags they stand for.
-                                                  add-host and new-session open their sheets, which `ccc peek` composites
-               ccc replay <bytes-file> [--cols N --rows N --bytes N --core ghostty|swiftterm] [--json] [--color]
-               ccc bench <bytes-file> [--repeat N --core ghostty|swiftterm] [--json]   parse + snapshot throughput
-               ccc version [--json]               this build (version, build number, bundle)
-               ccc install-cli [--dir <dir>] [--force]   link `ccc` on PATH into the installed app
-
-        """.utf8))
+        handle.write(Data(CommandManifest.usage().utf8))
         return status
+    }
+
+    /// `ccc <verb> --help` — the thing that did not exist. `ccc spawn
+    /// --help` answered "unknown flag '--help' for spawn", which is the
+    /// worst of both: it looked like a typo rather than a missing feature,
+    /// so nobody filed it for months.
+    static func help(for word: String, to handle: FileHandle = .standardOutput) -> Int32 {
+        guard let verb = CommandManifest.verb(named: word) else {
+            stderr("ccc: no verb '\(word)' (try `ccc --help`)")
+            return 2
+        }
+        handle.write(Data(CommandManifest.help(for: verb).utf8))
+        return 0
     }
 }

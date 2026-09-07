@@ -33,6 +33,16 @@ scripts/install                     # → ~/Applications/ccc.app + `ccc` on PATH
                                     # run it UNSANDBOXED: sandboxed it quits the app, half-copies the
                                     # bundle and leaves it dead
 
+# finding your way around (the surface is data, not prose — `CommandManifest`)
+ccc --help | ccc help <verb> | ccc <verb> --help
+                                    # the whole list, or one verb in full: its synopsis, what its --json
+                                    # answers, which gesture it is the twin of, what a non-zero exit means
+ccc --llms                          # the whole surface as one document for an agent: the conventions
+                                    # (<ref>, --json, exit codes, "a refusal names its way out") stated
+                                    # once, then every verb under its group
+ccc --schema [verb]                 # the same list as JSON — the manifest an agent reads once instead
+                                    # of guessing flags out of prose
+
 # the fleet
 ccc hosts [list | check [<name>]]   # the Macs ccc can reach; check runs the real poll on each
 ccc hosts add <n> [--ssh <d>] [--claude <p>] [--ccc <p>|--no-ccc] | remove <n>
