@@ -4672,3 +4672,52 @@ ccc archive ghost-session    →  ccc: no session 'ghost-session' in the roster
 Before this cut the first two were `no session 'ccc-v31-check' in the
 roster`, which is the sentence lore was given for a session that was on
 screen. Fixture removed.
+
+## Cut as v0.1.32 (2026-09-07)
+
+`--repo` on `pull` and `fetch`, and `ff` as `pull`'s alias. `spctl`
+accepted, both CDN keys, the live feed equal to the zip, the Release with
+the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 218 length 5298142
+ota verify --feed ccc    →  ok: … version 218 length 5298142
+gh release view v0.1.32  →  {"assets":["ccc-v0.1.32.zip"], "tag":"v0.1.32"}
+ccc version              →  ccc 0.1.32 (218)
+```
+
+**Proved on the installed binary**, against a throwaway origin — the
+released bytes moving a real default branch, not the build tree's:
+
+```
+/opt/homebrew/bin/ccc fetch --repo=<fixture> --json
+→ {"fetched":"true","repo":"…/fix/repo","said":"fetched origin (111 ms); master has 1 unpulled"}
+/opt/homebrew/bin/ccc ff --repo <fixture> --json
+→ {"pulled":"true","repo":"…/fix/repo","said":"pulled origin/master → master (1 commit, now d02273d)"}
+git log --oneline -1  →  d02273d second
+```
+
+`ccc pull --help` on the installed binary now prints `(also: ff)` and both
+synopsis lines; before this cut it printed one, which is the whole reason
+the version caveat went to lore's relay — air answered `unknown flag` to a
+verb studio's branch already had.
+
+**The verb was never the gap; the addressing was.** lore proposed a new
+`ccc ff` and `ccc pull <ref>` had shipped in v6 slice 7, refusal for
+refusal. What it could not do is run at the END of a reap: it resolves
+through a live roster row and that row's cwd, so `git worktree remove` and
+`ccc rm` each remove one of its two inputs. `--repo` is the same
+`GitPull.perform` reached a second way — the on-base, clean and
+ff-possible guards are the same code, which is what keeps ccc doing git on
+a session's behalf legal at all.
+
+A path inside a worktree answers for its ROOT rather than being refused,
+against the original spec: `pull <ref>` already takes a session's worktree
+cwd and pulls the root, so refusing the same path would be one verb
+disagreeing with itself about one input.
+
+Suite note, the second sighting of item 30: a full parallel `swift test`
+sat **70 minutes with zero bytes of output**, and `sample` put 2401 of
+2401 samples in `Git.Drain.data` → `semaphore_wait_trap`. `--no-parallel`
+is 523 tests in 63 suites in 22 s. Zero output is indistinguishable from
+progress, which is what made it cost an hour rather than a minute.
