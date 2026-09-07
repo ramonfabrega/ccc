@@ -3589,3 +3589,35 @@ not what `ccc spawn --rc` does. HARNESS.md carries the paragraph, the two
 reasons the user dropped it on 09-04 (not `auto`, and `--spawn worktree`
 cuts off the default branch, which is item 18's problem), and an explicit
 **unmeasured** on what an rc-spawned session shows in the daemon's roster.
+
+## Cut as v0.1.26 (2026-09-06)
+
+**v0.1.26, build 188**, cut from `worktree-v2` at `f1560dd` — the swarm's
+seven findings, at the user's explicit word for the release step.
+Notarization `Accepted`, one `<item>`, both CDN keys, the live feed equal
+to the zip, the GitHub Release with the zip:
+
+```
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 188 length 5211774
+ota verify --feed ccc  →  ok: … version 188 length 5211774
+```
+
+**Step 4 found a defect in step 4.** `scripts/install --dist` answered
+`ccc would not quit` while the app was already down. The test was `pgrep -x
+ccc`, and every long-running CLI verb carries that process name — what it
+found was a `ccc watch --interval 30 --all` belonging to **a different
+agent's session**, which the script would have killed had the AppleScript
+quit not succeeded first. And the quit *had* succeeded, so the abort left
+no app and no new bundle, and would have done so on every retry. Nothing
+was half-copied: the guard fires before the `cp`, so this cost a relaunch
+and not a repair. It matches the bundle's executable path now, plus "no
+argument after it", since a CLI verb runs from the PATH symlink into that
+same binary. The other session's watcher survived the second run untouched.
+
+The installed build, and the new surfaces on it:
+
+```
+ccc version --json   →  0.1.26, build 188, dev: false
+ccc spawn --help     →  ccc spawn (also: new)          [was: unknown flag '--help' for spawn]
+ccc --schema         →  35 verbs in the manifest
+```
