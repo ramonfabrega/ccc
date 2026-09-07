@@ -4961,3 +4961,26 @@ The installed 0.1.34 now says it:
 ```
 --json:  JSONL: one compact SessionEvent per line, flushed as it happens — kind, ref, …
 ```
+
+**Proved on the released bytes, not the dev build.** The naive consumer
+again — `ccc` off PATH this time, 0.1.34 (227) — and again the events it
+caught were this section's own commit and push:
+
+```
+355 bytes -> ["landed","b87b7169","ccc","committed"]
+352 bytes -> ["landed","b87b7169","ccc","pushed"]
+```
+
+Both halves, one line each, whole to `jq` after a single `read`.
+
+**And a release does not reach a consumer that is already running.**
+`scripts/install --dist` quits and relaunches the *app*; the long-lived
+`ccc watch` CLIs on studio keep the image they started with. Three were
+up at the cut — started 13:48, 15:23 and 15:33 against a binary replaced
+at 15:49 — so all three kept pretty-printing after the fix was installed,
+and would have gone on doing it for as long as their Monitors lived. The
+neighbouring rule (`CLAUDE.md`, "Rules earned") says a fix is unproved
+until a release carries it to the other Mac; this is the next step of the
+same thought — **a release carried to a Mac still has not reached the
+process that was already running there.** The watcher has to be
+restarted, and only its owner can do that.
