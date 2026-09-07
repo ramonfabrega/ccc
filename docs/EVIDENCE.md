@@ -4915,3 +4915,25 @@ literal at line 1, column 4` and suspected the opening line
 every host error go to stderr. The `2>&1` in the pipeline was the
 watcher's own. Verified: `ccc watch --json --all 2>/dev/null` emits zero
 bytes of preamble.
+
+**Confirmed live, by the consumer that was broken.** A 15-minute
+`ccc watch --json --all --interval 2` piped through the shape the help
+line invites —
+
+```sh
+while IFS= read -r line; do printf '%s' "$line" | jq -c '[.kind,.ref,.name]'; done
+```
+
+— and the events it caught were this fix's own commit and push:
+
+```
+345 bytes -> ["landed","b87b7169","ccc"]
+342 bytes -> ["landed","b87b7169","ccc"]
+```
+
+Two `landed` halves, **one line each, 345 and 342 bytes**, each one a
+whole event to `jq` after a single `read`. Before the change that same
+loop's first `read` returned `{`. The detector reporting the commit that
+fixed the stream it reports on is the second time it has been its own
+fixture (`efdbb44`), and it is the cheapest one available: the run that
+proves the emitter is the run that produces the event.
