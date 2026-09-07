@@ -14,33 +14,18 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**ccc is v1, and the swarm is why.** The first real commander swarm ran on
-2026-09-06 — three commanders, seven workers, a machine that locked
-mid-run — and **every gap it exposed was at the spawner/roster layer and
-none in the terminal embed**. Seven landed that night and left without
-entering here (`docs/EVIDENCE.md` "the swarm's five findings"): the name
-guard and `ccc stop`, the free-space floor, `ccc update`'s tip, the stall
-transition, the command manifest, `.worktreeinclude`, `claude rc`'s
-paragraph. They left items 24 and 25 and one question; **24 has left
-too**, and so has **27** — `ccc clear <ref> [--then …]`, the loop's
-"clear and continue" step as a verb, armed by the commander on its own
-ref and fired by the pane when the row goes idle (`docs/EVIDENCE.md`
-"item 27"). It left one thing behind it: **after a clear the row's `↳`
-detail is stale** until the next turn writes over it, which is a lie a
-stall detector will read (item 25's instrument sees it too).
+**ccc is v1, and the swarm is why.** The first real commander swarm ran
+2026-09-06 and **every gap it exposed was at the spawner/roster layer,
+none in the terminal embed** (`docs/EVIDENCE.md` "the swarm's five
+findings"). Items 24 and 27 have left since; the stale-`↳` finding 27
+left behind is now a rule on the surface it constrains (`docs/HARNESS.md`
+"Rules", the convention in `docs/DESIGN.md` §9).
 
 **v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
 that **the phone's job is already shipped** — Remote Control puts most
 live workers in the Claude app, where they are messaged and answered — so
 ccc builds what RC leaves out, starting with the fact that **ccc cannot
 see any of it** (`docs/EVIDENCE.md` "the mobile survey").
-
-**v8 through v12 are done.** Three rules from them and from the swarm
-stay: **a fix for a bug on the other Mac is unproved until a release
-carries it there**; **a verb with fewer surfaces than its opposite will be
-reported missing**; and **a string no test reads is a string nothing keeps
-true** — which is how `ccc update`'s help went a release stale and cost a
-worker its merge.
 
 Three **questions, not items**. `suggestedReply` is on the row and shown
 nowhere; using it means answering without attaching (see "Later"). The
@@ -168,15 +153,38 @@ watch --json`, whose `stalled` lines carry `stillFor`; a week of them is
 the whole measurement. Until then the shape is what makes it safe — one
 event per stall, re-armed only by movement.
 
-## Later
+### 28. The fd rule is prose, and it has already failed once
 
-**A Monitor survives a clear** — measured 2026-09-07 on the commander
-whose Monitor *is* item 25's evidence stream: hand-cleared at 04:02:27Z,
-and the Monitor's file still growing at 04:10:17Z, so it survives both
-tracked and writing (`docs/EVIDENCE.md` "what a clear does to background
-work"). What is left is free: the same reading under `ccc clear`'s
-programmatic keystrokes rather than a human's, which the next armed fire
-takes with a built-in control.
+From lore, 2026-09-07. `DispatchIO` and `DispatchSource` take ownership of
+the descriptor handed to them; the caller must not close it. That is a
+comment today, and the comment was **inverted** in `Subprocess.drain`
+until v0.1.27 — one descriptor, two owners, `EV_VANISHED`, a crash on air
+(`docs/EVIDENCE.md` "the vanished descriptor"). Two sites hold fds: that
+drain, fixed by giving the channel its own `dup`, and `PTY`, whose
+ownership is kept by hand in two booleans (`fdClosed`, `closed`).
+
+Swift here is 6.3, so a `~Copyable` fd wrapper — closed once on `deinit`,
+handed over by `consuming` — makes the second owner a compile error and
+both booleans structural. The 0.1.27 drain regression is its fixture.
+**Argue the ceremony first**: two call sites is a small blast radius, and
+the counter is that one of them already cost a release on the other Mac.
+
+### 30. `Git.run` costs two threads and blocks on a semaphore
+
+Found 2026-09-07 by `sample`ing a wedged suite (`docs/EVIDENCE.md` "the
+suite's own deadlock"). Each call's `Drain` holds a global-queue thread
+for the child's whole life while the caller waits on its semaphore, so
+one `git status` needs two threads to make progress. Run enough in
+parallel and libdispatch's pool is all waiters: measured, the suite
+cannot finish parallel and takes 20.7 s with `--no-parallel`.
+
+**Production is nowhere near the limit** — the poller probes serially, a
+verb is one call — so the cost today is a suite that cannot be trusted on
+a loaded Mac. Fix is one reader without a per-call thread, or `Subprocess`
+(which the async runners already use) behind the sync face. The
+reproduction is the whole suite on a busy machine.
+
+## Later
 
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,
 for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness

@@ -4,6 +4,21 @@ Claude Code 2.1.258, daemon `proto: 1`, transient on this machine (starts on
 demand, exits idle). Verified 2026-09-02 against `code.claude.com` docs and
 the files on disk; prompt contents redacted, shapes only.
 
+## Rules
+
+Read before acting here; each cites the `docs/EVIDENCE.md` heading that
+proved it. Convention and bound: `docs/DESIGN.md` §9.
+
+- A roster `↳` is evidence of the last turn that wrote one, never of
+  *current* state — stale through a long tool call, and for minutes after
+  a clear. ("item 27 — the gate read the wrong field")
+- `status` is *something live is attached*, `tempo` is *the turn is
+  generating*. "May I type into this pane" reads `tempo`. ("item 27 — the
+  gate read the wrong field")
+- `inFlight.kinds` discriminates — a shell never counts as a monitor —
+  and `drainableMonitors: 0` never means no monitors. ("what a clear does
+  to background work")
+
 ## Documented (build on it)
 
 **`claude agents --json [--all]`** — active sessions as a JSON array

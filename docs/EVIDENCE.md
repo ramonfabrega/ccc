@@ -4172,3 +4172,68 @@ two rows were readable side by side.
 The consequence is that the open question above is live rather than
 hypothetical: the commander that will clear itself really is holding a
 Monitor.
+
+## a guard a commander leans on gets a manifest and a fixture (2026-09-07)
+
+From lore, generalising two wrong-tool incidents in one week across two
+repos. Both were **bash guards with no fixture**.
+
+Ours: `scripts/install`'s `pgrep -x ccc`, which matched another job's
+`ccc watch` and quit a peer's process — the app and the CLI are one
+binary, so a process name is not app identity, and the fix was to match
+the bundle path. attrition's: a 2 s RSS poll with `kill -9` and zero
+tests, which its commander leans on hardest of anything it owns.
+
+The pattern, stated so it is checkable rather than felt: **a guard a
+commander depends on gets a manifest — `--json`, and an exit 1 refusal
+naming its way out — and a fixture it is run against, never a live row.**
+The manifest is what makes the guard's answer readable by the agent that
+depends on it; the fixture is what keeps the guard honest when the thing
+it matches changes shape. `ccc`'s own verbs have had both since item 22
+(`CommandManifest`) and the fan-out rules; its *scripts* have neither,
+and `scripts/install` is the one a commander touches.
+
+Related and already recorded: a spawner test must own its fixture rather
+than race a live roster row (`prove-guards-on-owned-fixtures`).
+
+## the suite's own deadlock (2026-09-07)
+
+The suite wedged four times in one evening and every diagnosis before the
+last one was wrong: machine load, then concurrent `swift test` runs
+(which was real and mine, and hid this), then a hanging shell test (which
+passes alone in 0.06 s). `sample` on the parked process named it in one
+read:
+
+```
+Git.Drain.data.getter  (in cccPackageTests)  Worktree.swift:1128
+  semaphore_wait_trap  (in libsystem_kernel.dylib)
+```
+
+— on **nine** threads at once, across `ClearTests`, `BaseTests`,
+`BaseTipTests` and `CutWorktreeTests`.
+
+**The mechanism.** Every `Git.run` builds a `Drain` per pipe, and each
+`Drain` occupies a `DispatchQueue.global(qos: .utility)` thread for the
+whole life of the child while its caller blocks on the drain's semaphore.
+So one `git status` costs two threads that cannot make progress without a
+third. swift-testing runs suites in parallel; enough concurrent
+`Git.run`s and libdispatch's global pool is exhausted by the waiters,
+and nothing can ever signal.
+
+Measured: `swift test --no-parallel` runs **510 tests in 20.7 s** on the
+same loaded machine that could not finish the parallel run at all.
+
+**Two fixes, and only one of them landed.** Mine first: `ClearTests` was
+the suite's only *async* test calling synchronous `Git.run` inline, which
+parks a thread of the cooperative pool rather than a plain one — strictly
+worse, and new that night. It goes through `Task.detached` now, the way
+the production callers already did. The same audit found the same shape
+in shipped code: `PaneController.fireArmedClears` ran the fire-time
+`git status` on the `@MainActor`, where `merge`, `push`, `update` and
+`fetch` all use `Task.detached`. Fixed with them.
+
+Neither is the root, which is `Git.Drain`'s two-threads-per-call shape.
+That is queue item 30, and production is nowhere near the limit — the
+poller probes serially and a verb is one call — so the cost today is a
+suite that cannot be trusted on a loaded Mac, which is a guard nobody
+has rather than a bug anybody sees.

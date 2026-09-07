@@ -485,6 +485,38 @@ session and does not apply. Marks on sessions the roster lost are pruned
 a week later, on a good poll of the owning host — a host that is merely
 asleep never reaches that path.
 
+## 9. Rules graduate to the surface they constrain (2026-09-07)
+
+Three files, three questions, and a fourth thing that had no home.
+`docs/QUEUE.md` is work not yet done — bounded and subtractive.
+`docs/EVIDENCE.md` is what was proved — ordered by when, append-only,
+unbounded by design. `CLAUDE.md` is what every session must know before
+touching anything. A **rule** is none of those: it is a proof's
+consequence that has to be read before acting on *one* surface, and it
+was landing in EVIDENCE's tail because that is where its evidence is —
+where it then competes with the queue for attention it was never going
+to get at line 4,000.
+
+So a rule graduates **on its second instance**, to the doc that owns the
+surface it constrains: a short `Rules` section at the top of
+`docs/HARNESS.md`, `docs/TERMINAL.md` or `docs/CHECKS.md`, one line each,
+each ending in the EVIDENCE heading that proved it. **Placement is the
+instrument** — "must read before acting on this surface" is what being at
+the top of that surface's doc means — and EVIDENCE stays the provenance,
+so nothing is copied, only pointed at. A rule that could be broken from
+*any* surface goes to CLAUDE.md instead; that is the whole difference
+between the two tiers.
+
+Each `Rules` section carries the queue's own bound, small — a dozen lines
+— so promotion is subtractive too and no section can become a second
+EVIDENCE. **Not a new rules file**: a fourth file with no owner is the
+tail problem under a new name.
+
+Reasoned out with lore 2026-09-07 (whose own reason to exist is this gap:
+raw → wiki → canon), after the queue guard fired twice in one evening and
+subtraction was twice the right answer — which is the instrument working,
+and also the signal that rules were competing for lines meant for work.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past

@@ -163,6 +163,55 @@ import Testing
             """)
     }
 
+    /// A surface doc's `Rules` section carries the queue's bound in
+    /// miniature (`docs/DESIGN.md` §9). It exists so a rule that has
+    /// earned its second instance can be read before acting on that
+    /// surface, rather than grepped out of `docs/EVIDENCE.md`'s tail —
+    /// and it is bounded for the same reason the queue is: a section that
+    /// can grow without cost becomes a second EVIDENCE, which is the
+    /// problem it was built to solve.
+    ///
+    /// Twelve lines is about six rules with their citations. Promotion is
+    /// therefore subtractive too: the twelfth rule displaces one whose
+    /// surface no longer exists or whose lesson has become structural.
+    static let rulesLines = 12
+
+    @Test(arguments: docs)
+    func aRulesSectionIsBounded(_ name: String) throws {
+        let text = try Self.read(name)
+        guard let start = text.range(of: "\n## Rules\n") else { return }
+        let rest = text[start.upperBound...]
+        let end = rest.range(of: "\n## ")?.lowerBound ?? rest.endIndex
+        let body = rest[..<end]
+        let lines = body.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .count
+        #expect(
+            lines <= Self.rulesLines,
+            """
+            \(name)'s Rules section is \(lines) lines, over \(Self.rulesLines). \
+            A rule graduates on its second instance and displaces one that has \
+            stopped earning its line; the evidence stays in docs/EVIDENCE.md \
+            either way (docs/DESIGN.md §9).
+            """)
+    }
+
+    /// Every rule cites the evidence that proved it, or it is an opinion
+    /// wearing a rule's clothes. The citation is a quoted EVIDENCE
+    /// heading, which is also what makes it greppable from there.
+    @Test(arguments: docs)
+    func everyRuleCitesItsEvidence(_ name: String) throws {
+        let text = try Self.read(name)
+        guard let start = text.range(of: "\n## Rules\n") else { return }
+        let rest = text[start.upperBound...]
+        let end = rest.range(of: "\n## ")?.lowerBound ?? rest.endIndex
+        let uncited = String(rest[..<end])
+            .components(separatedBy: "\n- ")
+            .dropFirst()
+            .filter { !$0.contains("(\"") }
+        #expect(uncited.isEmpty, "\(name): a rule with no evidence heading cited: \(uncited.first ?? "")")
+    }
+
     /// A finished item leaves; it is not struck through. A struck line is a
     /// story the queue kept, and the stories are what grew the paragraphs.
     @Test(arguments: docs)

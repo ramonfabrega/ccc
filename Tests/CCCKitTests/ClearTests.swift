@@ -73,15 +73,26 @@ import Testing
 
     /// "A clear before the bank is committed is how state is lost": the
     /// verb refuses a dirty tree, and nothing is written.
+    ///
+    /// The git runs go through `Task.detached`, and that is not taste.
+    /// `Git.run` blocks its thread on a semaphore until the pipe drains,
+    /// and this is the suite's only *async* test that touches git — run
+    /// inline it parks a thread of the cooperative pool, which wedged the
+    /// whole suite intermittently the night this file was written
+    /// (`docs/EVIDENCE.md` "the suite's own deadlock"). The same rule the
+    /// production callers follow (`merge`, `push`, `update`, `fetch`).
     @Test func aDirtyWorktreeIsRefusedAndNothingIsArmed() async throws {
         try await withTemp { dir in
             let repo = dir.appending(path: "repo")
             try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
-            _ = try? Git.run(WorktreeProbe.defaultGit, ["-C", repo.path, "init", "-q"])
-            _ = try? Git.run(WorktreeProbe.defaultGit, ["-C", repo.path, "commit", "-q", "--allow-empty", "-m", "seed"])
+            let path = repo.path
+            await Task.detached {
+                _ = try? Git.run(WorktreeProbe.defaultGit, ["-C", path, "init", "-q"])
+                _ = try? Git.run(WorktreeProbe.defaultGit, ["-C", path, "commit", "-q", "--allow-empty", "-m", "seed"])
+            }.value
             try Data("half a thought\n".utf8).write(to: repo.appending(path: "bank.md"))
-            _ = try? Git.run(WorktreeProbe.defaultGit, ["-C", repo.path, "add", "bank.md"])
-            #expect(ClearGuard.refusal(cwd: repo.path) != nil)
+            await Task.detached { _ = try? Git.run(WorktreeProbe.defaultGit, ["-C", path, "add", "bank.md"]) }.value
+            #expect(await Task.detached { ClearGuard.refusal(cwd: path) }.value != nil)
 
             let overlay = dir.appending(path: "roster.json").path
             let cli = try stub(dir, cwd: repo.path)

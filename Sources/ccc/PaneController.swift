@@ -601,7 +601,15 @@ final class PaneController {
             case .now:
                 // The bank again, at the moment it matters: the tree may
                 // have been clean when the clear was armed and dirty now.
-                if let row, let reason = ClearGuard.refusal(cwd: row.session.cwd) {
+                // Off the actor, the way every other git call here goes
+                // (`merge`, `push`, `update`, `fetch`): `Git.run` blocks
+                // its thread on a semaphore until the pipe drains, and
+                // this one is on the main actor's tick.
+                let cwd = row?.session.cwd
+                let refusal = cwd.map { path in
+                    Task.detached(priority: .userInitiated) { ClearGuard.refusal(cwd: path) }
+                }
+                if let reason = await refusal?.value {
                     disarm(id, sessionId: mark.sessionId)
                     lastClear = "refused the clear on \(id): \(reason)"
                     onClearFired?(lastClear!)

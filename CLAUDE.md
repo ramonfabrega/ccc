@@ -142,6 +142,20 @@ it should break while being awesome.**
   build step for the vendored core**. Nothing else earns a place in v0.
 - Dependencies are earned per part, in `docs/DESIGN.md`, never assumed.
 
+## Rules earned (each cost a release or a worker's merge)
+
+Cross-surface: breakable from anywhere, which is why they are here rather
+than in a surface doc (`docs/DESIGN.md` §9). Evidence in
+`docs/EVIDENCE.md`.
+
+- **A fix for a bug on the other Mac is unproved until a release carries
+  it there.** Studio green is the control, never the measurement.
+- **A verb with fewer surfaces than its opposite will be reported
+  missing** — twin both directions, and make the verb list a type.
+- **A string no test reads is a string nothing keeps true.** `ccc
+  update`'s help went a release stale that way and cost a worker its
+  merge.
+
 ## Fan-out rules (violations are findings, not workarounds)
 
 - Ad-hoc spawns of generic agent types MUST pass an explicit model; omission
