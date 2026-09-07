@@ -21,9 +21,8 @@ none in the terminal embed**. Seven landed that night and left without
 entering here (`docs/EVIDENCE.md` "the swarm's five findings"): the name
 guard and `ccc stop`, the free-space floor, `ccc update`'s tip, the stall
 transition, the command manifest, `.worktreeinclude`, `claude rc`'s
-paragraph. They left items 24 and 25 and one question. **24 has left
-too**: `ccc rm` cleans the worktrees ccc cut, and measuring that found
-item 26.
+paragraph. They left items 24 and 25 and one question; **24 has left
+too**.
 
 **v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
 that **the phone's job is already shipped** — Remote Control puts most
@@ -56,24 +55,18 @@ Below the frontier: **item 6 is air's** and happens the next time the lid
 closes overnight. Items 5 and 16 are leftovers and one missing twin, none
 with a forcing function. **Items 4, 7 and 14 have left** — item 4 on
 2026-09-04 (`docs/EVIDENCE.md` "item 4 — the far side answers from the
-app"): the far side's `ccc list` now answers from its running app's
-roster, and air's measurement of it is owed from the next lid night.
+app"), and air's measurement of it is owed from the next lid night.
 
 ### 5. Small leftovers
 
 A sort by model. The Session menu's archive/pin items (the context menu
-has them). **Selection autoscroll** waits on a scrollback viewport that
-does not exist — `GhosttyPane.scroll` forwards every wheel event to the
-child, so a drag off the grid has nothing to tick; low value while the
-pane only ever runs `claude attach`, which scrolls its own history
-(re-checked 2026-09-03). **`ccc window show` when another app holds
+has them). **`ccc window show` when another app holds
 focus**: `NSApp.activate()` is cooperative since macOS 14 (measured
 2026-09-02), so `show`'s CLI side should go through `NSWorkspace`.
 **Twin gaps from the audit**
 (`docs/EVIDENCE.md` "the audit"): `ccc ask <ref>` (the socket has it; the
 CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
-remove|check` in the window, an age column. (The CLI verb list left this
-list on 2026-09-06: it is `CommandManifest`, and two tests read it.)
+remove|check` in the window, an age column.
 
 ### 6. The remote pane's reattach has still never met a lid
 
@@ -154,23 +147,6 @@ and is the rest of this item's title.
 recorded"). Left open there: the sheet has no worktree or base field, and
 a remote `--base` is refused rather than routed to the far side's ccc.
 
-### 26. A draft's worktree is the harness's litter
-
-**Item 24 left on 2026-09-06** (`docs/EVIDENCE.md` "item 24 — a ccc-cut
-worktree is ccc's to clean") and left this. Measured the same hour, on
-worktrees the **harness** cut: a session that ran is cleaned and `claude
-rm` names the tree in its answer; a **draft that never started** is not —
-the tree stays, twice, still `locked` by a lock whose pid is dead. The
-fleet drafts constantly, so this litters at item 24's old rate.
-
-**ccc cannot fix it with what it has**, and that is the item. Without a
-record it cannot tell a tree the harness cut *for this session* from one
-the user pointed `--cwd` at by hand, and deleting the second is exactly
-what item 24's `ccc-cut` mark exists to prevent. The shape, if it earns
-it: ccc asked for `--worktree`, so ccc can record what came back as its
-own cut. **Argue that first** — it is a harness bug, and `rm` already
-names the tree in the case that works.
-
 ### 25. The stall window is a guess, and the next one is not
 
 30 minutes is a constant (`StallWindow`), and nothing at that boundary
@@ -187,7 +163,35 @@ watch --json`, whose `stalled` lines carry `stillFor`; a week of them is
 the whole measurement. Until then the shape is what makes it safe — one
 event per stall, re-armed only by movement.
 
+### 27. A commander cannot clear its own context
+
+From Ramon via lore, 2026-09-06 ("makes sense yeah I agree"), not a build
+for that night. **The loop's "clear and continue" step has never been
+exercised by the flow itself** — Friday's crash cleared everyone, so what
+was Ramon typing by hand was never replaced. The other pieces exist: the
+bank (attrition's QUEUE.md, 32-line handoff cap), the awareness (lore's
+`ctx` column, its 60/80% watcher), and the lever — **ccc can type into a
+pane**, and is the only thing that can.
+
+`ccc clear <ref> [--then "<prompt>"]`: wait for the row to be idle, type
+`/clear`, then type the continue prompt. Refuses a dirty worktree the way
+`merge` does — a clear before the bank is committed is how state is lost.
+**The caller is the commander on its own ref**, the last act after an item
+lands: the only seat that knows the bank is complete. Not through lore,
+which keys on the job, so a new session id changes nothing.
+
+**Two boots before writing it**: that a typed `/clear` on an *idle*
+background session behaves like one in a foreground pane (the daemon may
+read typed input mid-turn as an attachment — hence idle), and what the row
+shows across it (session id changes, job persists, `respawnFlags` same).
+*When* a commander clears is attrition's brief.
+
 ## Later
+
+**`claude rm` leaves a draft's worktree behind** — the one it cut itself,
+for a session that never started (`docs/EVIDENCE.md` "item 24"). A harness
+bug, and ccc has no record letting it clean that tree without risking one
+the user pointed `--cwd` at. Argue it first.
 
 Reply without attach — the session inbox socket, one probe away. RC-free
 approvals via the `PermissionRequest` hook, the *only* write path the
