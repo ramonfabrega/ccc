@@ -3835,3 +3835,127 @@ not the measurement.
 
 This cut also carries item 24 (`ccc rm` cleans the worktrees ccc cut),
 which studio has already proved on its own fixtures.
+
+## item 27 — a commander clears its own context (2026-09-06)
+
+The two boots the item asked for, on a `--model haiku` fixture spawned
+for them (`clear-boot`, `7d6dd493`, in a throwaway folder), driven the
+way the verb drives: `ccc attach … --headless` on a private socket
+(`CCC_CONTROL_SOCKET`) so the app's pane on screen was never touched,
+then `ccc send` and `ccc snapshot`.
+
+### A typed `/clear` on an idle background session is a real clear
+
+`ccc send "/clear"` opens the slash menu (`/clear` is its first row,
+`Start a new session with empty context`), and `ccc send --key enter`
+runs it: the transcript went blank and the footer's context meter — `40k
+(4%)` — disappeared entirely. A prompt typed after it lands and runs with
+nothing behind it:
+
+```
+❯ Without using any tool …: what codeword string did you write into marker.txt earlier?
+⏺ This is the start of our conversation — I haven't written anything to marker.txt in this session.
+```
+
+### The box's contents are prefixed onto what we type
+
+The finding that shaped the verb. With `ZZ` sitting unsent in the prompt
+box, `ccc send "/clear"` + enter submitted **`ZZ/clear` as a prompt**.
+There was no clear — the context meter went *up*, 34k → 40k — and the
+model answered "Conversation cleared. Ready for new tasks.", a false
+clear that reads exactly like a real one at a glance.
+
+So anything that types has to know whether the box is anybody's. It
+cannot be read from the text: the harness draws a history hint there
+(`❯ cat marker.txt` appeared twice unprompted) and `LeaveGesture` already
+records that "the grid cannot tell [a placeholder] from a draft". **The
+cursor tells them apart.** Measured on the same pane:
+
+| box | `end` then cursor | `ctrl-u` | first character typed |
+|---|---|---|---|
+| hint `cat marker.txt` | stays at col 2 | no effect | replaces the whole hint |
+| draft `hello` | moves to col 7 | empties the box | appends |
+
+That is `PromptBox.read`, and it is why `end` is pressed before the read.
+`ask` (`ccc update --ask`) had the same hazard and now goes through the
+same guard.
+
+### A mid-turn `/clear` discards the running turn
+
+Typed while the fixture was generating (`state: blocked`, `tempo:
+active`), the clear took effect at once: the transcript emptied, the
+context meter went, and the turn's output never arrived. No error, no
+trace. That is what the idle gate is for — not politeness.
+
+`tempo: idle` is not "the turn ended" in general: a session that
+backgrounds a shell (`sleep 40`) reads `working` / `idle` with the shell
+still running. It is the right gate for typing anyway — the box is free —
+but nothing else should read that word as "finished".
+
+### What the row shows across a clear
+
+`~/.claude/jobs/7d6dd493/state.json` and `ccc list --json`, before → after:
+
+| field | across the clear |
+|---|---|
+| roster `session.sessionId` | **changes** (`7d6dd493-…` → `f26b6dcf-…`, and again on the next clear) |
+| state.json `sessionId` | stays at the original |
+| state.json `resumeSessionId`, `linkScanPath` | follow the new one |
+| `id` / `daemonShort`, `pid`, `name`, `nameSource` | unchanged |
+| `respawnFlags` | unchanged (`--name clear-boot --model haiku --permission-mode default`) |
+| `bridgeSessionId` | unchanged — messaging and lore key on the job, so a clear is invisible to them |
+| `state`, `tempo` | unchanged (`done` / `idle`) |
+| `detail`, `result` | **stale** — they still describe the pre-clear work until the next turn overwrites them |
+
+The last row is the one that costs something: for a few minutes after a
+clear the roster's `↳` line is a lie, and a stall detector reading it
+sees a session that "has not moved".
+
+The uuid change is what the overlay's mark guard already handles: a
+pending clear records the uuid the row had when it was armed, so it can
+never fire on the session that follows the one it was armed on.
+
+### The verb, end to end
+
+`ccc clear <ref> [--then "<prompt>"]` arms; the pane fires it. Proved on
+the same fixture with the dev build owning the pane
+(`ccc attach 7d6dd493 --headless`, private socket and overlay), armed
+**while the row was busy** — the commander's own case:
+
+```
+ccc clear 7d6dd493 --then "…what did you just write into ledger.txt? …"
+  → armed a clear on 7d6dd493; it fires when the row is idle, then: …
+ccc list        → 7d6dd493  working  busy    (nothing fires)
+ccc list        → 7d6dd493  blocked  wait    (a permission prompt; still nothing)
+  … the prompt answered, the turn ends …
+ccc: cleared 7d6dd493, then: In one short line: what did you just write …
+```
+
+and the pane afterwards, which is the whole item in six lines:
+
+```
+ ▐▛███▛█   Claude Code v2.1.260
+❯ /clear
+❯ In one short line: what did you just write into ledger.txt? …
+⏺ NO MEMORY.
+```
+
+The `blocked` tick is the gate earning its place: a session holding a
+permission question up has a dialog under the cursor, not a prompt box.
+
+**A person's unsent draft stops it.** With `half a thought I have not
+sent` left in the box and a clear armed:
+
+```
+ccc: the clear on 7d6dd493 did not fire: 7d6dd493 has unsent text in its
+     prompt box ("half a thought I have not sent"); typing would submit it with ours
+```
+
+— the box untouched, the mark dropped rather than left waiting for the
+person to walk away and come back. Twice during these runs the harness
+drew a history hint in the box (`cat marker.txt`, `read ledger.txt`) and
+the same guard typed straight through it, which is the whole reason the
+reading is the cursor's and not the text's.
+
+Across the two clears the row held everything but its uuid: `id`
+7d6dd493 and `pid` 12442 unchanged, `sessionId` 1062c451 → 07820e10.

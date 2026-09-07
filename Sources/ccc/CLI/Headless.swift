@@ -40,6 +40,8 @@ enum Headless {
 
         // No roster to focus without a window; the send reply carries the
         // same fact to the script that pressed it.
+        controller.onClearFired = { said in CLI.stderr("ccc: \(said)") }
+
         controller.onLeaveRequested = {
             CLI.stderr("ccc: ← taken — in the window the roster takes the keyboard; the key was not sent")
         }

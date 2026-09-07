@@ -20,7 +20,7 @@ import Testing
     static let dispatched = [
         "hosts", "list", "archive", "unarchive", "pin", "unpin", "watch", "hook",
         "spawn", "new", "attach", "detach", "stop", "rm",
-        "base", "merge", "update", "fetch", "pull", "push", "shell",
+        "base", "merge", "update", "fetch", "pull", "push", "shell", "clear",
         "snapshot", "send", "select", "copy", "links", "focus", "resize",
         "peek", "capture", "pixel", "geometry", "theme", "window",
         "stats", "replay", "bench", "version", "install-cli",

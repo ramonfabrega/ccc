@@ -22,7 +22,12 @@ entering here (`docs/EVIDENCE.md` "the swarm's five findings"): the name
 guard and `ccc stop`, the free-space floor, `ccc update`'s tip, the stall
 transition, the command manifest, `.worktreeinclude`, `claude rc`'s
 paragraph. They left items 24 and 25 and one question; **24 has left
-too**.
+too**, and so has **27** — `ccc clear <ref> [--then …]`, the loop's
+"clear and continue" step as a verb, armed by the commander on its own
+ref and fired by the pane when the row goes idle (`docs/EVIDENCE.md`
+"item 27"). It left one thing behind it: **after a clear the row's `↳`
+detail is stale** until the next turn writes over it, which is a lie a
+stall detector will read (item 25's instrument sees it too).
 
 **v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
 that **the phone's job is already shipped** — Remote Control puts most
@@ -162,29 +167,6 @@ the fixed window was useful before replacing it. The instrument is `ccc
 watch --json`, whose `stalled` lines carry `stillFor`; a week of them is
 the whole measurement. Until then the shape is what makes it safe — one
 event per stall, re-armed only by movement.
-
-### 27. A commander cannot clear its own context
-
-From Ramon via lore, 2026-09-06 ("makes sense yeah I agree"), not a build
-for that night. **The loop's "clear and continue" step has never been
-exercised by the flow itself** — Friday's crash cleared everyone, so what
-was Ramon typing by hand was never replaced. The other pieces exist: the
-bank (attrition's QUEUE.md, 32-line handoff cap), the awareness (lore's
-`ctx` column, its 60/80% watcher), and the lever — **ccc can type into a
-pane**, and is the only thing that can.
-
-`ccc clear <ref> [--then "<prompt>"]`: wait for the row to be idle, type
-`/clear`, then type the continue prompt. Refuses a dirty worktree the way
-`merge` does — a clear before the bank is committed is how state is lost.
-**The caller is the commander on its own ref**, the last act after an item
-lands: the only seat that knows the bank is complete. Not through lore,
-which keys on the job, so a new session id changes nothing.
-
-**Two boots before writing it**: that a typed `/clear` on an *idle*
-background session behaves like one in a foreground pane (the daemon may
-read typed input mid-turn as an attachment — hence idle), and what the row
-shows across it (session id changes, job persists, `respawnFlags` same).
-*When* a commander clears is attrition's brief.
 
 ## Later
 

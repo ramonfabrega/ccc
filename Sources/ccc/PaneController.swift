@@ -111,6 +111,16 @@ final class PaneController {
     /// Said once per change, for the window's notice and `ccc stats`.
     private(set) var lastHostChange: String?
 
+    /// The armed clears (item 27), watched on the same tick as hosts.json
+    /// and by the same rule: one `stat`, and a read only when the file
+    /// moved — or when the last read found something still waiting.
+    private let overlayPath: String
+    private var clearsSeenAt: Date?
+    private var clearsArmed = false
+    /// What the last armed clear did, for the window's notice and stats.
+    private(set) var lastClear: String?
+    var onClearFired: ((String) -> Void)?
+
     /// The last attach and how it ended, for the wake-up reattach: a remote
     /// pane whose ssh died across a sleep comes back on its own.
     private var lastRef: SessionRef?
@@ -128,11 +138,13 @@ final class PaneController {
     private static let rememberedRefKey = "ccc.lastAttachedRef"
 
     init(cli: ClaudeCLI, hosts: HostConfig.Loaded = HostConfig.load(),
-         hostsPath: String = HostConfig.defaultPath) {
+         hostsPath: String = HostConfig.defaultPath,
+         overlayPath: String = RosterOverlay.defaultPath) {
         self.cli = cli
         self.hosts = hosts.config
         self.hostIssues = hosts.issues
         self.hostsPath = hostsPath
+        self.overlayPath = overlayPath
         self.hostsModifiedAt = HostConfig.modificationDate(path: hostsPath)
         self.poller = RosterPoller(
             pollers: hosts.config.hosts.map { Self.makePoller(for: $0, local: cli) },
@@ -160,6 +172,7 @@ final class PaneController {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self else { return }
                 self.reloadHostsIfChanged()
+                await self.fireArmedClears()
             }
         }
     }
@@ -510,12 +523,148 @@ final class PaneController {
         _ = try await switchTo(ref: ref)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
         if !wasOnScreen { await Self.waitUntilDrawn(session) }
-        session.send(text: prompt)
+        try await Self.type(prompt, into: session, ref: ref)
+        return "asked \(ref): \(prompt)"
+    }
+
+    /// Type a line and submit it — the one place anything of ours types
+    /// into a session's prompt box.
+    ///
+    /// The box is read first, because **whatever is in it is prefixed onto
+    /// what we type**: measured 2026-09-06 with `ZZ` sitting unsent,
+    /// `/clear` + Enter submitted `ZZ/clear` as a prompt, and the model
+    /// answered "Conversation cleared. Ready for new tasks." — the false
+    /// clear that reads like a real one (docs/EVIDENCE.md "item 27"). A
+    /// hint drawn there is ours to overwrite; a draft is a person's unsent
+    /// words and is never ours to submit or delete. `PromptBox` tells them
+    /// apart by the cursor, which is why `end` goes first.
+    static func type(_ text: String, into session: AttachSession, ref: SessionRef) async throws {
+        // `end` only for the one reading that needs it. A hint and a draft
+        // whose cursor was left at home look alike, and pressing `end`
+        // separates them; an empty box needs no key, and neither does a
+        // row that is not an input box at all — where `end` would be a
+        // keystroke into somebody's dialog.
+        var box = PromptBox.read(session.host.snapshot())
+        if case .hint = box {
+            session.press(NamedKey("end")!)
+            try? await Task.sleep(for: .milliseconds(250))
+            box = PromptBox.read(session.host.snapshot())
+        }
+        guard box.isOurs else {
+            throw AttachError.badHost(box.text.map {
+                "\(ref) has unsent text in its prompt box (\"\($0)\"); typing would submit it with ours"
+            } ?? "\(ref)'s prompt box cannot be read; nothing was typed")
+        }
+        session.send(text: text)
         // The Enter after the text, not with it: a "\r" inside the same
         // read is a paste's newline to the TUI, not a submit.
         try? await Task.sleep(for: .milliseconds(200))
         session.press(NamedKey("enter")!)
-        return "asked \(ref): \(prompt)"
+    }
+
+    /// Fire any clear armed on a local row that has gone idle (item 27),
+    /// and drop the ones whose session will never come back. One pass per
+    /// hosts-watch tick; the overlay is read with a `stat` when nothing is
+    /// armed, which is every tick but the rare one.
+    ///
+    /// **The mark is taken under the file's lock before anything is
+    /// typed.** Two ccc's can own a pane on one Mac — the app and a
+    /// `ccc attach --headless` — and both run this loop; the one that
+    /// takes the mark is the one that types.
+    func fireArmedClears() async {
+        let modified = RosterOverlay.modificationDate(path: overlayPath)
+        if clearsSeenAt == modified, !clearsArmed { return }
+        clearsSeenAt = modified
+        let armed = RosterOverlay.load(path: overlayPath).overlay.armedClears
+        clearsArmed = !armed.isEmpty
+        guard clearsArmed else { return }
+        for (id, mark) in armed {
+            let ref = SessionRef(host: Host.localName, id: id)
+            let row = poller.state.rows.first { $0.ref == ref }
+            // No row is "gone" only once this Mac has actually answered a
+            // poll; before that it is "we have not looked yet".
+            let polled = (poller.state.hosts.first(where: { $0.host == Host.localName })?.pollCount ?? 0) > 0
+            // The overlay's uuid guard, applied to the firing side too:
+            // an armed clear that outlived its session — a clear, a
+            // respawn, an app that was not running when the row went — is
+            // aimed at a session that no longer exists, and the short id
+            // it names now belongs to another one.
+            let moved = mark.sessionId != nil && row?.session.sessionId != nil && mark.sessionId != row?.session.sessionId
+            let window: ClearWindow = moved ? .gone : (row.map { ClearWindow.of($0.session) } ?? (polled ? .gone : .wait))
+            switch window {
+            case .wait: continue
+            case .gone:
+                guard disarm(id, sessionId: mark.sessionId) else { continue }
+                lastClear = "dropped the clear armed on \(id): "
+                    + (moved ? "another session answers to that id now" : "its session is gone")
+                onClearFired?(lastClear!)
+            case .now:
+                // The bank again, at the moment it matters: the tree may
+                // have been clean when the clear was armed and dirty now.
+                if let row, let reason = ClearGuard.refusal(cwd: row.session.cwd) {
+                    disarm(id, sessionId: mark.sessionId)
+                    lastClear = "refused the clear on \(id): \(reason)"
+                    onClearFired?(lastClear!)
+                    continue
+                }
+                guard let pending = mark.clear, disarm(id, sessionId: mark.sessionId) else { continue }
+                do {
+                    lastClear = try await performClear(ref, then: pending.then)
+                } catch {
+                    lastClear = "the clear on \(id) did not fire: \(error)"
+                }
+                onClearFired?(lastClear!)
+            }
+        }
+    }
+
+    /// Take the mark, under the lock. False when somebody else took it
+    /// first, which is the answer that keeps two panes from both typing.
+    @discardableResult
+    private func disarm(_ id: String, sessionId: String?) -> Bool {
+        let path = overlayPath
+        return ((try? RosterOverlay.locked(path: path) {
+            var overlay = RosterOverlay.load(path: path).overlay
+            guard overlay.arm(nil, id: id, sessionId: sessionId) != nil else { return false }
+            try overlay.save(path: path)
+            return true
+        }) ?? false)
+    }
+
+    /// Attach, type `/clear`, and — when one was armed with it — type the
+    /// prompt that continues the work. The wait between them is not a
+    /// sleep: the clear is watched for on the grid, because a prompt typed
+    /// before it lands is a prompt typed into the box the clear is about
+    /// to submit.
+    func performClear(_ ref: SessionRef, then: String?) async throws -> String {
+        let wasOnScreen = session?.isRunning == true
+        _ = try await switchTo(ref: ref)
+        guard let session, session.isRunning else { throw AttachError.nothingAttached }
+        if !wasOnScreen { await Self.waitUntilDrawn(session) }
+        let before = session.host.snapshot()
+        try await Self.type("/clear", into: session, ref: ref)
+        let landed = await Self.waitUntilChanged(session, from: before)
+        guard landed else { return "typed /clear on \(ref); the screen never changed" }
+        guard let then else { return "cleared \(ref)" }
+        try await Self.type(then, into: session, ref: ref)
+        return "cleared \(ref), then: \(then)"
+    }
+
+    /// The screen moved off `from` and settled again — the clear landing.
+    /// Fifteen seconds, against the eight `waitUntilDrawn` allows: this one
+    /// waits on a round trip to the daemon, not a repaint.
+    private static func waitUntilChanged(_ session: AttachSession, from: Grid,
+                                         timeout: Duration = .seconds(15)) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        var previous: Grid?
+        while clock.now < deadline, session.isRunning {
+            try? await Task.sleep(for: .milliseconds(250))
+            let grid = session.host.snapshot()
+            if grid != from, let previous, previous == grid { return true }
+            previous = grid
+        }
+        return false
     }
 
     /// The TUI is up and has stopped changing — two reads a quarter second

@@ -16,22 +16,59 @@ public struct SessionMark: Codable, Sendable, Equatable {
     public var archived: Date?
     /// When it was pinned; `nil` when it is not.
     public var pinned: Date?
+    /// A `/clear` waiting for the row to go idle (item 27); `nil` when
+    /// none is armed. Unlike the two above this is an *instruction* with a
+    /// lifetime of minutes rather than an opinion, and it is here for the
+    /// three things the file already gives: it survives an app restart,
+    /// it rides the same road to the session's own host, and the uuid
+    /// guard above is exactly right for it — a clear mints a new session
+    /// uuid, so a pending clear never applies to the session that follows
+    /// the one it was armed on.
+    public var clear: PendingClear?
     /// The full session uuid the mark was made against, when the row had
     /// one. The daemon mints short ids and nothing promises it never mints
     /// one twice, so a mark whose uuid disagrees with the row's is a mark
     /// on some earlier session and does not apply.
     public var sessionId: String?
 
-    public init(archived: Date? = nil, pinned: Date? = nil, sessionId: String? = nil) {
+    public init(archived: Date? = nil, pinned: Date? = nil, clear: PendingClear? = nil, sessionId: String? = nil) {
         self.archived = archived
         self.pinned = pinned
+        self.clear = clear
         self.sessionId = sessionId
     }
 
-    public var isEmpty: Bool { archived == nil && pinned == nil }
+    public var isEmpty: Bool { archived == nil && pinned == nil && clear == nil }
 
     /// The newest thing that happened to this mark, for pruning.
-    var madeAt: Date { [archived, pinned].compactMap { $0 }.max() ?? .distantPast }
+    var madeAt: Date { [archived, pinned, clear?.armedAt].compactMap { $0 }.max() ?? .distantPast }
+}
+
+/// A `/clear` armed on a session, waiting for it to stop working (item 27).
+///
+/// The caller is normally the session itself — a commander whose item has
+/// landed and whose bank is committed — and a session cannot wait for its
+/// own turn to end: while `ccc clear` runs, the row it is asking about is
+/// busy *because of that call*. So the verb arms and returns, and whatever
+/// owns a pane on this Mac fires it on a later poll. Measured 2026-09-06:
+/// a `/clear` typed mid-turn takes effect at once and the running turn's
+/// output is simply gone (docs/EVIDENCE.md "item 27"), which is what the
+/// idle gate is for.
+public struct PendingClear: Codable, Sendable, Equatable {
+    public var armedAt: Date
+    /// Typed after the clear lands. Nil clears and stops there.
+    public var then: String?
+
+    public init(armedAt: Date = Date(), then: String? = nil) {
+        self.armedAt = armedAt
+        self.then = then
+    }
+
+    /// What the verb prints and the notice repeats.
+    public func said(_ id: String) -> String {
+        let tail = then.map { ", then: \($0)" } ?? ""
+        return "armed a clear on \(id); it fires when the row is idle\(tail)"
+    }
 }
 
 public struct RosterOverlay: Codable, Sendable, Equatable {
@@ -134,6 +171,26 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
         }
         if mark.sessionId == nil { mark.sessionId = sessionId }
         marks[id] = mark.isEmpty ? nil : mark
+    }
+
+    /// Arm a clear on a row, or disarm one (`nil`). Returns what was
+    /// there, so a cancel can say whether it cancelled anything.
+    @discardableResult
+    public mutating func arm(_ clear: PendingClear?, id: String, sessionId: String?) -> PendingClear? {
+        var mark = mark(for: id, sessionId: sessionId) ?? SessionMark()
+        let previous = mark.clear
+        mark.clear = clear
+        if mark.sessionId == nil { mark.sessionId = sessionId }
+        marks[id] = mark.isEmpty ? nil : mark
+        return previous
+    }
+
+    /// Every row with a clear waiting, newest first. The read half of
+    /// `ccc clear` — a write with no way to look at it is a finding.
+    public var armedClears: [(id: String, mark: SessionMark)] {
+        marks.filter { $0.value.clear != nil }
+            .sorted { ($0.value.clear?.armedAt ?? .distantPast) > ($1.value.clear?.armedAt ?? .distantPast) }
+            .map { (id: $0.key, mark: $0.value) }
     }
 
     /// Drop marks on sessions the roster no longer has, once they are old

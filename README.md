@@ -91,6 +91,13 @@ ccc spawn … [--replace|--allow-duplicate] [--no-space-check]
                                     # floor is refused too (CCC_SPAWN_FLOOR_GB, default 10; 0 turns it off)
 ccc stop <ref> [--json]             # end a running session; its conversation and worktree are kept
                                     # (`ccc attach` resumes it). `ccc rm` is the one that deletes
+ccc clear <ref> [--then "<prompt>"] [--json]
+                                    # arm a /clear: when the row next goes idle, ccc types /clear into its
+                                    # pane, then --then's prompt. THE CALLER IS THE COMMANDER ON ITS OWN REF,
+                                    # the last act after an item lands — which is why it arms rather than
+                                    # waits (while this call runs, that row is busy because of this call).
+                                    # Commit the bank first: a dirty worktree is refused. A person's unsent
+                                    # draft in the box stops it. --cancel disarms; no ref lists what this Mac has armed
 ccc base <ref> [<branch> | --clear] # what the worktree branch is measured against and lands on: read it,
                                     # record one for a worktree cut by hand, or forget it (`branch.<b>.ccc-base`
                                     # in the repo's config; VS Code's vscode-merge-base is honoured too)

@@ -173,6 +173,44 @@ enum CLI {
                     return 2
                 }
                 return try await originVerb(verb, ref: ref, json: json)
+            case "clear":
+                // `--then` takes a whole prompt, so the words are walked
+                // rather than filtered: `ccc clear --then "carry on" a1b2`
+                // must not read the prompt as the ref.
+                var words: [String] = []
+                var then: String?
+                var index = 0
+                while index < rest.count {
+                    let arg = rest[index]
+                    switch arg {
+                    case "--then":
+                        guard index + 1 < rest.count else {
+                            stderr("ccc: --then needs a value")
+                            return 2
+                        }
+                        then = rest[index + 1]
+                        index += 1
+                    case "--cancel", "--json":
+                        break
+                    default:
+                        guard !arg.hasPrefix("--") else {
+                            stderr("ccc: unknown flag '\(arg)' (--then, --cancel)")
+                            return 2
+                        }
+                        words.append(arg)
+                    }
+                    index += 1
+                }
+                // No ref at all is the read half: what is armed right now.
+                guard let text = words.first else {
+                    if rest.contains("--cancel") { return usage() }
+                    return try await armedClears(json: json)
+                }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await clear(ref: ref, then: then, cancel: rest.contains("--cancel"), json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -402,6 +440,58 @@ enum CLI {
         }
         let said = try await cli.mark(change, id: ref.id)
         if json { printJSON(["ref": ref.description, change.rawValue: "true", "said": said]) } else { print(said) }
+        return 0
+    }
+
+    /// `ccc clear <ref> [--then "<prompt>"]` (item 27): the loop's "clear
+    /// and continue" step as a verb. It **arms** — the caller is normally
+    /// the commander on its own ref, and a session cannot wait for its own
+    /// turn to end — and the pane on that Mac fires it when the row goes
+    /// idle. `--cancel` disarms; no ref at all lists what is waiting.
+    static func clear(ref: SessionRef, then: String?, cancel: Bool, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let outcome: ClaudeCLI.ClearOutcome
+        do {
+            outcome = try await cli.clear(id: ref.id, then: then, cancel: cancel)
+        } catch {
+            stderr("ccc: \(error)")
+            return 1
+        }
+        if json { printJSON(outcome) } else { print(outcome.said) }
+        return 0
+    }
+
+    /// `ccc clear` with no ref: the clears waiting on this Mac. A write
+    /// with no way to look at it is a finding, and an armed clear is a
+    /// thing that will type into a session minutes from now.
+    static func armedClears(json: Bool) async throws -> Int32 {
+        let armed = RosterOverlay.load().overlay.armedClears
+        if json {
+            printJSON(armed.map { entry -> [String: String] in
+                var row = ["ref": entry.id, "armedAt": ISO8601DateFormatter().string(from: entry.mark.clear?.armedAt ?? Date())]
+                if let then = entry.mark.clear?.then { row["then"] = then }
+                return row
+            })
+            return 0
+        }
+        guard !armed.isEmpty else {
+            print("no clears armed (`ccc clear <ref>` arms one)")
+            return 0
+        }
+        for entry in armed {
+            let clear = entry.mark.clear
+            let then = clear?.then.map { " · then: \($0)" } ?? ""
+            print("\(entry.id)  armed \(SessionEvent.spell(Date().timeIntervalSince(clear?.armedAt ?? Date()))) ago\(then)")
+        }
         return 0
     }
 

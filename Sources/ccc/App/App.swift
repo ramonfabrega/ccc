@@ -45,6 +45,10 @@ enum App {
         // app picks it up on the next tick and says so, so a new Mac never
         // needs a relaunch to appear in the roster.
         controller.onHostsChanged = { [weak window] said in window?.showNotice(said) }
+        // An armed clear (item 27) types into a pane minutes after the
+        // verb was run and the caller has gone; the notice is where that
+        // becomes something a person saw happen.
+        controller.onClearFired = { [weak window] said in window?.showNotice(said) }
         do {
             try controller.serve()
         } catch {
