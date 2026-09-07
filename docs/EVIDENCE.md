@@ -4937,3 +4937,27 @@ loop's first `read` returned `{`. The detector reporting the commit that
 fixed the stream it reports on is the second time it has been its own
 fixture (`efdbb44`), and it is the cheapest one available: the run that
 proves the emitter is the run that produces the event.
+
+## Cut as v0.1.34 (2026-09-07)
+
+`v0.1.34`, build **227**, 5,308,285 bytes, notarized and published to both
+CDN keys; the live feed's `length=` matches the zip's real
+`content-length`, and `scripts/install --dist` put the released bytes on
+studio. Two commits since `v0.1.33`, both the JSONL fix.
+
+**This cut is the fix, not a sync.** The premise that studio was already
+carrying it was wrong, and the wrongness is worth keeping: every
+`ccc watch --json` running on studio at the time — attrition's Monitor
+among them — was `/opt/homebrew/bin/ccc` → `~/Applications/ccc.app`,
+**0.1.33 (224)**, whose `--help` still printed the old promise. The fix
+existed only in one worktree's `.build/debug/ccc`, which is why the live
+proof had to name that path explicitly. A dev binary that fixes nobody's
+stream is the same shape as studio-green-proves-nothing (`CLAUDE.md`,
+"Rules earned"): **the consumers were on the released build, so the
+release was the fix reaching them.**
+
+The installed 0.1.34 now says it:
+
+```
+--json:  JSONL: one compact SessionEvent per line, flushed as it happens — kind, ref, …
+```
