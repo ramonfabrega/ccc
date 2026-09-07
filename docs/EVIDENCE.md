@@ -4985,6 +4985,17 @@ same thought — **a release carried to a Mac still has not reached the
 process that was already running there.** The watcher has to be
 restarted, and only its owner can do that.
 
+**And the restart has to be measured, not remembered.** The owner of one
+of those three did restart, promptly and accurately — confirmed
+`0.1.34 (227)` on the installed path, stopped its Monitor, started a
+fresh one at 15:51:44 — and reported that nothing on its side was still
+on the old image. One process short: a second `ccc watch --json --all`
+it had left running against a file since 15:33:31 was still up, and that
+file's last object, written at 15:55:56 — six minutes after the swap —
+was eleven lines. So the check is **`ps -o lstart` against the binary's
+mtime**, not the recollection of having restarted. A fleet of one is
+still a fleet to enumerate.
+
 ## one landing, one banner — and the refs beat the ping (2026-09-07)
 
 The live run the rate section said it was owed, from attrition, with its
