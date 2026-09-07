@@ -14,24 +14,41 @@ verbatim in `docs/EVIDENCE.md` (`experiment 2`, `waitUntilDrawn`,
 
 ## The frontier
 
-**v13 is the frontier, and it is item 17.** A survey on 2026-09-04 went
-looking for the phone and found that **the phone's job is already shipped**:
-Remote Control puts five of nine live workers in the Claude app, where they
-can already be messaged and their permission prompts answered. So ccc is
-not building unblocking — it is building what RC leaves out, starting with
-the fact that **ccc cannot see any of it** (`docs/EVIDENCE.md` "the mobile
-survey"; the amended argument is under "Later").
+**ccc is v1, and the swarm is why.** The first real commander swarm ran on
+2026-09-06 — three commanders, seven workers, a machine that locked
+mid-run — and **every gap it exposed was at the spawner/roster layer and
+none in the terminal embed**. Seven landed that night and left without
+entering here (`docs/EVIDENCE.md` "the swarm's five findings"): the name
+guard and `ccc stop`, the free-space floor, `ccc update`'s tip, the stall
+transition, the command manifest, `.worktreeinclude`, `claude rc`'s
+paragraph. They left items 24 and 25 and one question.
 
-**v8 through v12 are done** (`docs/EVIDENCE.md` "v8 slice 1" … "v12 slice
-2"). Two rules from them stay: **a fix for a bug that lives on the other
-Mac is unproved until a release carries it there**, and **a verb with
-fewer surfaces than its opposite will be reported missing**.
+**v13 is the frontier, and it is item 17.** A survey on 2026-09-04 found
+that **the phone's job is already shipped** — Remote Control puts most
+live workers in the Claude app, where they are messaged and answered — so
+ccc builds what RC leaves out, starting with the fact that **ccc cannot
+see any of it** (`docs/EVIDENCE.md` "the mobile survey").
 
-Two **questions, not items**, left over. `suggestedReply` is on the row and
-shown nowhere; using it means answering without attaching (see "Later").
-And the banner receipt's only correct form is the **run-delta**: hold each
-job's link count when it enters `working`, draw what appeared since — ~20
-lines, and its own measurement says it draws an empty line 19 in 20.
+**v8 through v12 are done.** Three rules from them and from the swarm
+stay: **a fix for a bug on the other Mac is unproved until a release
+carries it there**; **a verb with fewer surfaces than its opposite will be
+reported missing**; and **a string no test reads is a string nothing keeps
+true** — which is how `ccc update`'s help went a release stale and cost a
+worker its merge.
+
+Three **questions, not items**. `suggestedReply` is on the row and shown
+nowhere; using it means answering without attaching (see "Later"). The
+banner receipt's only correct form is the **run-delta** — hold each job's
+link count when it enters `working`, draw what appeared since — and its
+own measurement says it draws an empty line 19 in 20. And **the CLI could
+be a different language now**: since v0.1.24 it answers from the running
+app over the socket, so it is already a thin client, and superterminal
+ships its CLI as a separate crate over exactly that seam. A Bun `ccc` on
+incur would get `--llms`, `--schema` and `--format toon` for free instead
+of the hand-written `CommandManifest`. **The price is Bun on every ssh
+host** — and the hop's design is that a remote roster comes from the far
+side's own `ccc`, so it trades one binary to install for two. Argue it
+before a second host is added.
 
 Below the frontier: **item 6 is air's** and happens the next time the lid
 closes overnight. Items 5 and 16 are leftovers and one missing twin, none
@@ -44,29 +61,24 @@ roster, and air's measurement of it is owed from the next lid night.
 
 A sort by model. The Session menu's archive/pin items (the context menu
 has them). **Selection autoscroll** waits on a scrollback viewport that
-does not exist: `GhosttyPane.scroll` forwards every wheel event to the
-child, so the 2,000 lines the core keeps are unreachable and a drag that
-leaves the grid has nothing to tick — low value while the pane only ever
-runs `claude attach`, which scrolls its own history (re-checked
-2026-09-03). **`ccc window show` when another app holds focus** — measured
-2026-09-02: `NSApp.activate()` is cooperative since macOS 14 and the
-window stayed behind while `open -a` brought it front, so `show`'s CLI
-side should activate through `NSWorkspace`. **Twin gaps from the audit**
+does not exist — `GhosttyPane.scroll` forwards every wheel event to the
+child, so a drag off the grid has nothing to tick; low value while the
+pane only ever runs `claude attach`, which scrolls its own history
+(re-checked 2026-09-03). **`ccc window show` when another app holds
+focus**: `NSApp.activate()` is cooperative since macOS 14 (measured
+2026-09-02), so `show`'s CLI side should go through `NSWorkspace`.
+**Twin gaps from the audit**
 (`docs/EVIDENCE.md` "the audit"): `ccc ask <ref>` (the socket has it; the
 CLI reaches it only through `update --ask`), a mouse-button `send`, `hosts
-remove|check` in the window, an age column; and the verb list is strings
-in two places no test can reach — `WindowAction` is the shape to copy.
+remove|check` in the window, an age column. (The CLI verb list left this
+list on 2026-09-06: it is `CommandManifest`, and two tests read it.)
 
 ### 6. The remote pane's reattach has still never met a lid
 
 The eviction half is **answered and gone** (docs/EVIDENCE.md "item 6 — the
-lid"): a closed lid is 18 dark wakes a night; the master comes back wedged
-on 17 of 18; a wake costs 14–22 s that no client-side fix can shorten,
-because the tailnet is what is missing. `scripts/lidtest` is the instrument.
-
-**Fixed from those numbers** (`docs/EVIDENCE.md` "v0.1.19 and v0.1.20"):
-the 20 s reattach window gave up seconds *before* the network returned on
-three wakes in eighteen; it is 60 s now, pinned by `WakeWindowTests`.
+lid"): a wake costs 14–22 s that no client-side fix can shorten, because
+the tailnet is what is missing. `scripts/lidtest` is the instrument, and
+the 20 s reattach window is 60 s now, pinned by `WakeWindowTests`.
 
 **Still unmeasured, and the night decides it.** `ccc stats` grew a `wake`
 line — `wakes`, reattach `attempts`, `gaveUp` — because three outcomes
@@ -86,12 +98,11 @@ v0.1.20 or later** from the feed; 0.1.18 measures the defect, not the fix.
 
 ### 15. What a second viewer does to the grid
 
-CLAUDE.md and `docs/DESIGN.md` §4c both point here. Measured 2026-09-02: a second `claude attach` is **accepted**, output is
-broadcast to every viewer, and input from any viewer goes in — which is
-why the pane on any Mac is just `claude attach <id>` and no ccc depends on
-another ccc. The shared PTY is **last-resize-wins across viewers**, and
-what is still open is whether a secondary viewer should resize it at all
-or render the grid as-is at whatever size the first viewer set.
+CLAUDE.md and `docs/DESIGN.md` §4c both point here. Measured 2026-09-02: a
+second `claude attach` is **accepted** and every viewer sees and drives it,
+which is why no ccc depends on another ccc. The shared PTY is
+**last-resize-wins**, and what is open is whether a secondary viewer should
+resize it at all or render the grid at whatever size the first one set.
 
 **It comes due the first time air joins a session studio already has up**
 — the ordinary case the moment the lid opens somewhere else — so this is
@@ -99,35 +110,28 @@ the one item that will announce itself rather than wait to be picked.
 
 ### 16. The shell pane has no twins but open and close
 
-`ccc shell <ref>` opens the pane and `ccc shell --close` closes it, and
-that is the whole surface: every verb that could read or drive it —
-`snapshot`, `select`, `send`, `copy`, `pixel --cell` — addresses the
-*session* pane (measured 2026-09-04 with a shell pane up and nothing
-attached: `ccc send …` answers `ccc: nothing attached`).
+`ccc shell <ref>` opens it and `--close` closes it, and that is the whole
+surface: every verb that could read or drive it — `snapshot`, `select`,
+`send`, `copy`, `pixel --cell` — addresses the *session* pane (measured
+2026-09-04: with a shell pane up and nothing attached, `ccc send …`
+answers `ccc: nothing attached`).
 
-This is the twin rule biting one level up — a whole **pane** with two verbs
-and no others — and it matters beyond tidiness: the shell pane is the only
-place ccc can paint **chosen bytes** into a real window, so anything that
-wants a known sequence on screen and read back has nowhere else to put it.
-`focus` already reaches both panes; a target on the request, not a second
-verb set, is the shape to copy.
+The twin rule biting one level up — a whole **pane** with two verbs — and
+it matters beyond tidiness: the shell pane is the only place ccc can paint
+**chosen bytes** into a real window. `focus` already reaches both panes; a
+target on the request, not a second verb set, is the shape to copy.
 
 ### 17. ccc is blind to RC, and the phone is already in the pocket
 
-Numbers in `docs/EVIDENCE.md` "the mobile survey". None of this is the
-phone; all of it makes the phone the user already has work better.
+None of this is the phone; all of it makes the phone the user already has
+work better (`docs/EVIDENCE.md` "the mobile survey").
 
-**Slices 1 and 2 are done** (`docs/EVIDENCE.md` "the mobile survey", "the
-pane that could not say it had looked away", "Cut as v0.1.23"). The row
-says which sessions are answerable from the phone (`rc`, an `iphone`
-badge), read off `respawnFlags` — the CLI roster carries no flag signal
-and `bridgeSessionId` is on every job. And the pane now answers DEC 1004:
-the harness suppresses the phone's push while a terminal reports focus,
-its guard skips the pulse only on an explicit blur, and ccc reported
-nothing — so an attached pane could only ever *over*-suppress the phone.
-`TerminalHost.setFocused` and `ccc focus [in|out]` fix that; v0.1.23
-carries it. **The user's half is unmeasured**: whether the phone now buzzes
-for a session ccc holds and nobody is watching.
+**Slices 1 and 2 are done** and their argument is in `docs/EVIDENCE.md`
+("the mobile survey", "the pane that could not say it had looked away",
+"Cut as v0.1.23"): the row says which sessions the phone can answer, and
+the pane answers DEC 1004 so it can stop over-suppressing push. **The
+user's half is unmeasured** — whether the phone now buzzes for a session
+ccc holds and nobody is watching.
 
 **Slice 3: `CLAUDE_CLIENT_PRESENCE_FILE`** (harness v2.1.181+) suppresses
 push while a marker file exists; the harness docs want "a screen-lock
@@ -138,19 +142,51 @@ signal is wrong**: studio is always-on, so "unlocked" would suppress push
 all day; idle time is the signal — unlocked *and* recently touched. **Only
 if slice 2 was not enough**: the bug just fixed was too much suppression.
 
-**The box exists** (`ccc spawn --rc`, 2026-09-04); whether it should be
-the default is still the user's call. The same day, at the user's word,
-`--permission-mode` **defaults to `auto`** and the row marks a background
-job launched with a mode that asks (`asks` in `ccc list`, a badge in the
-window) — as launched, since a runtime toggle never reaches the flags.
+**The box exists** (`ccc spawn --rc`); whether it should be the default is
+still the user's call. **`claude rc` is not this box** and the difference
+cost a day — docs/HARNESS.md carries the paragraph, including what an
+rc-spawned session shows in the daemon's roster, which is **unmeasured**
+and is the rest of this item's title.
 
-**Item 18 left the same day** (`docs/EVIDENCE.md` "item 18 — the base is
-recorded"): a worktree branch's base is recorded in the repo's config,
-`ccc spawn --worktree` cuts off the asker's branch when that is not the
-default (or off `--base`), `ccc base <ref>` reads and writes it by hand,
-and the column, `merge`, `update` and `pull` follow it. Left open there:
-the sheet has no worktree or base field, and a remote `--base` is refused
-rather than routed to the far side's ccc.
+**Item 18 left on 2026-09-04** (`docs/EVIDENCE.md` "item 18 — the base is
+recorded"). Left open there: the sheet has no worktree or base field, and
+a remote `--base` is refused rather than routed to the far side's ccc.
+
+### 24. A worktree ccc cut is nobody's to clean
+
+`ccc rm` passes `claude rm` through, and the harness deletes the worktree
+it made. **It did not make this one**: `--base` cuts the tree here and
+hands the harness a plain cwd, so the daemon never learns it is a
+worktree. Measured 2026-09-06 while proving item 23 — `ccc rm 0f7b8c26`
+answered `removed`, exit 0, and left the tree, the branch and the
+`ccc-base` record on disk; `git worktree remove --force` and `git branch
+-D` finished it by hand. Every ccc-cut worktree on the fleet is in that
+state, and the count only grows.
+
+The shape is already decided by everything around it: `SpawnResult`
+records what ccc made, `ccc base` records the branch's base, so **ccc
+knows exactly which trees are its own** and can clean those and only
+those, after the harness's `rm` returns and with git's own refusals
+(dirty, unpushed) as the guard — never ccc's judgment. The one open
+question is whether it needs asking first, and the answer is probably not:
+`ccc rm` is already the destructive verb, and leaving half of it undone is
+the surprise.
+
+### 25. The stall window is a guess, and the next one is not
+
+30 minutes is a constant (`StallWindow`), and nothing at that boundary
+distinguishes a wedged session from one twenty minutes into a release
+suite. The honest next version is **cadence-relative**: each session
+against its own median gap between job-file writes, which is a number the
+poll already sees every tick.
+
+**Do not build it on the argument that a constant is crude.** Build it
+when the constant has been noisy, and say so with a count — this fleet's
+own rule (`docs/EVIDENCE.md` "the swarm's five findings"): count how often
+the fixed window was useful before replacing it. The instrument is `ccc
+watch --json`, whose `stalled` lines carry `stillFor`; a week of them is
+the whole measurement. Until then the shape is what makes it safe — one
+event per stall, re-armed only by movement.
 
 ## Later
 
@@ -158,29 +194,23 @@ Reply without attach — the session inbox socket, one probe away. RC-free
 approvals via the `PermissionRequest` hook, the *only* write path the
 phone in the pocket does not already have. The phone, if the Mac earns it.
 
-**Argued 2026-09-04 and amended the same day, by measurement**
-(`docs/EVIDENCE.md` "the mobile survey"): **answering the "your turn" from
-a phone is already shipped**, through Remote Control, to these sessions —
-five of nine live workers carry `--rc`, and the Claude app messages them,
-answers their prompts and sets `/model`. RC has no third-party entry
-point. **A ccc phone must earn its place on something other than unblocking.**
+**Answering the "your turn" from a phone is already shipped**, through
+Remote Control (`docs/EVIDENCE.md` "the mobile survey"). RC has no
+third-party entry point, so **a ccc phone must earn its place on something
+other than unblocking.**
 
-**Approvals before reply.** `PermissionRequest` is documented, with a
-`decision` object (`docs/HARNESS.md`), and `ccc hook` already receives
-Notification over the socket; the new part is a hook that blocks and
-answers. Reply is the *other* feature, because **a peer message can never
-approve** — "never counts as your consent". One queue line was two features.
+**Approvals before reply**, because **a peer message can never approve** —
+"never counts as your consent" — so these are two features and were one
+queue line. `PermissionRequest` is documented with a `decision` object and
+`ccc hook` already receives Notification over the socket; the new part is a
+hook that blocks and answers.
 
-**Reply has a documented path.** Every session binds an inbox socket and
-the docs sanction posting into it from a script or hook. The address is a
-join ccc already makes: **`replPid`** → `/tmp/cc-socks/<replPid>.sock`,
-nine for nine (`pid` is the launcher); a session's own is
-`CLAUDE_CODE_MESSAGING_SOCKET`, auth optional on macOS. A
-`bypassPermissions` receiver holds the message; a prompting one takes it.
-**What is left is one probe**: the line's format is undocumented and in
-the CLI's bytecode, and a probe from a session was refused by the auto-mode
-classifier (correctly: writing to an IPC socket reads as injection). Run
-it as `! python3 …`; `ccc reply <ref> "<text>"` is a small twin after it.
+**Reply has a documented path** (address and caveats: `docs/HARNESS.md`
+"The session inbox socket"). **What is left is one probe**: the line's
+format is undocumented and in the CLI's bytecode, and a probe from a
+session was refused by the auto-mode classifier — correctly, since writing
+to an IPC socket reads as injection. Run it as `! python3 …`; `ccc reply
+<ref> "<text>"` is a small twin after it.
 
 **The phone breaks exactly one locked decision**: *"PTY is always local"*
 — a subprocess, and iOS has no fork/exec. An in-process ssh client

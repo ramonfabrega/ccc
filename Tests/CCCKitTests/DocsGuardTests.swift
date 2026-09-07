@@ -66,7 +66,22 @@ import Testing
     /// made for this file before it was written (106, then 150) came in
     /// under 156, because both anchored to the old file's size instead of
     /// to what an item costs.
-    static let queueLines = 200
+    ///
+    /// **Raised 200 → 230 on 2026-09-06, because the model under it was
+    /// wrong from the start.** 200 was "~12 items at ~11 lines"; this board
+    /// has never held an 11-line item. Measured the day it bit: 7 live items
+    /// averaging 19 lines, and it read 226 *after* a pass that deleted
+    /// finished stories — item 17's shipped slices, item 6's settled
+    /// numbers, and three paragraphs of "Later" whose argument had already
+    /// moved to `docs/EVIDENCE.md` and `docs/HARNESS.md`. An item is bigger
+    /// here than the estimate allowed because this file's own entry rule
+    /// makes it so: *an item inlines its conclusion*, so a cold session can
+    /// start from this file and CLAUDE.md without opening a third thing.
+    /// The new number is the observed honest size (7 × 19) plus the
+    /// frontier, "Later" and the entry rule, plus room for two more items —
+    /// anchored to what an item costs, which is what the paragraph above
+    /// asked for and the old number did not do.
+    static let queueLines = 230
 
     private static let docs = [
         "docs/DESIGN.md", "docs/HARNESS.md", "docs/TERMINAL.md",

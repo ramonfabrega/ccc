@@ -3368,3 +3368,224 @@ ccc list | grep 58023208   (one tick later)
 it — that was `origin/master` ahead of `master`, a number about a branch
 this worktree never lands on. The record is one line in cuanto's
 `.git/config`; `--clear` takes it back.
+
+## the swarm's five findings (2026-09-06)
+
+The first real commander swarm — three commanders, seven workers, and a
+machine that locked mid-run on 09-04 at 23:13Z — held. **Every gap it
+exposed was at the spawner/roster layer and none in the terminal embed**,
+which is the sentence that made ccc v1. What follows is what each one
+measured, in the order they were worked.
+
+### master was 22 commits behind its own frontier
+
+`e904087` was not a descendant of `4df8f55` (ingest #23's audit point):
+twelve commits, five tags (v0.1.21–v0.1.25) and the live queue existed
+only on `worktree-v2`. `git merge-base --is-ancestor master worktree-v2`
+was true and the reflog showed 20+ consecutive fast-forwards before it, so
+this was a break in cadence and not a divergence. Landed with ccc's own
+verbs, which is the note worth keeping — the session ref is the whole
+address:
+
+```
+ccc merge b87b7169 --ff-only --json
+  fast-forwarded worktree-v2 → master (22 commits, now 1575db7)
+ccc push b87b7169 --base --json
+  pushed master → origin (22 commits)
+```
+
+The merge read the base off the row (`master`, inferred, `baseRecorded:
+false`) and refused nothing. All five tags were already on origin.
+
+### two jobs answered to one name
+
+On 09-06 two jobs named `att-capture` existed for twenty minutes in one
+`lane-capture` worktree: the daemon still held Friday's, and the attrition
+commander respawned the lane with the same name and cwd. By-name routing —
+`SendMessage`, the lore thread, the roster — goes to the newest, so both
+halves mis-attributed and neither was addressable. Credit: the attrition
+commander, which reported it against itself.
+
+**The predicate is the name alone, not name+cwd.** The report named the
+conjunction, but the harm it describes needs only the name, and a namesake
+in a second folder mis-routes exactly as badly. The converse does *not*
+hold: the same roster carried six live rows under `~/code/work/cuanto`,
+and a second session where the work is is the commonest thing anyone does,
+so cwd alone is reported and never decisive. Live means not
+done/failed/stopped — that roster held two `beta-fb-polish` and two
+`beta-fb-metadata` in ended states, and re-using a finished lane's name is
+what a commander does every loop.
+
+Proved on owned fixtures (`--model haiku` drafts, removed after):
+
+```
+ccc spawn --name ccc-guard-fixture --model haiku --cwd …   →  af9223e5 (draft)
+ccc spawn --name ccc-guard-fixture …                       →  exit 1, nothing dispatched
+  'ccc-guard-fixture' is already blocked as af9223e5 in that same folder —
+  messages, the roster and lore would all resolve to whichever started last.
+  Stop it first (`ccc stop af9223e5`), spawn with --replace to do that here,
+  or --allow-duplicate to mean it.
+ccc spawn … --replace                →  stopped af9223e5, spawned cfc77fb8
+ccc spawn … --allow-duplicate        →  89ae69e5, beside it
+```
+
+**The first attempt at this proof spawned a real session.** The name it
+tested (`att-loop-march`) had gone dead six minutes earlier — the attrition
+commander merged `origin/loop-219` at 19:33:43 and cleaned up its worker —
+so the guard correctly saw no live namesake and dispatched. Nothing was
+lost, and the lesson is the fixture: **test a guard against a name you own
+and can watch, never against a live fleet's row you read a minute ago.**
+
+`--replace` needed `ccc stop <ref>`, which did not exist: `stopped` has
+been a state on every row since v1 with no verb to produce one — the twin
+rule biting from the read side. `claude stop` keeps the conversation and
+the worktree; `rm` is the one that deletes.
+
+### the disk had no floor
+
+Friday 23:13Z the Mac locked when an attrition worker's release suite
+reached 27.6 GB with 53 GB of swap full, on a disk crowded by six Rust
+`target/` trees (1–18 GB each) and 25 Next `.next/` trees. Nothing in ccc
+noticed because nothing looked.
+
+**The floor is a constant and the claim it makes is deliberately small.**
+No spawn-time number predicts a 27.6 GB suite an hour later — Friday's
+worker would have cleared any floor. 10 GB is where macOS stops being able
+to grow swap, which is the failure that actually happened: it refuses the
+spawn that starts on an already-doomed disk and says nothing about the one
+that dooms it. Measured live at 158.3 GB free, so the guard is silent here
+until it is not.
+
+### `ccc update` was the verb, and could not be found
+
+A worker's `git merge --no-edit origin/worktree-replan-pdb` was refused by
+the auto-mode permission classifier and handed back to its commander — the
+right failure, and it happened while a verb that does exactly that, with
+guards the raw merge has not, sat one word away. **Two things made it
+unfindable**, and neither was the worker's fault:
+
+- the CLI help said "merge the repo's default branch" a release after
+  v0.1.25 taught `update` the *recorded* base, so a worker reading it
+  would correctly conclude the verb was not for it;
+- it merged `refs/heads/<base>` while the worker asked for
+  `origin/<base>`. On a lone repository those are one ref in two costumes.
+  Not here, because of a shape a lone repository never makes: **the base
+  branch is checked out in another session's worktree.** attrition's
+  commander holds `worktree-replan-pdb` while every worker branches off
+  it, and `ccc pull` cannot advance that ref — it fast-forwards in the
+  main checkout and refuses unless `HEAD == base`, and the main checkout
+  is on `main`. On drift there was no ccc path at all.
+
+Measured on the live fleet before the change — `att-loop-mem` (997ecc90),
+base `worktree-replan-pdb`:
+
+```
+rev-list --left-right --count refs/heads/worktree-replan-pdb...refs/heads/loop-235   20  1
+rev-list --left-right --count refs/remotes/origin/…            ...refs/heads/loop-235   20  1
+rev-list --left-right --count refs/remotes/origin/…            ...refs/heads/worktree-replan-pdb   0  0
+```
+
+Local and origin agreed, so `ccc update 997ecc90` would have worked that
+minute — **only because the commander pushes promptly.** The gap was one
+unpushed commit away the whole time. `WorktreeInfo.baseTip` now follows
+`origin/<base>` when origin strictly holds every local commit and more,
+`↓N` counts against the same tip the verb merges, and the answer names
+which it used. A *diverged* base stays local: that is a human's call. No
+worker writes into the commander's tree.
+
+### a session that stops moving
+
+cuanto's Lane B was contracted to report at each landing point, sent zero
+messages, and sat with two unpushed commits for two days. `ccc watch` was
+silent and right to be: `blocked`/`done`/`failed`/`stopped` are the only
+things that ever happen to a row, and it was `working` throughout. **A
+stall is a non-event, and a non-event needs a clock.**
+
+`updatedAt` in the daemon's job file is the only clock ccc has for a
+working session — `startedAt` says when it began and nothing else says
+when it last moved. Read live 2026-09-06 against a session eight seconds
+into a tool call, so it tracks turns rather than sessions.
+
+30 minutes is a constant, not a measurement: nothing at this boundary
+distinguishes a wedged session from one twenty minutes into a release
+suite. **What makes it safe to ship at a guess is the shape** — one event
+per stall, re-armed only by real movement, so a long legitimate step costs
+one line and never a stream. Forced to a 12-second window against the live
+fleet, two rows fired once each with the daemon's own sentence:
+
+```
+20:10:22  ⏳ stalled  3c382923  attrition has not moved in 0m — Checking how the commander was opened before
+20:10:22  ⏳ stalled  b87b7169  ccc has not moved in 0m — item 3 verdict: ccc update bug…
+```
+
+That run found the one bad string: a sub-minute stall spelled `0m`, which
+reads as a bug rather than as a small number. It says seconds now. The
+cadence-relative version — each session against its own median gap — is
+the next one, and **the thing to do before building it is count how often
+the fixed one was useful.**
+
+### the verb list was a string nothing read
+
+`ccc spawn --help` answered "unknown flag '--help' for spawn" — the worst
+kind of gap, because it reads as a typo rather than as a missing feature.
+The flag was the symptom: the whole description of every verb was one
+126-line string literal inside `usage()` that no test could reach, which
+is *how* `update`'s entry above went a release stale. `CommandManifest` is
+the 35 verbs as data, and `--help`, `ccc <verb> --help`, `--llms` and
+`--schema` all render from it. The drift guards — every dispatched verb in
+the manifest, every manifest verb dispatched — found two on their first
+run: `focus` and `install-cli` both answer `--json` (it is stripped
+globally in `CLI.run`, so every verb accepts it) and neither synopsis said
+so.
+
+**Two incur conventions were deliberately not borrowed**, recorded so
+nobody re-derives them: `--format toon` pays for itself over thousands of
+homogeneous rows and ccc's largest answer is a roster of about thirty; a
+`--token-limit` that trims a roster answers a different question than the
+one asked, when `--host` and `--archived` are the honest narrowings and
+exist. Both earn their place the day an answer here is genuinely large.
+
+### the secrets did not follow a worktree ccc cut
+
+Asked as a doc question — which path honours `.worktreeinclude` — and the
+measurement made it a defect. Across cuanto's 22 worktrees, whose
+`.worktreeinclude` names `api/config/master.key`: **all 3 that ccc cut
+lacked it; 16 of the 19 others had it.** Nothing in the roster, the row or
+the spawn's answer distinguished them, so it could only surface as a worker
+whose API would not boot.
+
+git does the matching (`ls-files --others --ignored --exclude-from`), so
+no pattern language here can drift from gitignore's. One subtraction: a
+candidate inside a directory git ignores **by name**. The harness copied
+`ts-monorepo/apps/slackbot/.env` and not `…/node_modules/psl/.env`, which
+a bare `.env` matches equally. `check-ignore` on each candidate's
+ancestors is the exact question; **`ls-files --directory` is not, and was
+tried first** — it collapses any wholly-untracked directory, so in a
+fixture where `apps/web/.env` was the only thing under `apps/` it reported
+`apps/` as ignored and dropped the file the test existed to carry.
+
+Verified against the real repository — a ccc-cut worktree in cuanto, off
+`storefront`, removed after:
+
+```
+"carried" : [ ".claude/settings.local.json", "api/.env",
+              "api/config/master.key", "ts-monorepo/apps/slackbot/.env",
+              "ts-monorepo/apps/slackbot/worker-configuration.d.ts" ]
+```
+
+Exactly the five the harness puts in its own, and not the node_modules
+one. **One thing that probe found and did not fix**: `ccc rm` removed the
+session and left the worktree on disk, because ccc cut it and handed the
+harness a plain cwd, so the daemon never knew it was a worktree. Cleaning
+it took `git worktree remove` and `git branch -D` by hand. That is queue
+item 24.
+
+### `claude rc --help` is not a question you can ask from a script
+
+It printed its help and then kept running as the server; the call had to
+be killed. `claude rc` is a persistent per-directory server that spawns
+sessions from claude.ai/code and the phone — not a flag on a session, and
+not what `ccc spawn --rc` does. HARNESS.md carries the paragraph, the two
+reasons the user dropped it on 09-04 (not `auto`, and `--spawn worktree`
+cuts off the default branch, which is item 18's problem), and an explicit
+**unmeasured** on what an rc-spawned session shows in the daemon's roster.
