@@ -7,6 +7,12 @@ import Testing
 /// (item 4). Three things it must do that the blocking version could not
 /// be trusted to: not deadlock on a child that fills both pipes, not park
 /// a thread per child, and stop the child when its task is cancelled.
+///
+/// A fourth since 2026-09-06: **the drain's channel must not share the
+/// `Pipe`'s descriptor** (`docs/EVIDENCE.md` "the vanished descriptor").
+/// Sharing it crashed ccc on air, and the failure is a trap inside
+/// libdispatch with no ccc frame in it, so nothing here can catch it —
+/// what these tests can hold is the behaviour the `dup` must not change.
 @Suite struct SubprocessTests {
     @Test func capturesBothStreamsAndTheStatus() async throws {
         let out = try await Subprocess.run(["/bin/sh", "-c", "printf out; printf err >&2; exit 3"])
@@ -67,6 +73,31 @@ import Testing
         for _ in 0..<20 {
             let out = try await Subprocess.run(["/usr/bin/true"])
             #expect(out.status == 0)
+        }
+    }
+
+    /// The `dup` that fixed the vanished descriptor must not cost a byte
+    /// or an EOF: the channel reads a copy, and a copy of a pipe read end
+    /// sees exactly the same stream. 200 children at once, each with
+    /// output past a single read, all byte-exact — the shape a roster tick
+    /// makes all day, and the one that would show a truncated or
+    /// never-ending drain.
+    @Test func theDupSeesTheWholeStreamAndItsEnd() async throws {
+        let n = 100_000
+        try await withThrowingTaskGroup(of: Int.self) { group in
+            for i in 0..<200 {
+                group.addTask {
+                    let out = try await Subprocess.run(
+                        ["/bin/sh", "-c", "head -c \(n) /dev/zero | tr '\\0' a; printf %d \(i) >&2"])
+                    #expect(out.status == 0)
+                    #expect(out.stdout.count == n)
+                    #expect(String(decoding: out.stderr, as: UTF8.self) == "\(i)")
+                    return out.stdout.count
+                }
+            }
+            var total = 0
+            for try await c in group { total += c }
+            #expect(total == n * 200)
         }
     }
 }

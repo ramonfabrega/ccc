@@ -3721,3 +3721,80 @@ on disk: no   branches: master trunk
 An id the far side does not know comes back as its sentence and its
 status, not ours: `{"removed": "false", "said": "No job matching
 'deadbeef'"}`, exit 1. The host was removed after.
+
+## the vanished descriptor (2026-09-06)
+
+ccc crashed on **air**, v0.1.26 build 188, macOS 15.6.1, at 21:00:56.
+Ramon hit Reopen rather than Report and asked whether anything was left
+to look at; the `.ips` is written either way, and it named the bug.
+
+```
+exception:  EXC_BREAKPOINT (SIGTRAP)
+asi:        BUG IN CLIENT OF LIBDISPATCH: Unexpected EV_VANISHED
+            (do not destroy random mach ports or file descriptors)
+thread 4:   com.apple.libdispatch-io.streamq   << faulting
+            _dispatch_source_merge_evt.cold.1 → _dispatch_kq_drain → …
+thread 0:   RosterView.menu(for:) → HostConfig.defaultPath.getter
+```
+
+**No ccc frame in the crashing thread**, which is the shape of this bug:
+the trap fires where a descriptor vanished, never where it was closed.
+Thread 0 says what the user was doing — opening a roster row's context
+menu — and thread 4 says what actually died.
+
+`EV_VANISHED` means a descriptor a dispatch channel owned was closed by
+someone else. ccc creates exactly one `DispatchIO`, in `Subprocess.drain`,
+and it was handed the `Pipe`'s own descriptor — with the belief written
+down in the comment above it: *"The handle stays open: the `Pipe` owns the
+descriptor and closes it."* That is the documented contract inverted.
+`DispatchIO` takes ownership of the fd it is given and registers a kqueue
+filter on it; the caller must not close it until the cleanup handler runs.
+`Pipe`'s `FileHandle` believes the same thing about the same descriptor
+and closes it when the `Pipe` deallocates — the moment `Subprocess.run`
+returns.
+
+### The window is not rare; the trap is
+
+A pipe drained exactly the way `Subprocess.drain` drains a child's
+stdout, asking one question — had the channel run its cleanup handler by
+the time the read finished?
+
+```
+count: 300 drains, channel still held the fd at resume in 257
+```
+
+**86%.** Every one of those closes a descriptor the channel still owns.
+What decides whether it traps is the kqueue's state at that instant, and
+a close landing while a read is still armed is the case that does:
+
+```
+./pending old 40   →  exit 133 (SIGTRAP), 4 runs out of 4
+```
+
+whose crash report carries air's diagnostic byte for byte —
+`BUG IN CLIENT OF LIBDISPATCH: Unexpected EV_VANISHED`, EXC_BREAKPOINT,
+`libdispatch-io.streamq`. This reproduces the **mechanism**; the exact
+scheduling that armed the knote on air is not pinned down, and does not
+need to be, because the contract violation is the bug either way.
+
+### The fix, and what it must not change
+
+`dup` the descriptor for the channel and close the copy in the cleanup
+handler. The channel owns its copy, the `Pipe` owns the original, and
+neither can close the other's out from under it.
+
+```
+./pending dup 40   →  survived, 3 runs out of 3
+```
+
+A copy of a pipe read end sees the same stream and the same EOF, and
+`theDupSeesTheWholeStreamAndItsEnd` holds that: 200 concurrent children,
+100 KB each on stdout and a distinct stderr, all byte-exact. Nothing here
+can catch the crash itself — a trap inside libdispatch takes the test
+runner with it — so what the suite holds is the behaviour the `dup` must
+not cost.
+
+**Why air and not studio.** Nothing about air is special except its work:
+it polls a remote host over ssh, so every tick is a subprocess with two
+of these channels, and `stop()` and `tick(fresh:)` both cancel polls
+mid-flight. Studio polls locally. The same code was on both.

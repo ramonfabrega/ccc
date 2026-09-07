@@ -61,12 +61,43 @@ public enum Subprocess {
         }
     }
 
-    /// Everything the handle will ever deliver, read as it arrives. The
-    /// handle stays open: the `Pipe` owns the descriptor and closes it.
+    /// Everything the handle will ever deliver, read as it arrives.
+    ///
+    /// **The channel gets its own descriptor, and closes it itself.**
+    /// `DispatchIO` takes ownership of the fd it is handed: it registers a
+    /// kqueue filter on it and the fd must stay open and untouched until
+    /// the cleanup handler runs. A `Pipe`'s `FileHandle` believes it owns
+    /// that same fd and closes it when the `Pipe` deallocates, which is
+    /// the moment `run` returns — while the channel may still be tearing
+    /// down on its own queue. Two owners, one descriptor, and the loser is
+    /// libdispatch, which does not fail quietly:
+    ///
+    /// ```
+    /// BUG IN CLIENT OF LIBDISPATCH: Unexpected EV_VANISHED
+    /// (do not destroy random mach ports or file descriptors)
+    /// ```
+    ///
+    /// EXC_BREAKPOINT on `com.apple.libdispatch-io.streamq`, with no ccc
+    /// frame anywhere in the crashing thread — the trap fires where the
+    /// descriptor vanished, never where it was closed, which is why it
+    /// took a crash on air to find (v0.1.26 build 188, 2026-09-06
+    /// 21:00:56; `docs/EVIDENCE.md` "the vanished descriptor").
+    ///
+    /// **The window is not rare — the trap is.** Measured: in 257 of 300
+    /// drains the channel had not yet run its cleanup handler when the
+    /// read finished, so the descriptor the `Pipe` then closes is one the
+    /// channel still holds. What decides whether that traps is the state
+    /// of the kqueue at that instant, and every roster tick on every host
+    /// runs two of these.
+    ///
+    /// `dup` is the whole fix: the channel owns the copy, the `Pipe` owns
+    /// the original, and neither can close the other's out from under it.
     static func drain(_ handle: FileHandle) async -> Data {
         await withCheckedContinuation { continuation in
             let queue = DispatchQueue(label: "ccc.subprocess.drain")
-            let io = DispatchIO(type: .stream, fileDescriptor: handle.fileDescriptor, queue: queue) { _ in }
+            let fd = dup(handle.fileDescriptor)
+            guard fd >= 0 else { return continuation.resume(returning: Data()) }
+            let io = DispatchIO(type: .stream, fileDescriptor: fd, queue: queue) { _ in close(fd) }
             // Deliver whatever is there rather than waiting for a full
             // buffer; the roster is small and the caller wants it now.
             io.setLimit(lowWater: 1)
