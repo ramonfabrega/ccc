@@ -3959,3 +3959,44 @@ reading is the cursor's and not the text's.
 
 Across the two clears the row held everything but its uuid: `id`
 7d6dd493 and `pid` 12442 unchanged, `sessionId` 1062c451 → 07820e10.
+
+## Cut as v0.1.28 (2026-09-06)
+
+Item 27's verb, released the night it was built. `spctl` accepted, one
+`<item>`, both CDN keys, the live feed equal to the zip, and the GitHub
+Release with the zip attached:
+
+```
+spctl -a --type execute  →  accepted, Notarized Developer ID
+live: https://cdn.ramonfabrega.com/ccc/ccc-latest.zip version 197 length 5287578
+ota verify --feed ccc    →  ok: … version 197 length 5287578
+gh release view v0.1.28  →  {"assets":["ccc-v0.1.28.zip"], "tag":"v0.1.28"}
+```
+
+Studio on the released bytes, and the verb answering from them:
+
+```
+ccc version --json  →  0.1.28, build 197, dev: false
+ccc stats           →  roster poll  last 173 ms  mean 211 ms  n=4
+ccc help clear      →  ccc clear <ref> [--then "<prompt>"] [--json]
+```
+
+**The app fires it, not only the dev binary.** The build proof ran
+against a headless `ccc attach` holding the pane; a released bundle has a
+window and its own launch path, so the same fixture was run once more
+with nothing but the installed app up — spawn a haiku session, arm a
+clear on it from the shell, and watch:
+
+```
+ccc clear 6c3fe676 --then "…what were you asked to say when this session started? …"
+ccc clear   →  6c3fe676  armed 0s ago · then: …
+  … the app's own tick fires it; the mark is gone from the overlay …
+❯ /clear
+❯ In one line: what were you asked to say when this session started? …
+⏺ NO MEMORY.
+```
+
+Nothing here is owed to air: `clear` is a studio-side verb — it types
+into a pane on the Mac the session lives on — and air's copy of it will
+be exercised the first time air arms one across the hop, which is the
+remote road (`ssh … ccc clear <id>`) and is **unmeasured**.
