@@ -4866,3 +4866,52 @@ line says "the branch tip moved" and claims nothing further.
 What is still owed from a live run is narrower than the rate: whether the
 detector fires reliably under real concurrency, two workers wide. One
 session cannot answer that.
+
+## `--json` on a stream promised JSONL and shipped eleven lines (2026-09-07)
+
+The first consumer to wire `ccc watch --json` into something that was not
+`jq` found the shape wrong. attrition's Monitor read the stream with
+`while read` / `head`-style consumers; `ccc watch --help` promises *"one
+SessionEvent per line"*; the emitter was `CLI.printJSON`, the CLI's
+one-shot pretty-printer:
+
+```
+{
+  "at" : "2026-09-07T20:34:14Z",
+  "job" : {
+    "detail" : "Committing the decision and the CI finding",
+…
+```
+
+895 bytes, stdout only, eleven lines for one event.
+
+**Why a night of watching never caught it.** Every consumer this fleet had
+written was `jq`, and `jq` parses concatenated objects whether or not they
+are newline-delimited — the same stream is valid input either way. The
+breakage is invisible until someone takes the help line at its word, and
+then it is silent: `head -n1` returns `{`, `grep` matches half an event,
+`while read -r line` decodes a fragment and reports nothing. It cost
+attrition a diagnosis, not a run.
+
+**The fix is the wire form, not the encoder.** `SessionEvent.jsonLine()`
+is `printJSON`'s encoder with `prettyPrinted` dropped — same `sortedKeys`,
+same ISO-8601 dates — so no field moved and no reader that already worked
+stops working. A compact object cannot contain a literal newline (JSON
+escapes them inside strings), so the line survives a `detail` a worker
+wrote across lines; the test asserts exactly that, with a two-line
+`detail` and a `landing` in the payload. The one-shot answers stay pretty:
+`ccc list --json` is read by a person as often as a program, and nothing
+splits it on newlines.
+
+The help now says **JSONL**, and a test reads that word — this fleet's
+standing rule (`CLAUDE.md`, "Rules earned": a string no test reads is a
+string nothing keeps true), which is what the original "one per line"
+sentence broke by being true of the intent and false of the bytes.
+
+**Not a bug, reported alongside it and worth recording so nobody
+re-investigates**: attrition first saw `jq: parse error: Invalid numeric
+literal at line 1, column 4` and suspected the opening line
+(`ccc: watching 1 host, …`) was going to stdout. It is not — that line and
+every host error go to stderr. The `2>&1` in the pipeline was the
+watcher's own. Verified: `ccc watch --json --all 2>/dev/null` emits zero
+bytes of preamble.

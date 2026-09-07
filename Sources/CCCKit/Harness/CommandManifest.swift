@@ -120,7 +120,8 @@ public struct CommandManifest: Sendable {
                      "`landed` is the one kind git answers rather than the daemon: the branch tip",
                      "moved. Two halves — committed, then pushed — and only pushed draws a banner,",
                      "because a mid-item commit is not worth a phone. Both print here."],
-             json: "one SessionEvent per line — kind, ref, name, waitingFor, stillFor, landing, job, at",
+             json: "JSONL: one compact SessionEvent per line, flushed as it happens — kind, ref, "
+                 + "name, waitingFor, stillFor, landing, job, at",
              twin: "the notification banners",
              exit: "1 when no host answered at all",
              group: "roster"),

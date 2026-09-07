@@ -184,6 +184,36 @@ public struct SessionEvent: Codable, Sendable, Equatable {
         return line
     }
 
+    /// **The streamed wire form: one event, one line.** `--json` on a
+    /// *stream* promises JSONL — `ccc watch --help` says "one SessionEvent
+    /// per line" — and the CLI's pretty-printer answered eleven lines per
+    /// event. `jq` parses concatenated objects either way, so a full night
+    /// of `ccc watch --json --all` never noticed; what notices is the
+    /// naive consumer the promise invites — `while read -r line`, `grep`,
+    /// `head -n1` — and it notices by silently reading a fragment. Found
+    /// 2026-09-07 by the first watcher wired to something other than `jq`.
+    ///
+    /// The encoder is `printJSON`'s in every respect but whitespace
+    /// (`sortedKeys`, ISO-8601 dates), so the fields on the wire did not
+    /// move. The one-shot answers stay pretty: a person reads those, and
+    /// nothing splits them on newlines. A compact object cannot contain a
+    /// literal newline — JSON escapes them inside strings — so this is a
+    /// line for any payload, including a `detail` a worker wrote with
+    /// `\n` in it.
+    public func jsonLine() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        // A `Codable` of strings and dates cannot fail to encode, but a
+        // watch that runs for days should not be the place that finds out
+        // otherwise: the fallback is still one parseable line, and it says
+        // which event it lost.
+        guard let data = try? encoder.encode(self) else {
+            return "{\"encodeFailed\":true,\"kind\":\"\(kind.rawValue)\"}"
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// **Whether this one is worth the phone.** One definition, read by
     /// the `Notifier`; `ccc watch` and the roster take everything the
     /// detector says, because a log is not a buzz.

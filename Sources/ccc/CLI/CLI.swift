@@ -1026,7 +1026,10 @@ enum CLI {
             for host in state.hosts where host.error == nil { reported.remove(host.host) }
             for event in filter.unmuted(detector.observe(state)) {
                 if json {
-                    printJSON(event)
+                    // JSONL, not `printJSON`: this is a stream, and the
+                    // help says "one SessionEvent per line". See
+                    // `SessionEvent.jsonLine`.
+                    print(event.jsonLine())
                 } else {
                     print("\(clock.string(from: event.at))  \(event.mark) \(event.kind.rawValue.padding(toLength: 7, withPad: " ", startingAt: 0))  \(event.ref.description.padding(toLength: 14, withPad: " ", startingAt: 0))  \(event.watchLine)")
                 }

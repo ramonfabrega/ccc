@@ -114,4 +114,57 @@ import Testing
         let data = try JSONEncoder().encode(event)
         #expect(try JSONDecoder().decode(SessionEvent.self, from: data) == event)
     }
+
+    /// **`ccc watch --json` is JSONL, and the help says so.** The
+    /// emitter was the CLI's pretty-printer, which answers eleven lines
+    /// per event against a help line promising one; `jq` hides that
+    /// (concatenated objects parse either way) and every other consumer
+    /// the promise invites — `while read -r line`, `grep`, `head -n1` —
+    /// reads a fragment and says nothing. Reported 2026-09-07 by the
+    /// first watcher wired to something that was not `jq`.
+    ///
+    /// The event here carries the two payloads that could put a newline
+    /// on the wire — a `detail` a worker wrote across lines, and a
+    /// `landing` — because "one line" is a claim about the worst
+    /// payload, not the empty one.
+    @Test func aWatchEventIsExactlyOneLine() throws {
+        let event = SessionEvent(
+            kind: .landed, ref: SessionRef(host: "studio", id: "a1b2"), name: "lane-286",
+            job: JobInfo(detail: "Committing predictions\nbefore the run", tempo: "active"),
+            at: Date(timeIntervalSince1970: 1_000),
+            landing: Landing(half: .committed, branch: "worktree-lane-286",
+                             base: "worktree-replan-pdb", ahead: 1, unpushed: 1))
+        let line = event.jsonLine()
+        #expect(!line.contains("\n"), "a streamed event spans lines: \(line)")
+        #expect(line.split(separator: "\n").count == 1)
+        // The naive consumer's read — the one that was silently getting a
+        // brace — is the whole event.
+        let reader = JSONDecoder()
+        reader.dateDecodingStrategy = .iso8601
+        let back = try reader.decode(SessionEvent.self, from: Data(line.utf8))
+        #expect(back == event)
+        #expect(back.job?.detail == "Committing predictions\nbefore the run", "the newline in the payload survives escaped")
+        // Whitespace is the only thing that changed: the fields on the
+        // wire are the pretty answer's, sorted the same way.
+        let pretty = JSONEncoder()
+        pretty.outputFormatting = [.prettyPrinted, .sortedKeys]
+        pretty.dateEncodingStrategy = .iso8601
+        let a = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+        let b = try JSONSerialization.jsonObject(with: pretty.encode(event)) as? [String: Any]
+        #expect(Set((a ?? [:]).keys) == Set((b ?? [:]).keys))
+        #expect(line.contains("\"at\":\"1970-01-01T00:16:40Z\""), "dates must stay ISO-8601: \(line)")
+    }
+
+    /// The other half of the same rule (`CLAUDE.md`, "Rules earned"): a
+    /// string no test reads is a string nothing keeps true. The manifest
+    /// is what `ccc watch --help` and `--llms` print, and it is where the
+    /// JSONL promise now lives.
+    @Test func theHelpPromisesJSONLAndNamesEveryField() throws {
+        let said = try #require(CommandManifest.verb(named: "watch")?.json)
+        #expect(said.contains("JSONL"))
+        #expect(said.lowercased().contains("per line"))
+        for field in ["kind", "ref", "name", "waitingFor", "stillFor", "landing", "job", "at"] {
+            #expect(said.contains(field), "`ccc watch --json` answers \(field) and the help does not name it")
+        }
+    }
 }

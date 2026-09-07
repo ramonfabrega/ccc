@@ -69,7 +69,10 @@ ccc watch [--host <n>] [--interval S] [--all] [--stall <minutes>] [--json]
                                     # when the watch starts are named on the opening line instead.
                                     # `landed` is the one kind git answers rather than the daemon: the branch
                                     # tip moved. Two halves — committed, then pushed — and only pushed draws a
-                                    # banner, because a mid-item commit is not worth a phone
+                                    # banner, because a mid-item commit is not worth a phone.
+                                    # --json is JSONL: one compact SessionEvent per line, flushed as it
+                                    # happens, so `while read -r line` and `head -n1` work as well as `jq`.
+                                    # The opening line and host errors go to stderr, never into the stream
 ccc hook [--settings]               # the harness's Notification hook: JSON on stdin → a banner from the app;
                                     # --settings prints the settings.json entry (ccc never writes it)
 ccc rm <ref> [--json]               # delete a session and its worktree, when the harness says that is safe
