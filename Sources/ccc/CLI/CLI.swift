@@ -451,9 +451,19 @@ enum CLI {
         return outcome.merged ? 0 : 1
     }
 
-    /// `ccc update <ref> [--ask]` (v6 slice 6): merge the repository's
-    /// default branch into the session's worktree branch, in the
-    /// worktree, where it is. Exit 0 when it merged, 1 when it refused
+    /// `ccc update <ref> [--ask]` (v6 slice 6): merge the session's base
+    /// — recorded for the branch, else the repository's default branch —
+    /// into its worktree branch, in the worktree, where it is.
+    ///
+    /// **This is the git verb a session has for its own base** (item 20).
+    /// On 2026-09-06 a worker's `git merge --no-edit origin/<its base>`
+    /// was refused by the auto-mode permission classifier and handed back
+    /// to its commander, which was the right failure — and it happened
+    /// while a verb that does exactly that, with guards the raw merge has
+    /// not, sat one word away. Two things had made it unfindable: this
+    /// help said "the repo's default branch" long after v0.1.25 taught it
+    /// the recorded base, and it merged the local ref while the worker
+    /// wanted origin's. Both are fixed; briefs should say `ccc update`. Exit 0 when it merged, 1 when it refused
     /// or backed out of a conflict; `--json` carries `ask` on a conflict,
     /// the prompt a session could be given, and `--ask` gives it — the
     /// pane attaches to the session and types it (needs the app). The
@@ -1854,10 +1864,14 @@ enum CLI {
                ccc shell <ref> [--repo] | --close a shell pane under the session pane, in <ref>'s folder (over ssh -t
                                                   when remote) — ⌘T's twin; --repo is the repository's main checkout
                                                   instead of the worktree (⌥⌘T); --close is ⇧⌘T
-               ccc update <ref> [--ask] [--json]  merge the repo's default branch into the session's worktree branch,
-                                                  in the worktree (GitHub's "Update branch"); refuses uncommitted
-                                                  changes and backs out of a conflict (exit 1); --ask then hands the
-                                                  session the merge as a prompt through the pane (needs the app)
+               ccc update <ref> [--ask] [--json]  merge the session's BASE — recorded, else the repo's default branch —
+                                                  into its worktree branch, in the worktree (GitHub's "Update branch").
+                                                  THIS IS THE VERB A SESSION USES ON ITS OWN BASE: it is `git merge`
+                                                  with the guards, and it reaches origin/<base> when the local ref is
+                                                  behind it (the ↓ column counts the same tip and the answer names it).
+                                                  Refuses uncommitted changes and backs out of a conflict (exit 1);
+                                                  --ask then hands the session the merge as a prompt through the pane
+                                                  (needs the app)
                ccc fetch <ref> [--json]           `git fetch origin` in the session's repository — the one network call;
                                                   every ⇡⇣ mark reads "as of the last fetch" (the app fetches once at
                                                   launch and once on wake; `ccc stats` measures those)

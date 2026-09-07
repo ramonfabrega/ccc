@@ -18,6 +18,24 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
     /// `vscode-merge-base`) rather than being the repository's default
     /// branch. Nil off an older ccc, where it was always the default.
     public var baseRecorded: Bool?
+    /// **Which tip of the base `ahead`/`behind` are counted against, and
+    /// `update` merges** (2026-09-06). `nil` is the ordinary answer, the
+    /// local `refs/heads/<base>`; `origin/<base>` when origin strictly
+    /// holds every commit the local base has and more.
+    ///
+    /// It exists because of a shape the fleet makes constantly and a lone
+    /// repository never does: **the base branch is checked out in another
+    /// session's worktree.** attrition's commander holds
+    /// `worktree-replan-pdb` while every worker branches off it, so
+    /// `ccc pull` — which fast-forwards in the main checkout and refuses
+    /// unless `HEAD == base` — has no way to advance the local ref, and a
+    /// worker that used it would be writing into a live agent's tree.
+    /// Following origin's tip instead makes `ccc update <ref>` do exactly
+    /// what a worker's `git merge origin/<base>` did, with the column
+    /// counting the same commits the verb would bring. A base that has
+    /// *diverged* from origin stays local: that is a human's problem, not
+    /// a side for ccc to pick. Nil off an older ccc across the hop.
+    public var baseTip: String?
     /// Commits on `branch` that `base` lacks — what a merge would bring.
     public var ahead: Int
     /// Commits on `base` that `branch` lacks — what makes a fast-forward
@@ -68,6 +86,7 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
         branch = try c.decode(String.self, forKey: .branch)
         base = try c.decode(String.self, forKey: .base)
         baseRecorded = try c.decodeIfPresent(Bool.self, forKey: .baseRecorded)
+        baseTip = try c.decodeIfPresent(String.self, forKey: .baseTip)
         ahead = try c.decode(Int.self, forKey: .ahead)
         behind = try c.decode(Int.self, forKey: .behind)
         repo = try c.decode(String.self, forKey: .repo)
@@ -76,6 +95,11 @@ public struct WorktreeInfo: Codable, Sendable, Equatable {
         unpulled = try c.decodeIfPresent(Int.self, forKey: .unpulled)
         baseUnpulled = try c.decodeIfPresent(Int.self, forKey: .baseUnpulled)
     }
+
+    /// The ref `update` merges and `behind` is counted against.
+    public var baseTipRef: String { baseTip.map { "refs/remotes/\($0)" } ?? "refs/heads/\(base)" }
+    /// What to call that tip in a sentence: `master`, or `origin/master`.
+    public var baseTipName: String { baseTip ?? base }
 
     /// `base` can take `branch` without a merge commit.
     public var canFastForward: Bool { ahead > 0 && behind == 0 }
@@ -442,31 +466,55 @@ public final class WorktreeProbe: @unchecked Sendable {
             return entry.info
         }
         lock.unlock()
-        guard let (ahead, behind) = count(base: base, branch: branch, in: layout.repo) else { return nil }
-        var info = WorktreeInfo(branch: branch, base: base, ahead: ahead, behind: behind, repo: layout.repo)
-        info.baseRecorded = baseRecorded
+        // The base's standing against origin is read *first*, because it
+        // decides which tip the counts below are against (2026-09-06).
+        var baseUnpushed: Int?
+        var baseUnpulled: Int?
+        var unpushed: Int?
+        var unpulled: Int?
         if origin {
-            info.unpushed = unpushedCount(of: branch, in: layout.repo)
+            unpushed = unpushedCount(of: branch, in: layout.repo)
             // ⇣ on the branch only once origin has it (slice 7): before the
             // first push there is nothing to be behind.
             if originBranch != "-" {
-                info.unpulled = originStanding(of: branch, in: layout.repo)?.unpulled
+                unpulled = originStanding(of: branch, in: layout.repo)?.unpulled
             }
             let baseKey = "\(baseSHA)/\(originBase)"
             lock.lock()
             let known = baseStanding[layout.repo]
             lock.unlock()
             if let known, known.key == baseKey {
-                info.baseUnpushed = known.unpushed
-                info.baseUnpulled = known.unpulled
+                baseUnpushed = known.unpushed
+                baseUnpulled = known.unpulled
             } else if let standing = originStanding(of: base, in: layout.repo) {
-                info.baseUnpushed = standing.unpushed
-                info.baseUnpulled = standing.unpulled
+                baseUnpushed = standing.unpushed
+                baseUnpulled = standing.unpulled
                 lock.lock()
                 baseStanding[layout.repo] = (baseKey, standing.unpulled, standing.unpushed)
                 lock.unlock()
             }
         }
+        // **Which tip is the base?** Normally `refs/heads/<base>`. But a
+        // fleet's base branch is usually checked out in *another* session's
+        // worktree — attrition's commander holds `worktree-replan-pdb` while
+        // its workers branch off it — and `ccc pull` cannot advance a ref
+        // it does not have checked out. So when origin strictly holds every
+        // local commit and more, origin's is the tip: the worker's
+        // `git merge origin/<base>` and ccc's `↓N` then mean the same thing,
+        // and nobody's worktree is written to on someone else's behalf.
+        // A *diverged* base stays local — that is a mess for a human, not a
+        // thing to pick a side in. Costs no process: the standing above is
+        // exactly the comparison.
+        let tip: String? = (baseUnpushed == 0 && (baseUnpulled ?? 0) > 0) ? "origin/\(base)" : nil
+        let tipRef = tip.map { "refs/remotes/\($0)" } ?? "refs/heads/\(base)"
+        guard let (ahead, behind) = count(baseRef: tipRef, branch: branch, in: layout.repo) else { return nil }
+        var info = WorktreeInfo(branch: branch, base: base, ahead: ahead, behind: behind, repo: layout.repo)
+        info.baseRecorded = baseRecorded
+        info.baseTip = tip
+        info.unpushed = unpushed
+        info.unpulled = unpulled
+        info.baseUnpushed = baseUnpushed
+        info.baseUnpulled = baseUnpulled
         lock.lock()
         cache[cwd] = Entry(key: key, info: info)
         lock.unlock()
@@ -507,11 +555,13 @@ public final class WorktreeProbe: @unchecked Sendable {
         return info(forCwd: cwd)
     }
 
-    /// `git rev-list --left-right --count base...branch` → (ahead, behind).
-    private func count(base: String, branch: String, in repo: String) -> (Int, Int)? {
+    /// `git rev-list --left-right --count <baseRef>...branch` → (ahead,
+    /// behind). `baseRef` is a full ref because it is not always the local
+    /// base branch (see `WorktreeInfo.baseTip`).
+    private func count(baseRef: String, branch: String, in repo: String) -> (Int, Int)? {
         lock.lock(); spawns += 1; lock.unlock()
         guard let out = try? Git.run(git, ["-C", repo, "rev-list", "--left-right", "--count",
-                                          "refs/heads/\(base)...refs/heads/\(branch)"]).stdout else { return nil }
+                                          "\(baseRef)...refs/heads/\(branch)"]).stdout else { return nil }
         let parts = out.trimmingCharacters(in: .whitespacesAndNewlines).split(whereSeparator: \.isWhitespace)
         guard parts.count == 2, let behind = Int(parts[0]), let ahead = Int(parts[1]) else { return nil }
         return (ahead, behind)
@@ -584,7 +634,7 @@ public enum GitMerge {
         switch strategy {
         case .ffOnly:
             guard info.behind == 0 else {
-                return MergeOutcome(merged: false, said: "\(info.base) has moved \(info.behind) commit\(info.behind == 1 ? "" : "s") past \(info.branch); a fast-forward is not possible — merge or squash instead")
+                return MergeOutcome(merged: false, said: "\(info.baseTipName) has moved \(info.behind) commit\(info.behind == 1 ? "" : "s") past \(info.branch); a fast-forward is not possible — `ccc update` first, then merge or squash")
             }
             do {
                 _ = try g(["merge", "--ff-only", info.branch])
@@ -656,9 +706,13 @@ public enum GitUpdate {
     public static func perform(on info: WorktreeInfo, worktree cwd: String,
                                git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
         func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", cwd] + args) }
-        let name = "\(info.base) → \(info.branch)"
+        // The tip, not the base branch by name: `origin/<base>` when the
+        // local ref is behind it, which on this fleet is the ordinary case
+        // for a base another session's worktree holds checked out.
+        let tip = info.baseTipName
+        let name = "\(tip) → \(info.branch)"
         guard info.canUpdate else {
-            return MergeOutcome(merged: false, said: "nothing to update: \(info.branch) already has every commit of \(info.base)")
+            return MergeOutcome(merged: false, said: "nothing to update: \(info.branch) already has every commit of \(tip)")
         }
         guard let head = try? g(["symbolic-ref", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines) else {
             return MergeOutcome(merged: false, said: "the worktree is not on a branch; refusing to update")
@@ -675,18 +729,18 @@ public enum GitUpdate {
             // Plain `merge`: a branch with no commits of its own simply
             // moves up to master (a fast-forward is not a rewrite); one
             // with work gets a merge commit. `-m` names it either way.
-            _ = try g(["merge", "--no-edit", "-m", "Merge \(info.base) into \(info.branch) (\(plural))", "refs/heads/\(info.base)"])
+            _ = try g(["merge", "--no-edit", "-m", "Merge \(tip) into \(info.branch) (\(plural))", info.baseTipRef])
             let sha = (try? g(["rev-parse", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
             if info.ahead == 0 {
-                return MergeOutcome(merged: true, said: "fast-forwarded \(info.branch) to \(info.base) (\(plural), now \(sha))")
+                return MergeOutcome(merged: true, said: "fast-forwarded \(info.branch) to \(tip) (\(plural), now \(sha))")
             }
             return MergeOutcome(merged: true, said: "merged \(name) (\(plural), merge commit \(sha))")
         } catch {
             let conflicts = conflictedFiles(g)
             _ = try? g(["merge", "--abort"])
             return MergeOutcome(merged: false,
-                                said: "merge \(name) conflicts in \(conflicts); backed out, \(info.branch) untouched — ask the session to merge \(info.base)",
-                                ask: prompt(base: info.base))
+                                said: "merge \(name) conflicts in \(conflicts); backed out, \(info.branch) untouched — ask the session to merge \(tip)",
+                                ask: prompt(base: tip))
         }
     }
 

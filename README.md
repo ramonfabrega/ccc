@@ -65,16 +65,30 @@ ccc spawn [--host <n>] [--cwd <d>] [--name <n>] [--model <m>] [--agent <a>] [--p
                                     # --permission-mode defaults to auto. --worktree from a folder on the
                                     # default branch is the harness's; from any other branch (or with --base)
                                     # ccc cuts the worktree off that branch and records it as the base
+ccc spawn … [--replace|--allow-duplicate] [--no-space-check]
+                                    # a --name a LIVE job already answers to is refused: messages, the roster
+                                    # and lore all resolve to whichever started last. --replace stops that one
+                                    # first, --allow-duplicate means it. A local spawn under the free-space
+                                    # floor is refused too (CCC_SPAWN_FLOOR_GB, default 10; 0 turns it off)
+ccc stop <ref> [--json]             # end a running session; its conversation and worktree are kept
+                                    # (`ccc attach` resumes it). `ccc rm` is the one that deletes
 ccc base <ref> [<branch> | --clear] # what the worktree branch is measured against and lands on: read it,
                                     # record one for a worktree cut by hand, or forget it (`branch.<b>.ccc-base`
                                     # in the repo's config; VS Code's vscode-merge-base is honoured too)
 ccc merge <ref> [--ff-only|--no-ff|--squash] [--json]
                                     # land the worktree branch on its base (recorded, else the repo's default
                                     # branch), where the repo is; refuses a dirty or wrong-branch checkout
-ccc update <ref> [--ask] [--json]   # merge the base into the worktree branch ("Update branch");
+ccc update <ref> [--ask] [--json]   # merge the base into the worktree branch ("Update branch").
+                                    # THE VERB A SESSION USES ON ITS OWN BASE — `git merge` with the guards,
+                                    # and it reaches origin/<base> when the local ref is behind it (the ↓
+                                    # column counts the same tip; the answer names which). A worker brief
+                                    # should say `ccc update`, never `git merge`: the raw merge is what the
+                                    # auto-mode permission classifier refuses.
                                     # --ask hands the session the merge as a prompt through the pane
 ccc fetch <ref> [--json]            # the one network call; every ⇡⇣ mark reads "as of the last fetch"
-ccc pull <ref> [--json]             # fast-forward the base to origin's, never a merge commit
+ccc pull <ref> [--json]             # fast-forward the base to origin's, never a merge commit — in the MAIN
+                                    # checkout, so a base another worktree holds checked out is refused
+                                    # (`ccc update` follows origin's tip instead; nobody's tree is written to)
 ccc push <ref> [--base] [--json]    # push the worktree branch (or, with --base, its base branch); never forced
 ccc shell <ref> [--repo] | --close  # ⌘T's twin: a shell pane under the session pane, in <ref>'s folder
                                     # (over `ssh -t` when remote); --repo is the main checkout (⌥⌘T), --close is ⇧⌘T
