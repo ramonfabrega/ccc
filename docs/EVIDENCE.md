@@ -5119,3 +5119,91 @@ $ ccc spawn --model haiku --name fake-desk --channels plugin:hail@hail "hold the
 
 and `ccc help spawn` names the flag in its synopsis and its prose. The
 desk can now be spawned the fleet's way.
+
+## the name that resolved for the read and not for the write (2026-09-08)
+
+Reported by hail, measured twice on a live headless `--bg` probe with the
+app running throughout: `ccc clear hail-probe --then "…"` answered
+
+```
+{"armed": true, "cancelled": false, "ref": "hail-probe", "said": "armed a clear on hail-probe…"}
+```
+
+the bare `ccc clear` list went **empty within ~3 s**, and the session was
+never cleared — no `/clear` in the transcript, no `--then` prompt, no new
+session uuid, and asked directly the probe answered `CONTEXT INTACT`. The
+arm succeeded, the arm disappeared, nothing happened, twice.
+
+**It is v0.1.31's fix, half-applied.** "The ref that was only an id"
+taught eight verbs to resolve a `<ref>` by name as well as by id — and
+every one of those eight resolves for its *reads*. `clear` then wrote the
+mark under **the caller's word**:
+
+```swift
+overlay.arm(pending, id: id, sessionId: row.sessionId)   // id is what was typed
+```
+
+while the poller joins marks on the row's short id alone
+(`marks.mark(for: rows[i].session.id, …)`). So a clear armed by name is
+filed where no row can read it, `PaneController.fireArmedClears` builds
+`SessionRef(id: "hail-probe")`, finds no row, and — this Mac having
+polled — calls it `.gone` and drops it on the very next tick. The ~3 s
+was one hosts-watch pass. `ccc archive <name>` and `ccc pin <name>` had
+the same shape and the same silence: exit 0, `archived desk`, row
+unarchived forever.
+
+The key is now the **row's** id everywhere a mark is written, and so is
+the `ref` the verb answers with. Cancel and the undo half (`unarchive`,
+`unpin`) resolve a name too, but only when the word is not already a key
+— they must keep working on a row the roster has forgotten, which is what
+they exist for.
+
+**hail's hypothesis was that a `--bg` session has no pane to type into.
+It is refuted:** `performClear` calls `switchTo(ref:)`, which attaches on
+demand, so nothing needs to be attached to the target beforehand. What an
+arm needs is a ccc *with a pane* running on that Mac — the app or
+`ccc attach … --headless` — and nothing else.
+
+**Which is now enforced rather than assumed.** An arm is a promise that
+something types minutes from now; with no ccc serving the control socket
+the mark would sit in the file until it was pruned and the caller would
+never learn that. `armed: true` has to mean it can fire:
+
+```
+$ ccc clear clearfix-two --then "x"          # with no server on the socket
+ccc: nothing would fire it: no ccc is serving …/ccc.sock — open ccc.app or
+run `ccc attach <ref> --headless` there, then arm it again
+exit=1
+```
+
+**And the outcome is written back where a reader can find it.** The one
+who arms a clear is a background session that cannot see the window's
+notice or the headless log — and after a clear that worked it does not
+remember arming — so every outcome (fired, refused, dropped) now lands on
+the mark as `fired: {at, said, fired}` and `ccc clear` with no ref shows
+it. Bare `clear --json` is `{ armed[], recent[] }`; it was a bare array.
+An arm that vanishes saying nothing is the shape that let this bug
+survive two probes.
+
+**Measured end to end on two real haiku `--bg` fixtures**, a private
+headless ccc of the new build on its own socket and overlay (so the
+user's app could neither see nor fire these marks):
+
+```
+$ ccc clear clearfix-probe --then "Reply with exactly the word BRAVO…" --json
+{"armed": true, "ref": "908f42ca", …}          # the NAME resolved to the ROW's id
+$ cat overlay        →  "marks": { "908f42ca": { "clear": {…} } }
+FIRED (3 s later):   {"at": "…18:30:42Z", "fired": true,
+                      "said": "cleared 908f42ca, then: Reply with exactly the word BRAVO…"}
+```
+
+and the session itself, which is the only proof that counts: a new
+transcript `df22eff1…` minted by the `/clear`, **zero** mentions of the
+pre-clear word `ALPHA` in it, two of `BRAVO`, and the job's own
+`detail: replied with BRAVO as requested`.
+
+The second fixture answers lore's question exactly. The headless ccc was
+attached to `908f42ca` and had **never touched** `648f0454`; armed by
+name, that clear fired the same way (`cleared 648f0454, then: …`), minted
+`56620908…`, and the job read `detail: replied with DELTA as requested`.
+A clear needs a ccc on the Mac, not a pane on the session.

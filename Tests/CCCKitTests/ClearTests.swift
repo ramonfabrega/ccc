@@ -20,11 +20,13 @@ import Testing
         try body(dir)
     }
 
-    /// A `claude` that answers with one background row in `cwd`.
+    /// A `claude` that answers with one background row in `cwd`, named
+    /// `probe` — every ref in this suite therefore has two spellings, and
+    /// the verb owes the same answer to both.
     private func stub(_ dir: URL, cwd: String, state: String = "done") throws -> ClaudeCLI {
         let claude = dir.appending(path: "claude").path
         let roster = """
-        [{"id":"a1b2","cwd":"\(cwd)","kind":"background","startedAt":1756800000000,\
+        [{"id":"a1b2","cwd":"\(cwd)","kind":"background","startedAt":1756800000000,"name":"probe",\
         "state":"\(state)","status":"idle","sessionId":"a1b2c3d4-0000-0000-0000-000000000000"}]
         """
         try Data("#!/bin/sh\ncat <<'EOF'\n\(roster)\nEOF\n".utf8).write(to: URL(filePath: claude))
@@ -32,11 +34,15 @@ import Testing
         return ClaudeCLI(executable: claude, host: .local)
     }
 
+    /// Whether a ccc is serving the control socket is a property of the
+    /// Mac the suite happens to run on, so every arm below states it.
+    private let serving: @Sendable () -> Bool = { true }
+
     @Test func armingWritesTheOverlayWithItsPromptAndUuid() async throws {
         try await withTemp { dir in
             let overlay = dir.appending(path: "roster.json").path
             let cli = try stub(dir, cwd: dir.path)
-            let outcome = try await cli.clear(id: "a1b2", then: "carry on", overlayPath: overlay)
+            let outcome = try await cli.clear(id: "a1b2", then: "carry on", overlayPath: overlay, serving: serving)
             #expect(outcome.armed)
             #expect(outcome.then == "carry on")
             let mark = RosterOverlay.load(path: overlay).overlay.mark(for: "a1b2", sessionId: nil)
@@ -44,6 +50,74 @@ import Testing
             // The uuid guard comes from the row, so the clear cannot land
             // on whatever session follows this one.
             #expect(mark?.sessionId == "a1b2c3d4-0000-0000-0000-000000000000")
+        }
+    }
+
+    /// **The bug hail reported twice, both times as "the arm succeeds and
+    /// nothing ever happens."** A `<ref>` has resolved by name since
+    /// v0.1.31 — but only for the *reads*. The mark went into the overlay
+    /// under the caller's word, and the poller joins marks on
+    /// `session.id` alone, so a clear armed as `ccc clear desk` was filed
+    /// where no row could see it: the pane found no row for "desk",
+    /// called it gone, and dropped it on the next tick. The arm said
+    /// `armed: true`, the list went empty within one poll, and the
+    /// session was never cleared.
+    ///
+    /// The key is the ROW's id, and so is the `ref` in the answer — the
+    /// caller gets back the spelling everything else on this Mac uses.
+    @Test func armingByNameKeysTheMarkOnTheRowsId() async throws {
+        try await withTemp { dir in
+            let overlay = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            let outcome = try await cli.clear(id: "probe", then: "carry on", overlayPath: overlay, serving: serving)
+            #expect(outcome.armed)
+            #expect(outcome.ref == "a1b2")
+            #expect(outcome.said.contains("armed a clear on a1b2"))
+            let loaded = RosterOverlay.load(path: overlay).overlay
+            // The one reading that matters: the poller looks the mark up
+            // by the row's id, and this is the lookup that answered nil.
+            #expect(loaded.mark(for: "a1b2", sessionId: "a1b2c3d4-0000-0000-0000-000000000000")?.clear?.then == "carry on")
+            #expect(loaded.marks["probe"] == nil)
+        }
+    }
+
+    /// Cancel takes the name too, and still works on a row the roster has
+    /// forgotten — which is the case it exists for, so the roster read is
+    /// its fallback and not its road.
+    @Test func cancelResolvesANameAndStillWorksWithoutARow() async throws {
+        try await withTemp { dir in
+            let overlay = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            _ = try await cli.clear(id: "probe", overlayPath: overlay, serving: serving)
+            let cancelled = try await cli.clear(id: "probe", cancel: true, overlayPath: overlay, serving: serving)
+            #expect(cancelled.cancelled)
+            #expect(cancelled.ref == "a1b2")
+            #expect(RosterOverlay.load(path: overlay).overlay.armedClears.isEmpty)
+
+            // A word that is already a key never asks the roster: arm by
+            // id, then cancel it with a `claude` that could not answer.
+            _ = try await cli.clear(id: "a1b2", overlayPath: overlay, serving: serving)
+            let deaf = ClaudeCLI(executable: dir.appending(path: "no-such-claude").path, host: .local)
+            let byId = try await deaf.clear(id: "a1b2", cancel: true, overlayPath: overlay, serving: serving)
+            #expect(byId.cancelled)
+        }
+    }
+
+    /// An arm is a promise that something types minutes from now, and the
+    /// only things that can are the app and a headless attach — both of
+    /// which serve the control socket. With neither up the mark would sit
+    /// in the file unread until it was pruned, and the caller would never
+    /// learn that: `armed: true` has to mean it can fire.
+    @Test func armingIsRefusedWhenNothingWouldFireIt() async throws {
+        try await withTemp { dir in
+            let overlay = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            var said = ""
+            do { _ = try await cli.clear(id: "probe", overlayPath: overlay, serving: { false }) }
+            catch { said = "\(error)" }
+            #expect(said.contains("nothing would fire it"))
+            #expect(said.contains("--headless"))
+            #expect(RosterOverlay.load(path: overlay).overlay.armedClears.isEmpty)
         }
     }
 
@@ -61,11 +135,11 @@ import Testing
         try await withTemp { dir in
             let overlay = dir.appending(path: "roster.json").path
             let cli = try stub(dir, cwd: dir.path)
-            let nothing = try await cli.clear(id: "a1b2", cancel: true, overlayPath: overlay)
+            let nothing = try await cli.clear(id: "a1b2", cancel: true, overlayPath: overlay, serving: serving)
             #expect(!nothing.cancelled)
             #expect(nothing.said.contains("no clear was armed"))
-            _ = try await cli.clear(id: "a1b2", overlayPath: overlay)
-            let cancelled = try await cli.clear(id: "a1b2", cancel: true, overlayPath: overlay)
+            _ = try await cli.clear(id: "a1b2", overlayPath: overlay, serving: serving)
+            let cancelled = try await cli.clear(id: "a1b2", cancel: true, overlayPath: overlay, serving: serving)
             #expect(cancelled.cancelled)
             #expect(RosterOverlay.load(path: overlay).overlay.armedClears.isEmpty)
         }
@@ -97,7 +171,7 @@ import Testing
             let overlay = dir.appending(path: "roster.json").path
             let cli = try stub(dir, cwd: repo.path)
             var refused = false
-            do { _ = try await cli.clear(id: "a1b2", overlayPath: overlay) }
+            do { _ = try await cli.clear(id: "a1b2", overlayPath: overlay, serving: serving) }
             catch { refused = "\(error)".contains("uncommitted") }
             #expect(refused)
             #expect(RosterOverlay.load(path: overlay).overlay.armedClears.isEmpty)
@@ -176,6 +250,51 @@ import Testing
         #expect(JobInfo.decode(file)?.tempo == "idle")
         // A file with no tempo says nothing rather than "idle".
         #expect(JobInfo.decode(Data(#"{"detail":"d"}"#.utf8))?.tempo == nil)
+    }
+
+    // MARK: what the clear did
+
+    /// The outcome is written back onto the mark, because the one who
+    /// armed it cannot see the window's notice or the headless log — and
+    /// after a clear that worked, does not remember arming. Three shapes,
+    /// newest first, and `fired` is the bit a caller checks.
+    @Test func everyOutcomeIsWrittenWhereAReaderCanFindIt() {
+        var overlay = RosterOverlay()
+        overlay.record(ClearRecord(at: Date(timeIntervalSince1970: 100), said: "cleared a1b2", fired: true),
+                       id: "a1b2", sessionId: "uuid-a")
+        overlay.record(ClearRecord(at: Date(timeIntervalSince1970: 200), said: "dropped the clear armed on c3d4: its session is gone", fired: false),
+                       id: "c3d4", sessionId: nil)
+        let recent = overlay.firedClears
+        #expect(recent.map(\.id) == ["c3d4", "a1b2"])
+        #expect(recent.first?.record.fired == false)
+        // A record is not an empty mark: it survives the load that drops
+        // marks with nothing on them, which is what makes it readable at
+        // all — and it survives arming and disarming beside it.
+        #expect(overlay.marks["a1b2"]?.isEmpty == false)
+        overlay.arm(PendingClear(then: "again"), id: "a1b2", sessionId: "uuid-a")
+        #expect(overlay.marks["a1b2"]?.fired?.said == "cleared a1b2")
+        overlay.arm(nil, id: "a1b2", sessionId: "uuid-a")
+        #expect(overlay.marks["a1b2"]?.fired?.fired == true)
+    }
+
+    /// It rides the file like every other mark, and an older ccc's
+    /// overlay — one with no `fired` anywhere — still decodes.
+    @Test func aRecordSurvivesTheFileAndItsAbsenceDoesToo() throws {
+        try withTempSync { dir in
+            let path = dir.appending(path: "roster.json").path
+            var overlay = RosterOverlay()
+            overlay.record(ClearRecord(said: "cleared a1b2, then: carry on", fired: true), id: "a1b2", sessionId: nil)
+            try overlay.save(path: path)
+            #expect(RosterOverlay.load(path: path).overlay.firedClears.first?.record.said
+                    == "cleared a1b2, then: carry on")
+
+            let old = #"{"marks":{"a1b2":{"archived":"2026-09-06T10:00:00Z"}}}"#
+            try Data(old.utf8).write(to: URL(filePath: path))
+            let loaded = RosterOverlay.load(path: path)
+            #expect(loaded.issue == nil)
+            #expect(loaded.overlay.marks["a1b2"]?.archived != nil)
+            #expect(loaded.overlay.firedClears.isEmpty)
+        }
     }
 
     // MARK: the prompt box

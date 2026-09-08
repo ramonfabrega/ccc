@@ -504,20 +504,33 @@ enum CLI {
         return 0
     }
 
-    /// `ccc clear` with no ref: the clears waiting on this Mac. A write
-    /// with no way to look at it is a finding, and an armed clear is a
-    /// thing that will type into a session minutes from now.
+    /// `ccc clear` with no ref: the clears waiting on this Mac, and what
+    /// became of the ones that are not waiting any more. A write with no
+    /// way to look at it is a finding, and an armed clear is a thing that
+    /// will type into a session minutes from now — or silently will not,
+    /// which is the half `recent` exists for (v0.1.36): the session that
+    /// armed it cannot see the window's notice, and if the clear worked
+    /// it does not remember arming.
     static func armedClears(json: Bool) async throws -> Int32 {
-        let armed = RosterOverlay.load().overlay.armedClears
+        let overlay = RosterOverlay.load().overlay
+        let armed = overlay.armedClears
+        let recent = overlay.firedClears
+        let stamp = ISO8601DateFormatter()
         if json {
-            printJSON(armed.map { entry -> [String: String] in
-                var row = ["ref": entry.id, "armedAt": ISO8601DateFormatter().string(from: entry.mark.clear?.armedAt ?? Date())]
-                if let then = entry.mark.clear?.then { row["then"] = then }
-                return row
-            })
+            printJSON([
+                "armed": armed.map { entry -> [String: String] in
+                    var row = ["ref": entry.id, "armedAt": stamp.string(from: entry.mark.clear?.armedAt ?? Date())]
+                    if let then = entry.mark.clear?.then { row["then"] = then }
+                    return row
+                },
+                "recent": recent.map { entry -> [String: String] in
+                    ["ref": entry.id, "at": stamp.string(from: entry.record.at),
+                     "fired": entry.record.fired ? "true" : "false", "said": entry.record.said]
+                },
+            ])
             return 0
         }
-        guard !armed.isEmpty else {
+        if armed.isEmpty, recent.isEmpty {
             print("no clears armed (`ccc clear <ref>` arms one)")
             return 0
         }
@@ -525,6 +538,9 @@ enum CLI {
             let clear = entry.mark.clear
             let then = clear?.then.map { " · then: \($0)" } ?? ""
             print("\(entry.id)  armed \(SessionEvent.spell(Date().timeIntervalSince(clear?.armedAt ?? Date()))) ago\(then)")
+        }
+        for entry in recent.prefix(5) {
+            print("\(entry.id)  \(SessionEvent.spell(Date().timeIntervalSince(entry.record.at))) ago · \(entry.record.said)")
         }
         return 0
     }

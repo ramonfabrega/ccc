@@ -43,6 +43,38 @@ import Testing
         #expect(marks.mark(for: "c3d4", sessionId: nil)?.pinned != nil)
     }
 
+    /// The same key that made `ccc clear <name>` a silent no-op: a mark
+    /// filed under the caller's word is a mark the poller cannot see,
+    /// because it joins on `session.id` alone. Name resolution (v0.1.31)
+    /// reached the roster read and stopped there — so `ccc archive desk`
+    /// exited 0 and the row stayed unarchived.
+    @Test func aMarkMadeByNameIsFiledUnderTheRowsId() async throws {
+        let dir = URL(filePath: NSTemporaryDirectory()).appending(path: "ccc-mark-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let overlayPath = dir.appending(path: "roster.json").path
+        let claude = dir.appending(path: "claude").path
+        let roster = """
+        [{"id":"a1b2","cwd":"/x","kind":"background","startedAt":1756800000000,"state":"done","name":"desk"}]
+        """
+        try Data("#!/bin/sh\ncat <<'EOF'\n\(roster)\nEOF\n".utf8).write(to: URL(filePath: claude))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claude)
+        let cli = ClaudeCLI(executable: claude, host: .local)
+
+        #expect(try await cli.mark(.archive, id: "desk", overlayPath: overlayPath) == "archived a1b2")
+        var marks = RosterOverlay.load(path: overlayPath).overlay
+        #expect(marks.mark(for: "a1b2", sessionId: nil)?.archived != nil)
+        #expect(marks.marks["desk"] == nil)
+
+        // And the undo half takes the name too — it resolves only when
+        // the word is not already a key, so it still works on a row the
+        // roster has forgotten.
+        #expect(try await cli.mark(.unarchive, id: "desk", overlayPath: overlayPath) == "unarchived a1b2")
+        marks = RosterOverlay.load(path: overlayPath).overlay
+        #expect(marks.marks.isEmpty)
+        #expect(try await cli.mark(.unpin, id: "ghost", overlayPath: overlayPath) == "ghost was not pinned")
+    }
+
     @Test func noFileIsNoMarks() throws {
         try withTempPath { path in
             let loaded = RosterOverlay.load(path: path)

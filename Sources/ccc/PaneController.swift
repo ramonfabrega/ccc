@@ -597,7 +597,7 @@ final class PaneController {
                 guard disarm(id, sessionId: mark.sessionId) else { continue }
                 lastClear = "dropped the clear armed on \(id): "
                     + (moved ? "another session answers to that id now" : "its session is gone")
-                onClearFired?(lastClear!)
+                report(id, sessionId: mark.sessionId, said: lastClear!, fired: false)
             case .now:
                 // The bank again, at the moment it matters: the tree may
                 // have been clean when the clear was armed and dirty now.
@@ -612,18 +612,38 @@ final class PaneController {
                 if let reason = await refusal?.value {
                     disarm(id, sessionId: mark.sessionId)
                     lastClear = "refused the clear on \(id): \(reason)"
-                    onClearFired?(lastClear!)
+                    report(id, sessionId: mark.sessionId, said: lastClear!, fired: false)
                     continue
                 }
                 guard let pending = mark.clear, disarm(id, sessionId: mark.sessionId) else { continue }
+                var fired = true
                 do {
                     lastClear = try await performClear(ref, then: pending.then)
                 } catch {
                     lastClear = "the clear on \(id) did not fire: \(error)"
+                    fired = false
                 }
-                onClearFired?(lastClear!)
+                report(id, sessionId: mark.sessionId, said: lastClear!, fired: fired)
             }
         }
+    }
+
+    /// Say what a clear did, twice: to whoever is watching this process
+    /// (the window's notice, the headless log) and to the overlay, where
+    /// a reader can find it later. The second one is the load-bearing
+    /// half — the session that armed the clear is a background job with
+    /// no view of either log, and after a clear that worked it has no
+    /// memory of arming at all, so `ccc clear` with no ref is the only
+    /// place the answer can be. An arm that vanishes saying nothing is
+    /// the shape that let a keying bug survive two probes.
+    private func report(_ id: String, sessionId: String?, said: String, fired: Bool) {
+        let path = overlayPath
+        try? RosterOverlay.locked(path: path) {
+            var overlay = RosterOverlay.load(path: path).overlay
+            overlay.record(ClearRecord(said: said, fired: fired), id: id, sessionId: sessionId)
+            try overlay.save(path: path)
+        }
+        onClearFired?(said)
     }
 
     /// Take the mark, under the lock. False when somebody else took it

@@ -30,18 +30,46 @@ public struct SessionMark: Codable, Sendable, Equatable {
     /// one twice, so a mark whose uuid disagrees with the row's is a mark
     /// on some earlier session and does not apply.
     public var sessionId: String?
+    /// What became of the last clear armed here (v0.1.36). The arming
+    /// side is normally a background session that will never see the
+    /// window's notice or the headless log — and after a clear that
+    /// worked it has no memory of arming at all — so the outcome is
+    /// written back where a *reader* can find it: `ccc clear` with no
+    /// ref. Without it "armed, then gone, and nothing said why" is a
+    /// state the fleet can reach in silence, which is how the keying bug
+    /// below lived through two probes.
+    public var fired: ClearRecord?
 
-    public init(archived: Date? = nil, pinned: Date? = nil, clear: PendingClear? = nil, sessionId: String? = nil) {
+    public init(archived: Date? = nil, pinned: Date? = nil, clear: PendingClear? = nil,
+                sessionId: String? = nil, fired: ClearRecord? = nil) {
         self.archived = archived
         self.pinned = pinned
         self.clear = clear
         self.sessionId = sessionId
+        self.fired = fired
     }
 
-    public var isEmpty: Bool { archived == nil && pinned == nil && clear == nil }
+    public var isEmpty: Bool { archived == nil && pinned == nil && clear == nil && fired == nil }
 
     /// The newest thing that happened to this mark, for pruning.
-    var madeAt: Date { [archived, pinned, clear?.armedAt].compactMap { $0 }.max() ?? .distantPast }
+    var madeAt: Date { [archived, pinned, clear?.armedAt, fired?.at].compactMap { $0 }.max() ?? .distantPast }
+}
+
+/// What one armed clear did, kept on the mark it was armed on. Three
+/// shapes, all of them worth a sentence: it fired, it was refused (a
+/// dirty tree at the moment it came due), or it was dropped (the session
+/// it named is gone). `fired` is the one bit a caller checks; `said` is
+/// the sentence the window drew.
+public struct ClearRecord: Codable, Sendable, Equatable {
+    public var at: Date
+    public var said: String
+    public var fired: Bool
+
+    public init(at: Date = Date(), said: String, fired: Bool) {
+        self.at = at
+        self.said = said
+        self.fired = fired
+    }
 }
 
 /// A `/clear` armed on a session, waiting for it to stop working (item 27).
@@ -185,12 +213,29 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
         return previous
     }
 
+    /// Write down what a clear did, on the mark it was armed on. Called
+    /// by whichever pane took the mark, right after it took it.
+    public mutating func record(_ outcome: ClearRecord, id: String, sessionId: String?) {
+        var mark = mark(for: id, sessionId: sessionId) ?? SessionMark()
+        mark.fired = outcome
+        if mark.sessionId == nil { mark.sessionId = sessionId }
+        marks[id] = mark.isEmpty ? nil : mark
+    }
+
     /// Every row with a clear waiting, newest first. The read half of
     /// `ccc clear` — a write with no way to look at it is a finding.
     public var armedClears: [(id: String, mark: SessionMark)] {
         marks.filter { $0.value.clear != nil }
             .sorted { ($0.value.clear?.armedAt ?? .distantPast) > ($1.value.clear?.armedAt ?? .distantPast) }
             .map { (id: $0.key, mark: $0.value) }
+    }
+
+    /// Every clear that already happened, newest first — the other half
+    /// of the same read. An arm that vanished from `armedClears` is here,
+    /// with the sentence that says whether it typed or was dropped.
+    public var firedClears: [(id: String, record: ClearRecord)] {
+        marks.compactMap { entry in entry.value.fired.map { (id: entry.key, record: $0) } }
+            .sorted { $0.record.at > $1.record.at }
     }
 
     /// Drop marks on sessions the roster no longer has, once they are old
@@ -238,16 +283,33 @@ extension ClaudeCLI {
     /// session's uuid as its guard); `unarchive` and `unpin` only drop a
     /// mark and need nothing, since the row may be gone. Remote: the same
     /// verb on the far side, its answer passed through.
+    ///
+    /// **The key is the row's id, never the caller's word.** A `<ref>`
+    /// resolves by name as well as by id (v0.1.31), and the poller joins
+    /// marks on `session.id` alone — so a mark filed under a name is a
+    /// mark no row will ever read (`docs/EVIDENCE.md`, "the name that
+    /// resolved for the read and not for the write").
     public func mark(_ change: MarkChange, id: String, overlayPath: String = RosterOverlay.defaultPath) async throws -> String {
         if host.isLocal {
+            var key = id
             var sessionId: String?
             switch change {
             case .archive, .pin:
                 let roster = RosterDecoder.decode(try await agentsJSON())
                 let row = try roster.sessions.session(matching: id)
+                key = row.id
                 sessionId = row.sessionId
             case .unarchive, .unpin:
-                break
+                // No roster read when the word is already a key — the
+                // undo half works on a row the roster has forgotten, and
+                // that is the case it exists for. Only a word that is not
+                // a key can be a name, and only then is it worth a
+                // `claude agents` to find out (leniently: no row means
+                // the sentence below, not an error).
+                if RosterOverlay.load(path: overlayPath).overlay.marks[id] == nil,
+                   let row = RosterDecoder.decode(try await agentsJSON()).sessions.sessionIfAny(matching: id) {
+                    key = row.id
+                }
             }
             // Load, change and save as one stretch under the file's lock,
             // and only after the roster read above. Until 2026-09-04 the
@@ -258,12 +320,12 @@ extension ClaudeCLI {
             // with a 400 ms stub: one of two archives gone, both exit 0).
             return try RosterOverlay.locked(path: overlayPath) {
                 var overlay = RosterOverlay.load(path: overlayPath).overlay
-                if change == .unarchive || change == .unpin, overlay.marks[id] == nil {
-                    return "\(id) was not \(change == .unarchive ? "archived" : "pinned")"
+                if change == .unarchive || change == .unpin, overlay.marks[key] == nil {
+                    return "\(key) was not \(change == .unarchive ? "archived" : "pinned")"
                 }
-                overlay.set(change, id: id, sessionId: sessionId)
+                overlay.set(change, id: key, sessionId: sessionId)
                 try overlay.save(path: overlayPath)
-                return "\(change.pastTense) \(id)"
+                return "\(change.pastTense) \(key)"
             }
         }
         guard let argv = markArgv(change, id: id) else { throw MarkError.noRemoteCCC(host.name) }

@@ -118,11 +118,14 @@ extension ClaudeCLI {
         case notBackground(String)
         case dirty(String)
         case noRemoteCCC(String)
+        case nothingToFireIt(String)
         public var description: String {
             switch self {
             case .notBackground(let id): return "\(id) is an interactive session; ccc has no pane on it to type into"
             case .dirty(let reason): return reason
             case .noRemoteCCC(let host): return "a clear is armed where the session lives, and \(host) has no ccc for it (`ccc hosts add \(host)` finds one)"
+            case .nothingToFireIt(let path):
+                return "nothing would fire it: no ccc is serving \(path) — open ccc.app or run `ccc attach <ref> --headless` there, then arm it again"
             }
         }
     }
@@ -134,7 +137,8 @@ extension ClaudeCLI {
     /// (the pending clear belongs next to the session, and the pane that
     /// fires it is over there).
     public func clear(id: String, then: String? = nil, cancel: Bool = false,
-                      overlayPath: String = RosterOverlay.defaultPath) async throws -> ClearOutcome {
+                      overlayPath: String = RosterOverlay.defaultPath,
+                      serving: @Sendable () -> Bool = { ControlClient().isReachable() }) async throws -> ClearOutcome {
         guard host.isLocal else {
             guard let ccc = host.ccc, let destination = host.ssh else { throw ClearError.noRemoteCCC(host.name) }
             var words = [ccc, "clear", id]
@@ -147,28 +151,52 @@ extension ClaudeCLI {
         }
 
         if cancel {
+            // A name only needs resolving when it is not already a key —
+            // and cancel must keep working on a row the roster has
+            // forgotten, so the roster read is the fallback, not the road.
+            var key = id
+            if RosterOverlay.load(path: overlayPath).overlay.marks[id] == nil,
+               let row = RosterDecoder.decode(try await agentsJSON()).sessions.sessionIfAny(matching: id) {
+                key = row.id
+            }
             return try RosterOverlay.locked(path: overlayPath) {
                 var overlay = RosterOverlay.load(path: overlayPath).overlay
-                let previous = overlay.arm(nil, id: id, sessionId: overlay.marks[id]?.sessionId)
+                let previous = overlay.arm(nil, id: key, sessionId: overlay.marks[key]?.sessionId)
                 guard previous != nil else {
-                    return ClearOutcome(ref: id, armed: false, said: "no clear was armed on \(id)")
+                    return ClearOutcome(ref: key, armed: false, said: "no clear was armed on \(key)")
                 }
                 try overlay.save(path: overlayPath)
-                return ClearOutcome(ref: id, armed: false, cancelled: true, said: "cancelled the clear armed on \(id)")
+                return ClearOutcome(ref: key, armed: false, cancelled: true, said: "cancelled the clear armed on \(key)")
             }
         }
 
         let roster = RosterDecoder.decode(try await agentsJSON())
         let row = try roster.sessions.session(matching: id)
         guard row.kind == .background else { throw ClearError.notBackground(id) }
+        // An arm is a promise that something types minutes from now, and
+        // the only things that can are the app and a headless attach —
+        // both of which serve the control socket. When neither is up the
+        // mark would sit in the file until it was pruned, and the caller
+        // (a session arming a clear on itself) would never learn that.
+        // `armed: true` has to mean it can fire.
+        guard serving() else { throw ClearError.nothingToFireIt(ControlSocket.defaultPath) }
         if let reason = ClearGuard.refusal(cwd: row.cwd) { throw ClearError.dirty(reason) }
 
         let pending = PendingClear(then: then)
         return try RosterOverlay.locked(path: overlayPath) {
             var overlay = RosterOverlay.load(path: overlayPath).overlay
-            overlay.arm(pending, id: id, sessionId: row.sessionId)
+            // Keyed on the ROW's id, never on the word the caller used.
+            // `ccc clear desk` resolves the name for every check above and
+            // then filed the mark under "desk", where the poller — which
+            // joins marks on `session.id` — could not see it and the pane
+            // read "no such row" and dropped it on the next tick. Measured
+            // twice by hail on a live `--bg` session, both times reported
+            // as "the arm succeeds and nothing ever happens"
+            // (`docs/EVIDENCE.md`, "the name that resolved for the read
+            // and not for the write").
+            overlay.arm(pending, id: row.id, sessionId: row.sessionId)
             try overlay.save(path: overlayPath)
-            return ClearOutcome(ref: id, armed: true, then: then, said: pending.said(id))
+            return ClearOutcome(ref: row.id, armed: true, then: then, said: pending.said(row.id))
         }
     }
 }
