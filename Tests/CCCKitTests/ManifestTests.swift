@@ -127,6 +127,18 @@ import Testing
         #expect(hostsText.contains("ccc hosts mute|unmute"))
     }
 
+    /// `--channels` (hail's ask, 2026-09-08) is a research-preview flag the
+    /// harness hides from its own `--help`, so ccc's help is the only place
+    /// it is written down — and a string no test reads is a string nothing
+    /// keeps true.
+    @Test func spawnNamesTheChannelsFlagAndWhatItIsFor() throws {
+        let spawn = try #require(CommandManifest.verb(named: "spawn"))
+        let text = CommandManifest.help(for: spawn)
+        #expect(text.contains("[--channels <entry>]..."))
+        #expect(text.contains("plugin:hail@hail"))
+        #expect(text.contains("respawnFlags"), "the reason it belongs at launch")
+    }
+
     @Test func aVerbsHelpCarriesItsJSONAndItsExit() throws {
         let update = try #require(CommandManifest.verb(named: "update"))
         let text = CommandManifest.help(for: update)

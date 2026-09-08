@@ -119,7 +119,10 @@ This is the mechanism behind "text typed on one Mac survived on the other".
 Whether the daemon exposes it outside the TUI is unknown (experiment 4).
 
 **Dispatch.** `claude --bg "<prompt>"` with `--name --model --agent
---permission-mode --effort --exec --worktree [name]`. cwd = the invocation
+--permission-mode --effort --exec --worktree [name]`, plus the undocumented
+variadic `--channels <servers...>` (channel plugins, registered only at
+launch; a bare one eats the next word — `docs/EVIDENCE.md`
+"`--channels`, the flag a desk can only take at launch"). cwd = the invocation
 directory (no `--cwd`; `claude agents --cwd` only filters). Worktree
 isolation is automatic before the first edit (`worktree.bgIsolation:
 "none"` disables). `claude --resume <id|name>`; `/fork [prompt]` inside a

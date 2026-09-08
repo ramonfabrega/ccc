@@ -787,7 +787,8 @@ enum CLI {
     /// is how an agent hands over a prompt with its newlines intact. No
     /// prompt is the draft: the session registers and waits for one.
     static func spawn(_ args: [String], json: Bool) async throws -> Int32 {
-        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort", "--from", "--base"]
+        let valued = ["--host", "--cwd", "--name", "--model", "--agent", "--permission-mode", "--effort", "--from", "--base",
+                      "--channels"]
         var spec = SpawnRequest()
         var hostFlag: String?
         var from: SessionRef?
@@ -813,6 +814,10 @@ enum CLI {
                 case "--agent": spec.agent = value
                 case "--permission-mode": spec.permissionMode = value
                 case "--base": spec.base = value
+                // One entry per flag, repeatable — the harness takes them
+                // space-separated (`--channels <servers...>`), which here
+                // would be indistinguishable from the prompt's first word.
+                case "--channels": spec.channels.append(value)
                 case "--from":
                     guard let ref = SessionRef.parse(value) else {
                         stderr("ccc: '\(value)' is not a session ref (id, or host:id)")

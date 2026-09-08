@@ -46,10 +46,22 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
     /// Claude app (item 17's box). Nil takes `defaultRemoteControl`;
     /// `--no-rc` is the explicit false.
     public var rc: Bool?
+    /// `--channels <servers...>`: the channel plugins this session
+    /// registers at launch, e.g. `plugin:hail@hail` for the Slack desk.
+    /// A research-preview flag, hidden from `claude --help` and honoured
+    /// (measured 2026-09-08 in 2.1.260: the binary's own usage string is
+    /// `--channels <servers...>`). Asked for by the hail session, whose
+    /// desk is a permanent side session that can only register its channel
+    /// at launch — and since the daemon records launch flags in
+    /// `respawnFlags`, one that reaches the argv survives every respawn,
+    /// which is the whole point for a session meant to live for days.
+    /// Empty is the flag absent.
+    public var channels: [String]
 
     public init(cwd: String? = nil, prompt: String? = nil, name: String? = nil, model: String? = nil,
                 agent: String? = nil, permissionMode: String? = nil, effort: String? = nil,
-                worktree: String? = nil, from: String? = nil, base: String? = nil, rc: Bool? = nil) {
+                worktree: String? = nil, from: String? = nil, base: String? = nil, rc: Bool? = nil,
+                channels: [String] = []) {
         self.cwd = cwd
         self.prompt = prompt
         self.name = name
@@ -61,6 +73,26 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         self.from = from
         self.base = base
         self.rc = rc
+        self.channels = channels
+    }
+
+    /// Lenient, for the one shape ccc stores and re-reads: a request
+    /// encoded before `--channels` existed carries no key at all, and that
+    /// must cost the flag rather than the decode.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        cwd = try c.decodeIfPresent(String.self, forKey: .cwd)
+        prompt = try c.decodeIfPresent(String.self, forKey: .prompt)
+        name = try c.decodeIfPresent(String.self, forKey: .name)
+        model = try c.decodeIfPresent(String.self, forKey: .model)
+        agent = try c.decodeIfPresent(String.self, forKey: .agent)
+        permissionMode = try c.decodeIfPresent(String.self, forKey: .permissionMode)
+        effort = try c.decodeIfPresent(String.self, forKey: .effort)
+        worktree = try c.decodeIfPresent(String.self, forKey: .worktree)
+        from = try c.decodeIfPresent(String.self, forKey: .from)
+        base = try c.decodeIfPresent(String.self, forKey: .base)
+        rc = try c.decodeIfPresent(Bool.self, forKey: .rc)
+        channels = (try? c.decodeIfPresent([String].self, forKey: .channels)) ?? []
     }
 
     public var isDraft: Bool { (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -122,6 +154,12 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
         if let agent, !agent.isEmpty { out += ["--agent", agent] }
         if effectiveRemoteControl { out.append("--rc") }
         if let worktree { out += worktree.isEmpty ? ["--worktree"] : ["--worktree", worktree] }
+        // `--channels` is *variadic* (`<servers...>`), so it is greedier
+        // than the optional-value flags below: it eats every following
+        // word up to the next flag, the prompt included. It sits here
+        // because `--permission-mode` is always emitted next, so a flag —
+        // never the prompt — is what ends its entries.
+        if !channels.isEmpty { out += ["--channels"] + channels }
         out += ["--permission-mode", effectivePermissionMode]
         if let effort, !effort.isEmpty { out += ["--effort", effort] }
         if !isDraft, let prompt { out.append(prompt) }
@@ -135,6 +173,12 @@ public struct SpawnRequest: Codable, Sendable, Equatable {
     public static let optionalValueFlags: Set<String> = [
         "--rc", "--remote-control", "--worktree", "-w",
     ]
+
+    /// The harness flags that take *many* values (`<servers...>`), so they
+    /// swallow every word up to the next flag rather than just one. The
+    /// stronger rule: one of these may never be the last flag before the
+    /// prompt, and `SpawnArgumentTests` is what keeps that true.
+    public static let variadicValueFlags: Set<String> = ["--channels"]
 }
 
 /// What the harness answered. Measured 2026-09-02 (2.1.259,

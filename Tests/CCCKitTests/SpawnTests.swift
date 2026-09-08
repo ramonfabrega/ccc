@@ -75,6 +75,31 @@ import Testing
         #expect(SpawnRequest(worktree: nil).claudeArguments == ["--bg", "--rc", "--permission-mode", "auto"])
     }
 
+    /// `--channels <servers...>` (asked for by the hail session, 2026-09-08):
+    /// the channel plugins a session registers at launch, which is the only
+    /// moment it can. Variadic on the harness side, so its entries are one
+    /// run and `--permission-mode` is what ends them — never the prompt.
+    @Test func channelsRegisterAtLaunchAndNeverReachThePrompt() {
+        let desk = SpawnRequest(prompt: "hold the desk", name: "hail-desk", channels: ["plugin:hail@hail"])
+        #expect(desk.claudeArguments
+                == ["--bg", "--name", "hail-desk", "--rc", "--channels", "plugin:hail@hail",
+                    "--permission-mode", "auto", "hold the desk"])
+        // Repeatable: more than one entry is one flag and one run of words.
+        #expect(SpawnRequest(prompt: "go", channels: ["plugin:hail@hail", "plugin:x@y"]).claudeArguments
+                == ["--bg", "--rc", "--channels", "plugin:hail@hail", "plugin:x@y", "--permission-mode", "auto", "go"])
+        // None is the flag absent, which is every other spawn ccc makes.
+        #expect(!SpawnRequest(prompt: "go").claudeArguments.contains("--channels"))
+        // Across the hop the entry is a bare word — `:` and `@` are safe —
+        // so the far side's shell hands the harness what was typed.
+        let tail = Array(remote.spawnArgv(SpawnRequest(prompt: "go", channels: ["plugin:hail@hail"]))
+            .drop { $0 != "studio" }.dropFirst())
+        #expect(tail == ["~/.local/bin/claude", "--bg", "--rc", "--channels", "plugin:hail@hail",
+                         "--permission-mode", "auto", "go"])
+        // A request stored before the flag existed still decodes.
+        let old = try? JSONDecoder().decode(SpawnRequest.self, from: Data(#"{"prompt":"go"}"#.utf8))
+        #expect(old?.channels == [])
+    }
+
     /// `--remote-control [name]` and `-w, --worktree [name]` take an
     /// **optional** value, so a bare one standing last before the
     /// positional prompt eats it. Both shipped that way and both were
@@ -92,17 +117,27 @@ import Testing
             for worktree in [nil, "", "v6"] as [String?] {
                 for effort in [nil, "high"] as [String?] {
                     for model in [nil, "haiku"] as [String?] {
-                        let argv = SpawnRequest(prompt: "go", model: model, effort: effort,
-                                                worktree: worktree, rc: rc).claudeArguments
-                        #expect(argv.last == "go")
-                        let beforePrompt = argv[argv.count - 2]
-                        #expect(!SpawnRequest.optionalValueFlags.contains(beforePrompt),
-                                "\(beforePrompt) would swallow the prompt: \(argv)")
-                        // And the same for a draft, whose last word is a
-                        // flag: a trailing bare `--rc`/`--worktree` is
-                        // harmless there, but only because nothing follows.
-                        let draft = SpawnRequest(model: model, effort: effort, worktree: worktree, rc: rc)
-                        #expect(!draft.claudeArguments.contains("go"))
+                        for channels in [[], ["plugin:hail@hail"]] as [[String]] {
+                            let argv = SpawnRequest(prompt: "go", model: model, effort: effort,
+                                                    worktree: worktree, rc: rc, channels: channels).claudeArguments
+                            #expect(argv.last == "go")
+                            let beforePrompt = argv[argv.count - 2]
+                            #expect(!SpawnRequest.optionalValueFlags.contains(beforePrompt),
+                                    "\(beforePrompt) would swallow the prompt: \(argv)")
+                            // A variadic flag is greedier still: it eats
+                            // every word up to the next flag, so one must
+                            // never be the *last* flag before the prompt.
+                            let lastFlag = argv.dropLast().last { $0.hasPrefix("--") }
+                            #expect(lastFlag.map { !SpawnRequest.variadicValueFlags.contains($0) } ?? true,
+                                    "\(lastFlag ?? "") would swallow the prompt: \(argv)")
+                            // And the same for a draft, whose last word is
+                            // a flag: a trailing bare `--rc`/`--worktree`
+                            // is harmless there, but only because nothing
+                            // follows.
+                            let draft = SpawnRequest(model: model, effort: effort, worktree: worktree,
+                                                     rc: rc, channels: channels)
+                            #expect(!draft.claudeArguments.contains("go"))
+                        }
                     }
                 }
             }

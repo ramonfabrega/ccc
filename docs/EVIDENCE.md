@@ -5044,3 +5044,54 @@ claim to being first.
 the worker committing its predictions *before* running the capture, which
 is the discipline its brief demanded. Progress, not noise, and still not
 worth a phone.
+
+## `--channels`, the flag a desk can only take at launch (2026-09-08)
+
+Asked for by the hail session: hail's Slack desk is a permanent side
+session that registers its channel *only* at launch, and `spawnArgv` was
+a fixed list, so the desk could not be spawned the fleet's way at all.
+The three things measured before it was written:
+
+**The flag exists in 2.1.260 and takes a tagged entry**, though
+`claude --help` prints nothing about it:
+
+```
+$ LC_ALL=C grep -a -o -- "--channels[^\"']\{0,80\}" ~/.local/share/claude/versions/2.1.260 | head -4
+--channels <servers...>
+--channels to run a list of approved channels.
+$ claude --channels plugin:hail@hail --version
+2.1.260 (Claude Code)
+```
+
+**It is variadic, and a bare one eats the next word** — the same class of
+hazard `--rc` and `--worktree` were caught on (item 17), one step
+greedier, because it swallows *every* word up to the next flag rather
+than one:
+
+```
+$ claude --channels --version
+--channels entries must be tagged: --version
+```
+
+`--version` was consumed as a channel entry. So `claudeArguments` places
+`--channels` immediately before `--permission-mode`, which is always
+emitted and always carries its own value: a flag, never the prompt, is
+what ends its run. `SpawnRequest.variadicValueFlags` + the structural case
+in `anOptionalValueFlagNeverStandsBeforeThePrompt` keep that true as
+flags are added.
+
+**The words ccc actually hands the harness**, with a recording `claude`
+under `CCC_CLAUDE` (`ccc spawn --model haiku --name fake-desk --channels
+plugin:hail@hail "hold the desk"`):
+
+```
+--bg --name fake-desk --model haiku --rc --channels plugin:hail@hail
+--permission-mode auto "hold the desk"
+```
+
+The prompt arrived as one argument and the entry as one word — `:` and
+`@` are both in `remoteWord`'s bare set, so the far side's shell hands the
+harness the same word across the hop. **Not measured: a live desk.** The
+allowlist entry that admits `plugin:hail@hail` was being applied as this
+shipped, and a throwaway session registering the desk's channel would
+have raced the real one for Slack messages.
