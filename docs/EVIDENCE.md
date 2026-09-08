@@ -5095,3 +5095,27 @@ harness the same word across the hop. **Not measured: a live desk.** The
 allowlist entry that admits `plugin:hail@hail` was being applied as this
 shipped, and a throwaway session registering the desk's channel would
 have raced the real one for Slack messages.
+
+## Cut as v0.1.35 (2026-09-08)
+
+`v0.1.35`, build **234**, 5,308,423 bytes, notarized and published to both
+CDN keys; the live feed's `length=` matches the zip's real
+`content-length` (`ota verify --feed ccc`: `ok … version 234 length
+5308423`), and `scripts/install --dist` put the released bytes on studio.
+Six commits since `v0.1.34` — the JSONL fix reaching running watchers, the
+landing detector's one banner, `ahead` as a count, the restart measured
+rather than remembered, and `--channels`.
+
+**Proved on the released bytes.** `--channels` is the feature this cut
+exists for, and hail spawns its desk through whatever `ccc` is on PATH, so
+the dev binary proving it was never the measurement (`CLAUDE.md`, "Rules
+earned"). Off `/opt/homebrew/bin/ccc`, 0.1.35 (234), with a recording
+`claude` under `CCC_CLAUDE`:
+
+```
+$ ccc spawn --model haiku --name fake-desk --channels plugin:hail@hail "hold the desk"
+--bg --name fake-desk --model haiku --rc --channels plugin:hail@hail --permission-mode auto hold the desk
+```
+
+and `ccc help spawn` names the flag in its synopsis and its prose. The
+desk can now be spawned the fleet's way.
