@@ -5207,3 +5207,33 @@ attached to `908f42ca` and had **never touched** `648f0454`; armed by
 name, that clear fired the same way (`cleared 648f0454, then: …`), minted
 `56620908…`, and the job read `detail: replied with DELTA as requested`.
 A clear needs a ccc on the Mac, not a pane on the session.
+
+## Cut as v0.1.36 (2026-09-08)
+
+`v0.1.36`, build **237**, 5,327,873 bytes, notarized and published to both
+CDN keys; the live feed's `length=` matches the zip's real
+`content-length` (`ota verify --feed ccc`: `ok … version 237 length
+5327873`), and `scripts/install --dist` put the released bytes on studio
+(`ccc 0.1.36 (237)`). Two commits since `v0.1.35`: the mark key and the
+version bump.
+
+**Proved on the released bytes**, which for this fix is the only
+measurement that counts — hail's desk arms its clears through whatever
+`ccc` is on PATH, and that symlink points at the installed bundle, so the
+dev binary that found the bug could never prove the fix (`CLAUDE.md`,
+"Rules earned"). Off `/opt/homebrew/bin/ccc`, 0.1.36 (237), with the
+installed app as the firer and the real overlay underneath — a haiku
+`--bg` fixture the app had never attached to, armed **by name**:
+
+```
+$ ccc clear release-probe --then "Reply with exactly the word FOXTROT…" --json
+{"armed": true, "ref": "baed3fe7", …}                    # the name resolved to the row's id
+FIRED (3 s later): {"ref": "baed3fe7", "fired": "true",
+                    "said": "cleared baed3fe7, then: Reply with exactly the word FOXTROT…"}
+$ ccc clear
+baed3fe7  3s ago · cleared baed3fe7, then: Reply with exactly the word FOXTROT…
+```
+
+and the session itself: a new transcript `2559d33b…` minted by the
+`/clear`, with the job's own `detail: replied with FOXTROT as requested`.
+The desk can clear itself now.
