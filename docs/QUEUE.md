@@ -193,6 +193,38 @@ the footgun is entirely in the text form an agent reaches for first, and
 built from a *snapshot* of refs (upstream of ccc) and a state that never
 moved (item 25). Build it for whoever keys on names, not as anyone's fix.
 
+### 34. Merge's conflict makes no offer, and now there is someone to make it to
+
+From attrition, 2026-09-17, before the collision it predicts has fired.
+`GitUpdate`'s back-out carries `ask` — "Merge master into this branch and
+resolve the conflicts" — and the HUD turns it into a button that attaches
+the pane and types it (`ccc update --ask` is the twin). `GitMerge`'s
+back-out carries nothing: a sentence, and conflicts are a terminal's job.
+
+That was right while the base was the main checkout's branch, where no
+session lives. **On the shape that loop actually has it is no longer
+right**: the base is checked out in `.claude/worktrees/<name>` and a live
+commander session is sitting in that tree — so the tree the merge just
+conflicted in, and backed out of, is a tree with an agent in it who could
+resolve the collision. The verb with the offer is the one whose conflicts
+are structurally rare (a worker writes its paperwork last, so it usually
+has nothing at the contested end of the file when it updates); the verb
+without one is the direction the first real collision is expected from.
+
+Cheap, because every piece exists: `MergeOutcome.ask` is already a field
+the wire and the HUD read, `WorktreeProbe.checkoutHolding` already names
+the tree the merge ran in, and roster rows carry `cwd`, so the session in
+that tree is a lookup rather than a new probe. `ccc ask <ref>` is already
+the parked twin (item 5), and it is what this would reach for.
+
+**Argue whose conflict it is first**, because the answer is not obviously
+the commander: the worker knows the change, the commander owns the base,
+and the resolution lands a merge commit on a branch the menu has just
+declined to touch on its own. A wrong offer here is worse than none — it
+would hand a live session a merge into a tree it did not ask about. And
+none of it is proved until a real `ccc merge` collision has been seen;
+two live landings so far have both been clean.
+
 ## Later
 
 **`claude rm` leaves a draft's worktree behind** — the one it cut itself,

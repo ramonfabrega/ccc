@@ -5577,3 +5577,39 @@ half of it: **believing a behaviour because you wrote the code that
 produces it is the same error as reporting from the docs instead of from a
 run** — the reporter's own retraction, pointed inward, and worth the same
 treatment.
+
+## The update-direction collision may be rare by construction (2026-09-17)
+
+`loop-301` took all three commits it was behind — including the two that
+appended journal entries — and reported no conflict. From the tree holding
+the base: `merge-base` is the base tip and
+`rev-list --count loop-301..worktree-replan-pdb` is 0. The reporter asked
+the worker directly rather than reading silence as success, which is the
+right instinct: a worker may resolve something and not say so.
+
+**The reporter's argument for why it was clean is structural, not lucky.**
+A worker writes its journal entry near the *end* of its item — the
+definition of done puts paperwork after the implementation and the gate —
+and 301 updated while still restructuring `astar_path`, so it had nothing
+of its own at the contested end of the file. If that holds, an
+update-direction journal collision only happens to a worker that has
+already written its paperwork, and workers do paperwork last **by
+construction**. The direction with the offered prompt is the direction
+whose conflicts are structurally rare; the direction with no offer —
+`ccc merge`, in the base's tree, with a live commander sitting in it — is
+where the first real collision is now expected. That asymmetry is parked
+as QUEUE item 34, with "argue whose conflict it is" first: the worker
+knows the change, the commander owns the base, and a wrong offer is worse
+than none.
+
+Also worth keeping, because it is a distinction our own entries have
+blurred before: **"the predicted event did not occur" is not "the
+predicted string was wrong."** The back-out sentence for a merge collision
+is still unread off a live one; two live landings have both been clean.
+The fixtures hold it; nothing has met it.
+
+What the reporter's next case will exercise, in its words rather than
+ours: both live lanes write `docs/JOURNAL.md` *and* `docs/QUEUE.md`'s
+scoreboard, so a two-file collision is the ordinary case the moment they
+land close together — which is the cut the entry above put a test under,
+now with a named mechanism rather than "a matter of when".
