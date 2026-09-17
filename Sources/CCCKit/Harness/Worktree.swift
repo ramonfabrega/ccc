@@ -981,6 +981,14 @@ public enum GitMerge {
         // checkout, whose HEAD guard below then says so in the old words.
         let repo = WorktreeProbe.checkoutHolding(info.base, repo: info.repo, git: git) ?? info.repo
         func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", repo] + args) }
+        // **The path, not the branch, and nothing for the main checkout.**
+        // The branch is already in the sentence twice; the path answers the
+        // question a surprise actually raises — *which tree did you just
+        // write into* — and on a fleet the two do not match by design
+        // (`worktree-replan-pdb` lives at `.claude/worktrees/replan-pdb`,
+        // three of them live at once), so the path is the disambiguator and
+        // the branch would not be. The reporter's argument, not ours
+        // (2026-09-17); we had picked it by taste.
         let elsewhere = WorktreeProbe.samePath(repo, info.repo)
             ? "" : " in \(WorktreeProbe.inRepoPath(repo, repo: info.repo))"
         let name = "\(info.branch) → \(info.base)\(elsewhere)"
