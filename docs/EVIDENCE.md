@@ -5356,3 +5356,35 @@ left `worktree-loop-295`'s predecessor dangling: "it's the difference
 between `rm` being safe to reach for and being a thing you check first".
 Now in the manifest, in README, and read by a test. Third report of the
 day whose fix was words.
+
+## Cut as v0.1.37 (2026-09-17)
+
+`v0.1.37`, build **241**, 5,329,908 bytes, notarized and published to both
+CDN keys; the live feed's `length=` matches the zip's real
+`content-length` (`ota verify --feed ccc`: `ok … version 241 length
+5329908`), and `scripts/install --dist` put the released bytes on studio
+(`ccc 0.1.37 (241)`). Three commits since `v0.1.36`: the worktree-held
+base, the strings, the version bump.
+
+**Proved on the released bytes**, off `/opt/homebrew/bin/ccc`, on the same
+attrition-shaped fixture with a fresh haiku draft as the row:
+
+```
+$ ccc spawn --cwd … --worktree=release-probe --base worktree-integration … → 269a9873
+$ ccc merge 269a9873 --no-ff --json
+{ "merged": "true", "said": "merged worktree-release-probe → worktree-integration
+                             in .claude/worktrees/integration (1 commit, merge commit ef5ca4f)" }
+$ ccc rm 269a9873
+removed 269a9873; removed the worktree …/release-probe and its branch worktree-release-probe
+```
+
+`main` never moved, and `rm` retired the branch this time — the same call
+that kept `worktree-probe` an hour earlier, when the merge before it had
+been refused. The two halves of the day's report, on one row: the verb
+that could not reach a base in a worktree now does, and the guard that
+decides a branch's fate reads the recorded base either way.
+
+The reporter is the test from here: it lands items continuously against a
+non-default base held in a worktree, with two lanes live at the cut, so
+`merge` and `pull` meet real conflicts on a real loop within minutes of
+its update — which is the measurement a fixture cannot make.
