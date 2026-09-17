@@ -5597,10 +5597,10 @@ already written its paperwork, and workers do paperwork last **by
 construction**. The direction with the offered prompt is the direction
 whose conflicts are structurally rare; the direction with no offer —
 `ccc merge`, in the base's tree, with a live commander sitting in it — is
-where the first real collision is now expected. That asymmetry is parked
-as QUEUE item 34, with "argue whose conflict it is" first: the worker
-knows the change, the commander owns the base, and a wrong offer is worse
-than none.
+where the first real collision is now expected. That asymmetry is recorded
+here rather than in the queue — see the entry below for why — with "argue
+whose conflict it is" first: the worker knows the change, the commander
+owns the base, and a wrong offer is worse than none.
 
 Also worth keeping, because it is a distinction our own entries have
 blurred before: **"the predicted event did not occur" is not "the
@@ -5658,11 +5658,23 @@ Update-direction collisions are not rare by construction: a worker does
 write its paperwork last, but what decides the collision is whether it
 updates *again after* writing it — which happens whenever a commander
 sends it back, as 301's did to re-measure a stale baseline. So the offered
-prompt is pointed at the right verb after all, QUEUE item 34's premise is
-weaker than when it was written (recorded there), and the reporter, who
-would have argued for moving the offer to `merge`, argues now for leaving
-it parked. The item stays because the shape is real, not because the case
-is made.
+prompt is pointed at the right verb after all, the premise is weaker than
+when it was written, and the reporter, who would have argued for moving
+the offer to `merge`, argues now for leaving it alone.
+
+**The queue refused the item, and that is the guard working.** It went in
+as item 34 and `DocsGuardTests.theQueueIsBounded` failed at 272 lines
+against a bound of 230 — the queue was already at 229, so an item can only
+enter when a finished one leaves, and nothing finished today. Golfing it
+to fifteen lines still failed, which is the bound saying the right thing:
+a parked design question whose own proposer now argues against it does not
+earn one of 230 lines that every session reads whole. So `docs/QUEUE.md`
+is back untouched and the finding lives here, where the file is unbounded
+because it is addressed by heading and never read whole. The full shape,
+if it is ever picked up: `MergeOutcome.ask` is a wire field,
+`WorktreeProbe.checkoutHolding` names the tree, roster rows carry `cwd`,
+`ccc ask <ref>` is the parked twin — and whose conflict it is gets argued
+before any of that is built.
 
 Merge's back-out sentence remains unread off a live collision. Two
 landings, both clean; the one real conflict went the other way.
