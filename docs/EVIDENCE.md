@@ -5678,3 +5678,40 @@ before any of that is built.
 
 Merge's back-out sentence remains unread off a live collision. Two
 landings, both clean; the one real conflict went the other way.
+
+## Both paperwork guards refused both of us, on the same day (2026-09-17)
+
+The reporter's handoff bound (32 lines) refused a 44-line draft and took
+three trims; its item cap (18) fired at 20 and pushed two of three new
+items into a parked file. Ours refused item 34 at 272 lines against 230,
+and still refused it golfed to fifteen. **Both sides concluded
+independently that the guard was right**, and both had a shortening they
+would have made instead if the guard had merely asked. That convergence is
+worth more than either finding, and it is the same rule this file already
+carries from another surface: *a rule that is only prose is a rule a tired
+afternoon defeats* — the reporter's phrasing is that a rule which could be
+a guard and is only prose will be broken within the week, and it names its
+own scar, a red paperwork guard that reached a commit on that loop's first
+night with the lesson written down and broken later by the session that
+wrote it.
+
+**Our instance of that scar, today, named precisely.** A commit went out
+with `DocsGuardTests.theQueueIsBounded` red, and the cause was not the
+item's length — it was that a **docs-only change was verified with a
+filtered test run**, and the docs guards live in the suite that filter
+excluded (`ManifestTests|WorktreeTests|BaseInAWorktreeTests`). The rule
+that would have caught it is "verify a docs change by running the suite,
+not the part of it you were just editing", which is prose, which is the
+category their rule says gets broken.
+
+The guard-shaped version would be a gate command that runs the whole suite
+unfiltered and is what "green" means — there is no such script and no git
+hook in this repo today (`scripts/` has build, install, package, probes;
+`core.hooksPath` is unset), so "green" is currently whatever the session
+last typed. **Not built here**: it changes the dev loop and the release
+flow's step 1, which is the user's to decide, and this session's evidence
+for it is one slip of its own. Offered, and left as an offer.
+
+Disclosure is the cheap half and was done in the same message as the fix.
+The expensive version is the one nobody mentions and a later session
+inherits as green.
