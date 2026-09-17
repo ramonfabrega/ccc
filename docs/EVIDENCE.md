@@ -5613,3 +5613,56 @@ ours: both live lanes write `docs/JOURNAL.md` *and* `docs/QUEUE.md`'s
 scoreboard, so a two-file collision is the ordinary case the moment they
 land close together — which is the cut the entry above put a test under,
 now with a named mechanism rather than "a matter of when".
+
+## The first real collision: update's back-out, five for five (2026-09-17)
+
+`loop-301` updated twice. The first, before it had written its journal
+entry, was clean — `merged worktree-replan-pdb → worktree-loop-301
+(4 commits, merge commit a000d71)`. The second, with its entry written,
+collided. One line, exit 1, verbatim from the loop:
+
+```
+merge worktree-replan-pdb → worktree-loop-301 conflicts in docs/JOURNAL.md; backed out, worktree-loop-301 untouched — ask the session to merge worktree-replan-pdb
+```
+
+**Pre-registered before the datum**, in a message to the reporter, with
+the fixture's names: identical, clause for clause, no drift. The base half
+read the local branch rather than `origin/…`, which is right — local was
+level with origin at that moment, so `baseTip` was nil.
+
+The five checks, each answered separately rather than inferred from one:
+
+1. the sentence, above, exact;
+2. `git status --porcelain` in the worker's tree afterwards — empty;
+3. its commits survived (`9c29ca8`, `75e13a4`, `aab94de` unchanged) — the
+   fourth back-out check, the one that was resting on nothing this morning;
+4. no `MERGE_HEAD` — `rev-parse -q --verify` failed;
+5. the base's side untouched, **verified from the tree holding it by the
+   commander sitting in it**, not from the worker's report: status empty,
+   HEAD `1a8a51c`, branch still `worktree-replan-pdb`.
+
+Resolved by hand afterwards: `git merge --no-ff`, one hunk, 302's entry
+against its own, both `## 2026-09-17`, kept in landing order; guards and
+gate green.
+
+**What the fixtures gained.** The live line is now the assertion: all four
+back-out tests compare the **whole sentence** instead of a substring, in
+both shapes and both verbs. The `— ask the session to merge <tip>` clause
+had been read by no test at all, and it is half of what the HUD's button
+promises. The merge-direction lines are pinned the same way, so when the
+reporter sends the first real one it will be compared against a test
+rather than against anyone's memory of what the sentence says.
+
+**And the structural argument was amended by the side that made it.**
+Update-direction collisions are not rare by construction: a worker does
+write its paperwork last, but what decides the collision is whether it
+updates *again after* writing it — which happens whenever a commander
+sends it back, as 301's did to re-measure a stale baseline. So the offered
+prompt is pointed at the right verb after all, QUEUE item 34's premise is
+weaker than when it was written (recorded there), and the reporter, who
+would have argued for moving the offer to `merge`, argues now for leaving
+it parked. The item stays because the shape is real, not because the case
+is made.
+
+Merge's back-out sentence remains unread off a live collision. Two
+landings, both clean; the one real conflict went the other way.

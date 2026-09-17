@@ -245,7 +245,13 @@ import Testing
             for strategy in [MergeStrategy.noFF, .squash] {
                 let outcome = GitMerge.perform(strategy, on: info)
                 #expect(!outcome.merged, "\(outcome.said)")
-                #expect(outcome.said.contains("conflicts in a.txt") && outcome.said.contains("backed out"))
+                // The whole line, not a substring: a live collision proved
+                // the update twin exact (2026-09-17), and this is the
+                // sentence the reporter will send off the first real merge
+                // one — so it is compared against a test, not a memory.
+                let verb = strategy == .noFF ? "merge" : "squash"
+                #expect(outcome.said == "\(verb) worktree-t → master conflicts in a.txt; backed out, master untouched",
+                        "\(outcome.said)")
                 #expect(try repo.git("rev-parse", "master") == before)
                 #expect(try repo.git("status", "--porcelain", "--untracked-files=no") == "")
                 #expect(try String(contentsOf: repo.root.appending(path: "a.txt"), encoding: .utf8) == "ours\n")
@@ -357,7 +363,13 @@ import Testing
             let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
             let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
             #expect(!outcome.merged, "\(outcome.said)")
-            #expect(outcome.said.contains("conflicts in a.txt") && outcome.said.contains("backed out"))
+            // Exact, off a real collision: `loop-301` produced this line
+            // with its own names and nothing else differing (2026-09-17).
+            // The `— ask the session to merge <tip>` clause was read by no
+            // test until that landed, and it is half of what the HUD's
+            // button promises.
+            #expect(outcome.said == "merge master → worktree-t conflicts in a.txt; backed out, worktree-t untouched — ask the session to merge master",
+                    "\(outcome.said)")
             #expect(outcome.ask == "Merge master into this branch and resolve the conflicts.")
             #expect(try repo.git("rev-parse", "worktree-t") == before)
             #expect(try repo.git("status", "--porcelain", "--untracked-files=no", in: repo.worktree) == "")

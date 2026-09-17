@@ -202,14 +202,23 @@ the pane and types it (`ccc update --ask` is the twin). `GitMerge`'s
 back-out carries nothing: a sentence, and conflicts are a terminal's job.
 
 That was right while the base was the main checkout's branch, where no
-session lives. **On the shape that loop actually has it is no longer
+session lives. **On the shape that loop actually has it is less clearly
 right**: the base is checked out in `.claude/worktrees/<name>` and a live
 commander session is sitting in that tree — so the tree the merge just
 conflicted in, and backed out of, is a tree with an agent in it who could
-resolve the collision. The verb with the offer is the one whose conflicts
-are structurally rare (a worker writes its paperwork last, so it usually
-has nothing at the contested end of the file when it updates); the verb
-without one is the direction the first real collision is expected from.
+resolve the collision.
+
+**The argument that pointed this at `merge` has since weakened, from the
+side that made it.** It rested on update-direction conflicts being rare by
+construction, because a worker writes its paperwork last and so has
+nothing at the contested end of the file when it updates. Amended by the
+reporter the same day, after the first real collision was an `update`:
+what decides it is whether the worker updates *again after* writing its
+paperwork, which happens whenever a commander sends it back — 301's did,
+to re-measure a stale baseline. So the offer is pointed at the right verb
+today, and the reporter, who would have argued for moving it, argues for
+leaving this parked. Kept as an item because the shape is real, not
+because the case is made.
 
 Cheap, because every piece exists: `MergeOutcome.ask` is already a field
 the wire and the HUD read, `WorktreeProbe.checkoutHolding` already names
@@ -222,8 +231,9 @@ the commander: the worker knows the change, the commander owns the base,
 and the resolution lands a merge commit on a branch the menu has just
 declined to touch on its own. A wrong offer here is worse than none — it
 would hand a live session a merge into a tree it did not ask about. And
-none of it is proved until a real `ccc merge` collision has been seen;
-two live landings so far have both been clean.
+none of it is proved until a real `ccc merge` collision has been seen: two
+live landings have both been clean, and the one real collision so far went
+the other way.
 
 ## Later
 

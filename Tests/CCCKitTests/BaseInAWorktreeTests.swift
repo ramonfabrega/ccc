@@ -167,7 +167,8 @@ import Testing
             let mine = try s.head("worktree-w")
             let outcome = GitMerge.perform(.noFF, on: try #require(WorktreeProbe().fresh(forCwd: s.worker.path)))
             #expect(!outcome.merged)
-            #expect(outcome.said.contains("conflicts in c.txt"))
+            #expect(outcome.said == "merge worktree-w → worktree-integration in .claude/worktrees/integration conflicts in c.txt; backed out, worktree-integration untouched",
+                    "\(outcome.said)")
             #expect(try s.head("worktree-integration") == tip, "backed out where it ran")
             #expect(try s.git("status --porcelain", s.base).isEmpty, "and left that tree clean")
             // The worker's side is untouched: its commits are still there
@@ -230,7 +231,8 @@ import Testing
             let info = try #require(WorktreeProbe().fresh(forCwd: s.worker.path))
             let outcome = GitUpdate.perform(on: info, worktree: s.worker.path)
             #expect(!outcome.merged, "\(outcome.said)")
-            #expect(outcome.said.contains("conflicts in b.txt") && outcome.said.contains("backed out"))
+            #expect(outcome.said == "merge worktree-integration → worktree-w conflicts in b.txt; backed out, worktree-w untouched — ask the session to merge worktree-integration",
+                    "\(outcome.said)")
             #expect(outcome.ask == "Merge worktree-integration into this branch and resolve the conflicts.")
             // The worker's side: back where it started, clean, not mid-merge.
             #expect(try s.head("worktree-w") == mine, "the worker keeps its commits")
