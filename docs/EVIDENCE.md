@@ -5541,3 +5541,39 @@ way merge's asserts the worker keeps its commits.
 Left for the live loop, unchanged: whichever verb collides first. If it is
 `update`, these three are what it checks; if it is `merge`, the four from
 the entry above. The reporter will name the verb either way.
+
+## The cut in the back-out's own sentence, and one helper for it (2026-09-17)
+
+The reporter's mechanism is more specific than "whichever verb updates
+first": `loop-301` is behind the base by 3, **two of those three appended
+to the end of `docs/JOURNAL.md`** (295's and 302's landings), and 301 has
+its own entry in progress at that same end — so its `ccc update` meets two
+foreign entries in its own tree. `loop-303` is behind by 1 and that commit
+is paperwork with no journal line, so 303 is clean now and becomes a
+candidate the moment 301 lands. 301 is the first datum, and it is
+`update`'s back-out, in the worker's tree.
+
+What that reading found here, before the loop did: every conflict
+assertion in the suite was the **single-file** case (`conflicts in a.txt`,
+four of them). The `prefix(4)` + `(+N)` cut in the back-out's own sentence
+was read by nothing — and it lived in **two identical private copies**,
+one per verb that backs out. A collision wider than one file was about to
+be the first thing to exercise it, live.
+
+Now one `Git.conflicted` helper behind both verbs, beside `Git.dirty`, and
+a test that reads the cut through both of them: six files conflicting,
+`conflicts in a.txt, p.txt, q.txt, r.txt (+2)` from `merge` and from
+`update`, both trees back where they started and neither mid-merge. 301's
+real sentence will name one file, not six — but the cut is what a wide
+collision would have hit first with nothing holding it.
+
+**Third instance today of one failure.** The fourth back-out check, the
+missing `GitUpdate` suite for this shape, and now this cut: all three were
+correct code that no test read, and all three were found by reading our own
+tests after making a claim about them to someone who was about to check
+it. No new rule — `docs/DESIGN.md` §9 and CLAUDE.md already say a string no
+test reads is a string nothing keeps true. What today adds is the second
+half of it: **believing a behaviour because you wrote the code that
+produces it is the same error as reporting from the docs instead of from a
+run** — the reporter's own retraction, pointed inward, and worth the same
+treatment.

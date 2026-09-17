@@ -256,6 +256,41 @@ import Testing
         }
     }
 
+    /// The other four-then-count cut, in the back-out's own sentence
+    /// rather than the dirty refusal's: read by nothing until a live loop
+    /// was about to meet a collision wider than one file. Both verbs that
+    /// back out say it, out of one helper, so both are checked here.
+    @Test func aWideConflictNamesFourFilesThenACount() throws {
+        try withRepo { repo in
+            let files = ["a.txt", "p.txt", "q.txt", "r.txt", "s.txt", "t.txt"]
+            for name in files where name != "a.txt" {
+                try repo.commit(name, "base\n", message: "master \(name)")
+            }
+            // Both sides edit all six, differently: six conflicts.
+            for name in files {
+                try "theirs\n".write(to: repo.worktree.appending(path: name), atomically: true, encoding: .utf8)
+            }
+            _ = try repo.git("add", "-A", in: repo.worktree)
+            _ = try repo.git("commit", "-q", "--no-verify", "-m", "wt all", in: repo.worktree)
+            for name in files {
+                try "ours\n".write(to: repo.root.appending(path: name), atomically: true, encoding: .utf8)
+            }
+            _ = try repo.git("add", "-A")
+            _ = try repo.git("commit", "-q", "--no-verify", "-m", "master all")
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+
+            let merge = GitMerge.perform(.noFF, on: info).said
+            #expect(merge.contains("conflicts in a.txt, p.txt, q.txt, r.txt (+2)"), "\(merge)")
+            #expect(merge.contains("backed out"), "\(merge)")
+            let update = GitUpdate.perform(on: info, worktree: repo.wt).said
+            #expect(update.contains("conflicts in a.txt, p.txt, q.txt, r.txt (+2)"), "\(update)")
+            #expect(update.contains("backed out"), "\(update)")
+            // Both trees back where they started, neither mid-merge.
+            #expect(try repo.git("status", "--porcelain", "--untracked-files=no") == "")
+            #expect(try repo.git("status", "--porcelain", "--untracked-files=no", in: repo.worktree) == "")
+        }
+    }
+
     // MARK: update from master (slice 6)
 
     @Test func anUpdateMergesMasterIntoTheWorktree() throws {

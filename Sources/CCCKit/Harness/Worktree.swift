@@ -1023,7 +1023,7 @@ public enum GitMerge {
                 let sha = (try? g(["rev-parse", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
                 return MergeOutcome(merged: true, said: "merged \(name) (\(plural), merge commit \(sha))")
             } catch {
-                let conflicts = conflictedFiles(g)
+                let conflicts = Git.conflicted(g)
                 _ = try? g(["merge", "--abort"])
                 return MergeOutcome(merged: false, said: "merge \(name) conflicts in \(conflicts); backed out, \(info.base) untouched")
             }
@@ -1033,7 +1033,7 @@ public enum GitMerge {
             do {
                 _ = try g(["merge", "--squash", info.branch])
             } catch {
-                let conflicts = conflictedFiles(g)
+                let conflicts = Git.conflicted(g)
                 _ = try? g(["reset", "--merge"])
                 return MergeOutcome(merged: false, said: "squash \(name) conflicts in \(conflicts); backed out, \(info.base) untouched")
             }
@@ -1048,13 +1048,6 @@ public enum GitMerge {
                 return MergeOutcome(merged: false, said: "squash \(name): commit failed (\(Self.trim(error))); backed out")
             }
         }
-    }
-
-    private static func conflictedFiles(_ g: ([String]) throws -> Git.Result) -> String {
-        let files = (try? g(["diff", "--name-only", "--diff-filter=U"]).stdout)?
-            .split(separator: "\n").map(String.init) ?? []
-        if files.isEmpty { return "the working tree" }
-        return files.prefix(4).joined(separator: ", ") + (files.count > 4 ? " (+\(files.count - 4))" : "")
     }
 
     private static func trim(_ error: Error) -> String {
@@ -1109,7 +1102,7 @@ public enum GitUpdate {
             }
             return MergeOutcome(merged: true, said: "merged \(name) (\(plural), merge commit \(sha))")
         } catch {
-            let conflicts = conflictedFiles(g)
+            let conflicts = Git.conflicted(g)
             _ = try? g(["merge", "--abort"])
             return MergeOutcome(merged: false,
                                 said: "merge \(name) conflicts in \(conflicts); backed out, \(info.branch) untouched — ask the session to merge \(tip)",
@@ -1117,12 +1110,6 @@ public enum GitUpdate {
         }
     }
 
-    private static func conflictedFiles(_ g: ([String]) throws -> Git.Result) -> String {
-        let files = (try? g(["diff", "--name-only", "--diff-filter=U"]).stdout)?
-            .split(separator: "\n").map(String.init) ?? []
-        if files.isEmpty { return "the working tree" }
-        return files.prefix(4).joined(separator: ", ") + (files.count > 4 ? " (+\(files.count - 4))" : "")
-    }
 }
 
 /// Which branch `ccc push <ref>` sends: the worktree's own, or its base
@@ -1276,6 +1263,20 @@ public enum Git {
             let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return detail.isEmpty ? "git exited \(status)" : detail
         }
+    }
+
+    /// What a back-out names: the files left conflicted, four then a
+    /// count, so the sentence fits a banner and a `--json` field however
+    /// wide the collision was. One copy for every verb that backs out —
+    /// it was two identical private ones until a live loop was about to
+    /// meet a cut that no test read (2026-09-17). `the working tree` is
+    /// the honest answer when git failed before it staged a conflict,
+    /// which is a failure this sentence still has to be a sentence for.
+    public static func conflicted(_ g: ([String]) throws -> Result) -> String {
+        let files = (try? g(["diff", "--name-only", "--diff-filter=U"]).stdout)?
+            .split(separator: "\n").map(String.init) ?? []
+        if files.isEmpty { return "the working tree" }
+        return files.prefix(4).joined(separator: ", ") + (files.count > 4 ? " (+\(files.count - 4))" : "")
     }
 
     /// The dirty refusal's payload: how many tracked changes a checkout is
