@@ -5443,3 +5443,59 @@ out of the tree that holds the base, names the files, leaves that tree
 clean, and the worker keeps its commits (`BaseInAWorktreeTests`,
 `WorktreeTests`) — which is why the live report is a confirmation and not
 the design.
+
+## The prediction was wrong, the payload stands, and the fourth check was missing (2026-09-17)
+
+Three corrections to the entry above, all of them from the reporter or
+from reading our own tests after making a promise about them.
+
+**1. The dirty refusal will not fire the way it was built for.** The
+reporter withdrew its own prediction: it braced for a refusal mid-gate,
+because its 130-second release run writes scratch files into the tree it
+merges into — but the status read is `--untracked-files=no`, so new files
+have never been able to trip it and that case cannot happen. Its words:
+"a guess dressed as a prediction", the second of the day, after reporting
+`push --base` from the docs instead of from a run. So the entry above
+records a payload built against a case that does not exist, and the honest
+argument for keeping it is the narrower one: *when* it does fire, the dirt
+is tracked work, "is that mine" is the only live question, and a count
+cannot answer it. Nothing rolled back — a guard's sentence being right for
+a different reason than the one that prompted it is still right — but the
+reasoning on the record is now the one that holds.
+
+The reusable half is about guards, not about this guard: **a guard's reach
+is in its flags, not in its sentence.** Both of the day's bad predictions
+were made by reading what a verb *says* instead of what it *runs*; one
+`--untracked-files=no` in the call answered both. Not promoted to a rule
+in CLAUDE.md — two instances in one day, one reporter, and the rule would
+be ours to keep rather than theirs.
+
+**2. No release for it.** The reporter explicitly declined the cut: the
+fact it needed was the flag, not the payload, and the payload can ride
+whatever next justifies a notarize. Recorded because a declined release
+is evidence about what a fix was worth, and a fix that nobody needed
+shipped today is a fix that was not urgent.
+
+**3. The four expectations were three.** Told the reporter what the
+fixtures prove about a conflicted back-out — backs out of the tree holding
+the base, names the files, leaves that tree clean, and *the worker keeps
+its commits* — then read the tests and found the fourth one unasserted in
+both of them. It was true in fact (nothing in the failure path touches the
+worker's side) and unread by any test, which by this repo's own rule means
+nothing was keeping it true. Both conflict tests now capture the worker's
+head and its `status --porcelain` and check them after the back-out
+(`WorktreeTests.aConflictBacksOutCleanly`,
+`BaseInAWorktreeTests.aConflictBacksOutOfThatTreeToo`). The promise came
+before the test; the test now exists because the promise was made to a
+live loop that is about to check it.
+
+**Second clean landing on the live loop**, same released 0.1.37 bytes:
+`ccc merge a6aa3418 --no-ff` into the worktree-held base, clean, tree
+empty afterwards, HEAD `e8f8b18`, branch still `worktree-replan-pdb` —
+then `ccc rm a6aa3418` retired session, worktree and branch in one call.
+So the whole merge→reap path is doing real work on that loop in place of
+a hand-rolled `git merge --no-ff` plus three manual cleanups. Still zero
+conflicts: two landings, both uncontended. `loop-301` has been running
+ninety-five minutes, was cut before two other items merged, and appends to
+the same end of `docs/JOURNAL.md` as both of them — the collision is that
+one, and the four checks above are what it will answer.

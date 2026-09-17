@@ -164,11 +164,16 @@ import Testing
             _ = try s.git("add c.txt", s.base)
             _ = try s.git("commit -q --no-verify -m theirs", s.base)
             let tip = try s.head("worktree-integration")
+            let mine = try s.head("worktree-w")
             let outcome = GitMerge.perform(.noFF, on: try #require(WorktreeProbe().fresh(forCwd: s.worker.path)))
             #expect(!outcome.merged)
             #expect(outcome.said.contains("conflicts in c.txt"))
             #expect(try s.head("worktree-integration") == tip, "backed out where it ran")
             #expect(try s.git("status --porcelain", s.base).isEmpty, "and left that tree clean")
+            // The worker's side is untouched: its commits are still there
+            // to land once someone resolves the collision in a terminal.
+            #expect(try s.head("worktree-w") == mine, "the worker keeps its commits")
+            #expect(try s.git("status --porcelain", s.worker).isEmpty, "and its tree is clean")
         }
     }
 

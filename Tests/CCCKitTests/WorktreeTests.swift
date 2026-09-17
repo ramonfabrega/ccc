@@ -236,6 +236,11 @@ import Testing
             try repo.commit("a.txt", "theirs\n", message: "wt edit", worktree: true)
             try repo.commit("a.txt", "ours\n", message: "master edit")
             let before = try repo.git("rev-parse", "master")
+            // The fourth thing a back-out owes, and the one nothing read
+            // until it was promised to a live loop: the worker's side is
+            // not a party to the merge, so its branch keeps every commit
+            // and its tree stays clean however the base's side failed.
+            let worker = try repo.git("rev-parse", "worktree-t")
             let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
             for strategy in [MergeStrategy.noFF, .squash] {
                 let outcome = GitMerge.perform(strategy, on: info)
@@ -244,6 +249,9 @@ import Testing
                 #expect(try repo.git("rev-parse", "master") == before)
                 #expect(try repo.git("status", "--porcelain", "--untracked-files=no") == "")
                 #expect(try String(contentsOf: repo.root.appending(path: "a.txt"), encoding: .utf8) == "ours\n")
+                #expect(try repo.git("rev-parse", "worktree-t") == worker, "the worker keeps its commits")
+                #expect(try repo.git("status", "--porcelain", "--untracked-files=no", in: repo.worktree) == "",
+                        "and its tree is untouched")
             }
         }
     }
