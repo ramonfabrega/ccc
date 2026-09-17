@@ -5317,3 +5317,42 @@ three strategies landing there, the dirty refusal naming it, a conflict
 backing out of *that* tree and leaving it clean, pull fast-forwarding it,
 `push --base` sending the recorded base, and an ordinary base still landing
 in the main checkout with nothing said about location.
+
+### the reporter closed two of the three (2026-09-17)
+
+The commander tested `push --base` on its live loop against installed
+0.1.36 and withdrew that third of its report:
+
+```
+$ ccc push 6bf1cd8b --base --json
+{ "pushed": "false", "target": "base",
+  "said": "nothing to push: origin/worktree-replan-pdb already has every commit of worktree-replan-pdb" }
+```
+
+`worktree-replan-pdb`, not `main` — so the verb was right and only the
+string was wrong, and **a fix to the push would have been the regression.**
+It is adopting `ccc push <ref> --base` today, with no release needed. The
+lesson runs both ways: the string cost a reader an hour and would have
+cost the code a working verb if the report had been believed instead of
+run.
+
+**The repo-addressed pull of a non-default base is declined, by the only
+caller who would have had it.** Asked whether `pull --repo <path>` should
+mean the base a worktree holds rather than the root's default branch, the
+commander said don't build it: its integration branch is checked out in
+its *own* worktree, so bringing origin into it is a fast-forward in the
+tree it is already working in, `ccc update <ref>` covers a worker coming
+the other way, and what it had been reaching for at the end of a reap was
+the merge, not a pull. Adding a second meaning to `--repo` would cost
+every reader of the flag to serve one call site. So `--repo` keeps meaning
+the root checkout's default branch, and this paragraph exists so the next
+session does not re-open it on a hypothetical.
+
+**And `rm`'s branch rule was a string nobody had written.** The behaviour
+is eleven tests old — the branch goes only when its commits are in its
+*recorded* base or on origin, so a non-default base counts — and the help
+said none of it, which is why the same commander hand-rolled the reap that
+left `worktree-loop-295`'s predecessor dangling: "it's the difference
+between `rm` being safe to reach for and being a thing you check first".
+Now in the manifest, in README, and read by a test. Third report of the
+day whose fix was words.

@@ -75,7 +75,9 @@ ccc watch [--host <n>] [--interval S] [--all] [--stall <minutes>] [--json]
                                     # The opening line and host errors go to stderr, never into the stream
 ccc hook [--settings]               # the harness's Notification hook: JSON on stdin → a banner from the app;
                                     # --settings prints the settings.json entry (ccc never writes it)
-ccc rm <ref> [--json]               # delete a session and its worktree, when the harness says that is safe
+ccc rm <ref> [--json]               # delete a session and its worktree, when the harness says that is safe.
+                                    # The BRANCH goes only if its commits are elsewhere — in its recorded base
+                                    # or on origin; otherwise the tree goes, the branch stays, `said` says why
 
 # spawning, and the session's repository
 ccc spawn [--host <n>] [--cwd <d>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>] [--rc]

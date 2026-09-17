@@ -113,6 +113,22 @@ import Testing
         #expect(pushText.contains("needs no checkout anywhere"))
     }
 
+    /// **`rm` says when the branch survives** (2026-09-17). The rule is
+    /// eleven tests old (`CutWorktreeTests`) and was in no string: the
+    /// help said "when the harness says that is safe" and left the branch
+    /// unmentioned, so a commander hand-rolling its reap could not know
+    /// that `ccc rm` never deletes work that has not landed — which is
+    /// "the difference between `rm` being safe to reach for and being a
+    /// thing you check first", in the words of the commander that reached
+    /// for git instead.
+    @Test func rmSaysWhatBecomesOfTheBranch() throws {
+        let rm = try #require(CommandManifest.verb(named: "rm"))
+        let text = CommandManifest.help(for: rm)
+        #expect(text.contains("THE BRANCH GOES ONLY IF ITS COMMITS ARE SOMEWHERE ELSE"))
+        #expect(text.contains("recorded"), "a non-default base counts, and that is the point")
+        #expect(text.contains("branchDeleted"), "the JSON key the answer carries it in")
+    }
+
     @Test func namesAreUniqueAcrossVerbsAndAliases() {
         var seen = Set<String>()
         for verb in CommandManifest.verbs {
