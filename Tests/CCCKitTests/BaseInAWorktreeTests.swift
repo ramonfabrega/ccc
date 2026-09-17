@@ -187,6 +187,87 @@ import Testing
         }
     }
 
+    // MARK: update, in the shape where the base lives in a worktree
+    //
+    // The verb nobody had tested here, flagged by the reporter before its
+    // loop met it (2026-09-17): two of its lanes are behind the base by
+    // different amounts and append to the same end of the same
+    // append-only file, so `ccc update` can collide before `ccc merge`
+    // ever does — a different verb's back-out, in the *worker's* tree
+    // rather than the base's. `merge`'s back-out was covered in this
+    // shape; `update`'s was covered only where the base is the main
+    // checkout's own branch.
+
+    @Test func anUpdateTakesTheBaseFromTheTreeThatHoldsIt() throws {
+        try withShape { s in
+            // The base moves in its own worktree — the ordinary way a
+            // landing reaches it on that loop.
+            try s.commit("landed.txt", in: s.base)
+            let info = try #require(WorktreeProbe().fresh(forCwd: s.worker.path))
+            #expect(info.behind == 1 && info.canUpdate)
+            #expect(info.baseTipName == "worktree-integration", "the local branch is the tip; origin is behind it")
+            let outcome = GitUpdate.perform(on: info, worktree: s.worker.path)
+            #expect(outcome.merged, "\(outcome.said)")
+            #expect(outcome.said.contains("worktree-integration") && outcome.said.contains("worktree-w"))
+            #expect(FileManager.default.fileExists(atPath: s.worker.appending(path: "landed.txt").path),
+                    "the worker has the commit that was made in the base's tree")
+            // And the tree holding the base was not a party to it.
+            #expect(try s.git("status --porcelain", s.base).isEmpty)
+        }
+    }
+
+    @Test func anUpdateConflictBacksOutInTheWorkersTreeAndLeavesTheBasesAlone() throws {
+        try withShape { s in
+            // Both sides append to the same end of the same file: the
+            // journal collision, made small.
+            try "base\n".write(to: s.base.appending(path: "b.txt"), atomically: true, encoding: .utf8)
+            _ = try s.git("add b.txt", s.base)
+            _ = try s.git("commit -q --no-verify -m theirs", s.base)
+            try "worker\n".write(to: s.worker.appending(path: "b.txt"), atomically: true, encoding: .utf8)
+            _ = try s.git("add b.txt", s.worker)
+            _ = try s.git("commit -q --no-verify -m mine", s.worker)
+            let mine = try s.head("worktree-w"), theirs = try s.head("worktree-integration")
+            let info = try #require(WorktreeProbe().fresh(forCwd: s.worker.path))
+            let outcome = GitUpdate.perform(on: info, worktree: s.worker.path)
+            #expect(!outcome.merged, "\(outcome.said)")
+            #expect(outcome.said.contains("conflicts in b.txt") && outcome.said.contains("backed out"))
+            #expect(outcome.ask == "Merge worktree-integration into this branch and resolve the conflicts.")
+            // The worker's side: back where it started, clean, not mid-merge.
+            #expect(try s.head("worktree-w") == mine, "the worker keeps its commits")
+            #expect(try s.git("status --porcelain", s.worker).isEmpty, "and its tree is clean")
+            #expect(try String(contentsOf: s.worker.appending(path: "b.txt"), encoding: .utf8) == "worker\n")
+            let layout = try #require(WorktreeProbe.layout(of: s.worker.path))
+            #expect(!FileManager.default.fileExists(atPath: layout.gitdir + "/MERGE_HEAD"))
+            // The asymmetry with merge's back-out: the tree holding the
+            // base is not touched at all, in either direction.
+            #expect(try s.head("worktree-integration") == theirs)
+            #expect(try s.git("status --porcelain", s.base).isEmpty)
+            #expect(try String(contentsOf: s.base.appending(path: "b.txt"), encoding: .utf8) == "base\n")
+        }
+    }
+
+    @Test func anUpdateFollowsTheBaseToOriginWhenTheLocalBranchIsBehindIt() throws {
+        try withShape { s in
+            // The other Mac lands on the integration branch and pushes;
+            // the tree holding it here has not pulled yet, so the tip is
+            // `origin/worktree-integration` and that is what a worker
+            // updates from — and what the offered prompt has to name.
+            _ = try s.git("checkout -q -b worktree-integration origin/worktree-integration", s.other)
+            try s.commit("theirs.txt", in: s.other)
+            _ = try s.git("push -q origin worktree-integration", s.other)
+            _ = try s.git("fetch -q origin", s.root)
+            let info = try #require(WorktreeProbe().fresh(forCwd: s.worker.path))
+            #expect(info.baseTipName == "origin/worktree-integration")
+            let held = try s.head("worktree-integration")
+            let outcome = GitUpdate.perform(on: info, worktree: s.worker.path)
+            #expect(outcome.merged, "\(outcome.said)")
+            #expect(outcome.said.contains("origin/worktree-integration"), "\(outcome.said)")
+            #expect(FileManager.default.fileExists(atPath: s.worker.appending(path: "theirs.txt").path))
+            #expect(try s.head("worktree-integration") == held,
+                    "the local base branch is not moved by a worker's update")
+        }
+    }
+
     @Test func pullFastForwardsTheBaseWhereItIsCheckedOut() throws {
         try withShape { s in
             // The other Mac lands on the integration branch and pushes.

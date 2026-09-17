@@ -5499,3 +5499,45 @@ conflicts: two landings, both uncontended. `loop-301` has been running
 ninety-five minutes, was cut before two other items merged, and appends to
 the same end of `docs/JOURNAL.md` as both of them — the collision is that
 one, and the four checks above are what it will answer.
+
+## update's back-out, in the shape that will meet it first (2026-09-17)
+
+The reporter flagged the gap before its loop could: two of its lanes are
+behind the base by different amounts (3 and 1) and append to the same end
+of the same append-only file, so **`ccc update` can collide before
+`ccc merge` ever does** — a different verb's back-out, in the *worker's*
+tree rather than the base's. Its words: "your fixtures cover merge's
+back-out and I don't know that they cover update's."
+
+Read rather than assumed. `update`'s conflict back-out was covered where
+the base is the main checkout's branch (`anUpdateConflictBacksOutAndOffers
+TheSession`: head unchanged, tree clean, file still the worker's, no
+`MERGE_HEAD`, `ask` carried) and **not covered at all in the shape that
+loop has** — `BaseInAWorktreeTests` had no `GitUpdate` test. Three now:
+
+- `anUpdateTakesTheBaseFromTheTreeThatHoldsIt` — a commit made in the
+  base's own worktree reaches the worker, and that tree is not a party
+  to it.
+- `anUpdateConflictBacksOutInTheWorkersTreeAndLeavesTheBasesAlone` — the
+  journal collision made small, with the asymmetry stated: the worker's
+  branch keeps its commits, its tree is clean, no `MERGE_HEAD`, its file
+  is still its own, `ask` names `worktree-integration` — and the tree
+  holding the base is untouched in either direction, branch and worktree
+  both.
+- `anUpdateFollowsTheBaseToOriginWhenTheLocalBranchIsBehindIt` — when the
+  tree holding the base has not pulled, the tip is
+  `origin/worktree-integration`, that is what the worker merges and what
+  the sentence names, and the local base branch does not move for a
+  worker's update.
+
+All three passed on the first run: **the verb was already right; nothing
+was holding it right.** Same finding as the fourth back-out check an hour
+earlier, from the other direction — coverage is the thing that was
+missing, not behavior — which is the second time today the honest report
+is "the code was correct and the test did not exist." Also mirrored on the
+ordinary shape: update's back-out now asserts the base never moved, the
+way merge's asserts the worker keeps its commits.
+
+Left for the live loop, unchanged: whichever verb collides first. If it is
+`update`, these three are what it checks; if it is `merge`, the four from
+the entry above. The reporter will name the verb either way.

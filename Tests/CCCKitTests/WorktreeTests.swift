@@ -318,6 +318,7 @@ import Testing
             try repo.commit("a.txt", "theirs\n", message: "wt edit", worktree: true)
             try repo.commit("a.txt", "ours\n", message: "master edit")
             let before = try repo.git("rev-parse", "worktree-t")
+            let master = try repo.git("rev-parse", "master")
             let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
             let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
             #expect(!outcome.merged, "\(outcome.said)")
@@ -329,6 +330,10 @@ import Testing
             // Not mid-merge: no MERGE_HEAD left behind in the worktree's gitdir.
             let layout = try #require(WorktreeProbe.layout(of: repo.wt))
             #expect(!FileManager.default.fileExists(atPath: layout.gitdir + "/MERGE_HEAD"))
+            // The other side of the back-out, the mirror of what merge's
+            // owes the worker: the base was merged *from* and never moved.
+            #expect(try repo.git("rev-parse", "master") == master)
+            #expect(try repo.git("status", "--porcelain", "--untracked-files=no") == "")
         }
     }
 
