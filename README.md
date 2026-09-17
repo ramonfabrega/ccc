@@ -112,7 +112,9 @@ ccc base <ref> [<branch> | --clear] # what the worktree branch is measured again
                                     # in the repo's config; VS Code's vscode-merge-base is honoured too)
 ccc merge <ref> [--ff-only|--no-ff|--squash] [--json]
                                     # land the worktree branch on its base (recorded, else the repo's default
-                                    # branch), where the repo is; refuses a dirty or wrong-branch checkout
+                                    # branch), WHERE THAT BASE IS CHECKED OUT — the main checkout normally, the
+                                    # worktree holding it when a repo keeps its integration branch in one (the
+                                    # answer names that tree); refuses a dirty or wrong-branch checkout
 ccc update <ref> [--ask] [--json]   # merge the base into the worktree branch ("Update branch").
                                     # THE VERB A SESSION USES ON ITS OWN BASE — `git merge` with the guards,
                                     # and it reaches origin/<base> when the local ref is behind it (the ↓
@@ -121,10 +123,12 @@ ccc update <ref> [--ask] [--json]   # merge the base into the worktree branch ("
                                     # auto-mode permission classifier refuses.
                                     # --ask hands the session the merge as a prompt through the pane
 ccc fetch <ref> [--json]            # the one network call; every ⇡⇣ mark reads "as of the last fetch"
-ccc pull <ref> [--json]             # fast-forward the base to origin's, never a merge commit — in the MAIN
-                                    # checkout, so a base another worktree holds checked out is refused
-                                    # (`ccc update` follows origin's tip instead; nobody's tree is written to)
-ccc push <ref> [--base] [--json]    # push the worktree branch (or, with --base, its base branch); never forced
+ccc pull <ref> [--json]             # fast-forward the base to origin's, never a merge commit — WHERE THE BASE
+                                    # IS CHECKED OUT, main checkout or the worktree holding it, which must be
+                                    # clean and on the base as ever (`ccc update` is the other direction)
+ccc push <ref> [--base] [--json]    # push the worktree branch (or, with --base, ITS base: the one recorded for
+                                    # it, else the default branch — a full refspec, so no checkout is needed);
+                                    # never forced
 ccc shell <ref> [--repo] | --close  # ⌘T's twin: a shell pane under the session pane, in <ref>'s folder
                                     # (over `ssh -t` when remote); --repo is the main checkout (⌥⌘T), --close is ⇧⌘T
                                     # the row's item and `t` flip to Close Terminal while that row's shell is up

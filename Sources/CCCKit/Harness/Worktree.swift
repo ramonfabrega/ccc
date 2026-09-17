@@ -661,6 +661,65 @@ public final class WorktreeProbe: @unchecked Sendable {
         return candidates.first { sha(of: $0, commonDir: commonDir) != nil }
     }
 
+    /// **Which checkout holds `branch` checked out** — the main checkout,
+    /// one of the linked worktrees, or nil when no tree has it. `git
+    /// worktree list --porcelain` is the only thing that answers it, and
+    /// only the two verbs that *write* to the base ever ask (`merge`,
+    /// `pull`): the poll reads files and never spawns this.
+    ///
+    /// It exists because of the shape a fleet makes and a lone repository
+    /// never does: **the base branch is permanently checked out in a
+    /// worktree.** attrition's integration branch `worktree-replan-pdb`
+    /// lives in `.claude/worktrees/replan-pdb` and its main checkout stays
+    /// on `main`, which is only ever fast-forwarded by hand — so every
+    /// landing goes to a branch the main checkout is never on, and `merge`
+    /// (which ran `git -C <main checkout>` and refused unless HEAD was the
+    /// base) refused every time. Reported 2026-09-17 by that repo's
+    /// commander, four hand-rolled `git merge --no-ff`es in.
+    ///
+    /// Acting where the base actually is keeps every guard rather than
+    /// trading one away: the tree must still be clean and on the base, and
+    /// a conflict still backs out. It does write into a tree a live agent
+    /// may be sitting in — which `ccc update` has done to workers since
+    /// v6 slice 6, under the same clean-tree rule — so the sentence names
+    /// the tree it wrote to whenever that is not the main checkout.
+    public static func checkoutHolding(_ branch: String, repo: String,
+                                       git: String = defaultGit) -> String? {
+        guard let out = try? Git.run(git, ["-C", repo, "worktree", "list", "--porcelain"]).stdout else { return nil }
+        var path: String?
+        for raw in out.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix("worktree ") {
+                path = String(line.dropFirst("worktree ".count))
+            } else if line == "branch refs/heads/\(branch)", let path {
+                return path
+            }
+        }
+        return nil
+    }
+
+    /// One spelling of a path, for comparing two. git prints its own
+    /// (`/private/var/…`) where `layout` carries the caller's
+    /// (`/var/…`), and the two name one directory: a comparison that
+    /// missed that would call the main checkout "elsewhere" on every Mac
+    /// whose temp dir is a symlink.
+    static func real(_ path: String) -> String {
+        URL(filePath: path).resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// A checkout's path for a sentence: what it is called *inside* the
+    /// repository (`.claude/worktrees/replan-pdb`), else the whole path.
+    /// A merge that ran somewhere other than the main checkout says where,
+    /// and a reader recognises the short name.
+    public static func inRepoPath(_ path: String, repo: String) -> String {
+        let root = real(repo), full = real(path)
+        guard full.hasPrefix(root + "/") else { return path }
+        return String(full.dropFirst(root.count + 1))
+    }
+
+    /// Whether two paths name the same directory, whatever each is spelled.
+    static func samePath(_ a: String, _ b: String) -> Bool { real(a) == real(b) }
+
     /// The reading for a folder, from the cache when neither sha moved.
     public func info(forCwd cwd: String) -> WorktreeInfo? {
         guard let layout = Self.layout(of: cwd), let branch = layout.branch else { return nil }
@@ -908,17 +967,23 @@ public struct MergeOutcome: Sendable, Equatable {
     public var ask: String? = nil
 }
 
-/// The merge itself, in the main checkout, with the guards that make it
-/// unable to lose work: the checkout must be on the base branch and
-/// clean, a fast-forward must be possible when that is what was asked,
-/// and a conflict backs out to where it started. Conflicts are a
-/// terminal's job, never a menu's.
+/// The merge itself, **where the base branch is checked out** — the main
+/// checkout ordinarily, the worktree holding it when a repository keeps
+/// its integration branch in one (`WorktreeProbe.checkoutHolding`) — with
+/// the guards that make it unable to lose work: that checkout must be on
+/// the base branch and clean, a fast-forward must be possible when that
+/// is what was asked, and a conflict backs out to where it started.
+/// Conflicts are a terminal's job, never a menu's.
 public enum GitMerge {
     public static func perform(_ strategy: MergeStrategy, on info: WorktreeInfo,
                                git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
-        let repo = info.repo
+        // Where the base lives. Nil — no tree holds it — keeps the main
+        // checkout, whose HEAD guard below then says so in the old words.
+        let repo = WorktreeProbe.checkoutHolding(info.base, repo: info.repo, git: git) ?? info.repo
         func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", repo] + args) }
-        let name = "\(info.branch) → \(info.base)"
+        let elsewhere = WorktreeProbe.samePath(repo, info.repo)
+            ? "" : " in \(WorktreeProbe.inRepoPath(repo, repo: info.repo))"
+        let name = "\(info.branch) → \(info.base)\(elsewhere)"
         guard info.hasWork else {
             return MergeOutcome(merged: false, said: "nothing to merge: \(info.branch) has no commits \(info.base) lacks")
         }
@@ -1054,8 +1119,12 @@ public enum GitUpdate {
     }
 }
 
-/// Which branch `ccc push <ref>` sends: the worktree's own, or the
-/// repository's default branch after a fast-forward landed on it.
+/// Which branch `ccc push <ref>` sends: the worktree's own, or its base
+/// after a landing — `WorktreeInfo.base`, which is the branch recorded
+/// for it when there is one and the repository's default branch
+/// otherwise, never the default branch by name (the help said "the
+/// repo's default branch" for eleven releases while the code read the
+/// recorded one; a reader believed the string, 2026-09-17).
 public enum PushTarget: String, CaseIterable, Codable, Sendable {
     case branch, base
 
@@ -1114,7 +1183,10 @@ public enum GitFetch {
 }
 
 /// Pull master (v6 slice 7): the mirror of Push master, fast-forward
-/// only. `git merge --ff-only origin/<base>` in the main checkout, with
+/// only. `git merge --ff-only origin/<base>` **where the base is checked
+/// out** — the main checkout ordinarily, the worktree holding it when a
+/// repository keeps its integration branch in one
+/// (`WorktreeProbe.checkoutHolding`) — with
 /// the merge verb's guards (on the base branch, clean). A master that
 /// diverged from origin is refused with the way out named — push first,
 /// or merge in a terminal — never a merge commit on master by a menu.
@@ -1122,7 +1194,10 @@ public enum GitFetch {
 /// another name.
 public enum GitPull {
     public static func perform(on info: WorktreeInfo, git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
-        let repo = info.repo, base = info.base
+        let base = info.base
+        let repo = WorktreeProbe.checkoutHolding(base, repo: info.repo, git: git) ?? info.repo
+        let elsewhere = WorktreeProbe.samePath(repo, info.repo)
+            ? "" : " in \(WorktreeProbe.inRepoPath(repo, repo: info.repo))"
         func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", repo] + args) }
         guard let count = info.baseUnpulled else {
             return MergeOutcome(merged: false, said: "\(repo) has no origin/\(base) to pull from")
@@ -1147,7 +1222,7 @@ public enum GitPull {
         do {
             _ = try g(["merge", "--ff-only", "refs/remotes/origin/\(base)"])
             let sha = (try? g(["rev-parse", "--short", "HEAD"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
-            return MergeOutcome(merged: true, said: "pulled origin/\(base) → \(base) (\(plural), now \(sha))")
+            return MergeOutcome(merged: true, said: "pulled origin/\(base) → \(base)\(elsewhere) (\(plural), now \(sha))")
         } catch {
             return MergeOutcome(merged: false, said: "pull \(base) refused: \("\(error)".trimmingCharacters(in: .whitespacesAndNewlines))")
         }

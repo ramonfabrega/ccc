@@ -89,6 +89,30 @@ import Testing
         #expect(fetchText.contains("that repository's ROOT"))
     }
 
+    /// **Where the base is, and which base it is** (2026-09-17). Both
+    /// strings had readers act on them and both were wrong: `pull` said it
+    /// runs in the MAIN checkout (it now runs where the base is checked
+    /// out), and `push --base` said "the repo's default branch" while the
+    /// code has pushed `WorktreeInfo.base` — the *recorded* base — since
+    /// the day bases could be recorded. A commander read the second one
+    /// and reported ccc as pushing the wrong ref for its loop. So the
+    /// strings get a test, which is the rule this repo already earned.
+    @Test func theGitVerbsSayWhereTheyActAndOnWhat() throws {
+        let merge = try #require(CommandManifest.verb(named: "merge"))
+        let mergeText = CommandManifest.help(for: merge)
+        #expect(mergeText.contains("WHERE THAT BASE IS CHECKED OUT"))
+        #expect(mergeText.contains("the worktree holding it"))
+        let pull = try #require(CommandManifest.verb(named: "pull"))
+        let pullText = CommandManifest.help(for: pull)
+        #expect(pullText.contains("WHERE THE BASE"))
+        #expect(!pullText.contains("Runs in the MAIN"), "pull no longer refuses a base a worktree holds")
+        let push = try #require(CommandManifest.verb(named: "push"))
+        let pushText = CommandManifest.help(for: push)
+        #expect(pushText.contains("ITS BASE"))
+        #expect(pushText.contains("recorded for the branch"))
+        #expect(pushText.contains("needs no checkout anywhere"))
+    }
+
     @Test func namesAreUniqueAcrossVerbsAndAliases() {
         var seen = Set<String>()
         for verb in CommandManifest.verbs {

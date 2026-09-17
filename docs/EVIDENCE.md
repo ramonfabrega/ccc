@@ -5237,3 +5237,83 @@ baed3fe7  3s ago · cleared baed3fe7, then: Reply with exactly the word FOXTROT�
 and the session itself: a new transcript `2559d33b…` minted by the
 `/clear`, with the job's own `detail: replied with FOXTROT as requested`.
 The desk can clear itself now.
+
+## the base branch lives in a worktree (2026-09-17)
+
+**Reported from outside**, which is new: attrition's commander session —
+using ccc 0.1.36 as the whole orchestration layer for its worker loop —
+said `merge`, `push --base` and `pull` assume the base branch is checked
+out in the **main** checkout, and refuse when it lives in a worktree
+instead. It had hand-rolled `git merge --no-ff` four times that day before
+noticing, and the residue was real: its hand reap left a merged worker
+branch dangling where `ccc rm` deletes session, worktree and branch in one
+call.
+
+The shape is not exotic. attrition's integration branch
+`worktree-replan-pdb` is permanently checked out in
+`.claude/worktrees/replan-pdb` — every landing goes there — and the main
+checkout stays on `main`, which only ever gets fast-forwarded by hand, by
+the user. **So the main checkout is never on the branch work lands on, by
+design.** `ccc spawn --worktree --base`, `update` and `rm` all handle it
+already; the three verbs that *write to the base* did not, because each
+ran `git -C <main checkout>` and refused unless HEAD was the base.
+
+Reproduced here on a fixture repo of that shape (a bare origin, `main` in
+the main checkout, `worktree-integration` in `.claude/worktrees/integration`,
+a ccc-cut worker worktree off it with the base recorded), with a real
+draft session as the row — the installed release as the control:
+
+```
+$ ccc merge e9008b6a --no-ff --json          # 0.1.36 (237), installed
+{ "merged": "false", "said": "…/fix is on main, not worktree-integration; refusing to merge" }
+```
+
+word for word the commander's sentence. The fix is to act **where the base
+is checked out** — `git worktree list --porcelain` answers it in one
+process (`WorktreeProbe.checkoutHolding`), and only `merge` and `pull` ever
+ask, so the 2 s poll still spawns nothing. Every guard stays: the tree must
+be on the base and clean, a fast-forward must be possible when that is what
+was asked, a conflict backs out. Same fixture, same row, this build:
+
+```
+$ ccc merge e9008b6a --no-ff --json
+{ "merged": "true", "said": "merged worktree-probe → worktree-integration
+                             in .claude/worktrees/integration (1 commit, merge commit ee02fdc)" }
+$ ccc pull e9008b6a --json
+{ "pulled": "true", "said": "pulled origin/worktree-integration → worktree-integration
+                             in .claude/worktrees/integration (1 commit, now 6a9d97c)" }
+$ ccc merge e9008b6a --no-ff --json          # with that tree dirty
+{ "merged": "false", "said": "…/.claude/worktrees/integration has 1 uncommitted change;
+                              refusing to merge" }
+```
+
+`main` never moved through any of it, and the refusal now names the tree it
+would have run in — the commander's third suggestion, which the fix makes
+free rather than a consolation.
+
+**It does write into a tree a live session may be sitting in.** That is not
+new and it is why the clean-tree rule exists: `ccc update` has merged into
+a *worker's* worktree since v6 slice 6 under exactly that guard. What the
+earlier decision refused (`WorktreeInfo.baseTip`, 2026-09-06) was ccc
+picking a side in a divergence and advancing a ref nobody asked it to; a
+commander asking `ccc merge` for its own integration branch is asking.
+
+**And one of the three reports was about a string, not the code.**
+`push --base` has pushed `WorktreeInfo.base` — the *recorded* base — since
+bases could be recorded (2026-09-04), with a full refspec, so it needs no
+checkout anywhere and was right for this loop all along. The manifest said
+"the repo's default branch", written 2026-09-06 and carried through eleven
+releases, and a careful reader believed the string over the behaviour and
+reported ccc as pushing the wrong ref. Proved live (`pushed
+worktree-integration → origin (2 commits)`, `origin/main` untouched) and
+now pinned by a test that reads the help text, which is the rule this repo
+already earned the hard way: **a string no test reads is a string nothing
+keeps true** — it cost a worker its merge in v11 and a peer twenty minutes
+here.
+
+`BaseInAWorktreeTests` is that repository's shape as nine tests over real
+git processes: the holder found (and nil for a branch no tree has), all
+three strategies landing there, the dirty refusal naming it, a conflict
+backing out of *that* tree and leaving it clean, pull fast-forwarding it,
+`push --base` sending the recorded base, and an ordinary base still landing
+in the main checkout with nothing said about location.

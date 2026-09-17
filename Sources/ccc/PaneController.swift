@@ -445,8 +445,9 @@ final class PaneController {
     }
 
     /// Land a worktree branch (v6): exactly `ccc merge <ref> --<strategy>`
-    /// — git in the main checkout here, the far side's own verb for a
-    /// remote ref — then a poll, so the row's ↑ count moves now.
+    /// — git where the base is checked out here (the main checkout, or the
+    /// worktree holding the base), the far side's own verb for a remote
+    /// ref — then a poll, so the row's ↑ count moves now.
     func merge(_ ref: SessionRef, _ strategy: MergeStrategy) async throws -> MergeOutcome {
         let outcome = try await cli(for: ref).merge(strategy, id: ref.id)
         await poller.poller(for: ref.host)?.tick()
