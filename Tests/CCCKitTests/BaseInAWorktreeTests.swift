@@ -150,7 +150,7 @@ import Testing
             // The refusal is about the tree the merge would have run in —
             // which is the sentence the commander needed and never got.
             #expect(outcome.said.contains(".claude/worktrees/integration"))
-            #expect(outcome.said.contains("1 uncommitted change"))
+            #expect(outcome.said.contains("1 uncommitted change (b.txt)"), "\(outcome.said)")
             #expect(try s.head("worktree-integration") != (try s.head("worktree-w")))
         }
     }

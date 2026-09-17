@@ -5388,3 +5388,58 @@ The reporter is the test from here: it lands items continuously against a
 non-default base held in a worktree, with two lanes live at the cut, so
 `merge` and `pull` meet real conflicts on a real loop within minutes of
 its update — which is the measurement a fixture cannot make.
+
+## The first live merge, and what the next refusal will have to say (2026-09-17)
+
+The reporter landed a worker on the released 0.1.37 bytes, on its own
+loop, into an integration branch held in a worktree a live commander
+session is sitting in:
+
+```
+$ ccc merge a6aa3418 --no-ff --json
+{ "merged": "true",
+  "said": "merged worktree-loop-302 → worktree-replan-pdb in .claude/worktrees/replan-pdb (1 commit, merge commit e8f8b18)",
+  "strategy": "no-ff" }
+```
+
+Then, in that tree: `git status --short` empty, `log --oneline -1` the
+merge commit, `HEAD` still `worktree-replan-pdb`. It replaced a
+`git merge --no-ff` that would have been typed by hand, with none of the
+guards. No conflict — the journal was uncontended — so the back-out had
+nothing to do; the measurement is that a clean `--no-ff` landing on a
+live loop is now a thing that has happened rather than a fixture.
+
+**The path half of the sentence is confirmed from the call site**, not
+from taste: at the moment that line was read there were three live
+worktrees whose directory names deliberately are not their branch names,
+and the question was which tree had just been written into. The branch is
+in the sentence twice; `in .claude/worktrees/replan-pdb` is the half that
+answers. That argument is now the comment above the code that builds it.
+
+**What the report cost in code was the dirty refusal.** The reporter
+named it as the guard it expects to meet first in anger, for a reason the
+count could not answer: that commander runs a 130-second test gate *in
+the same tree it merges into*, so when the refusal says "2 uncommitted
+changes" the only question is whether the dirt is its own gate. The
+refusal now names the files — four then a count, the way a conflict names
+its files, the new path for a rename:
+
+```
+…/.claude/worktrees/integration has 1 uncommitted change (b.txt); refusing to merge
+…/ccc has 5 uncommitted changes (e.txt, f.txt, g.txt, h.txt (+1)); refusing to merge
+```
+
+One helper (`Git.dirty`) behind all three verbs that carry that sentence
+— `merge`, `update`, `pull` — because a payload on one of three identical
+refusals is the next report. Worth saying out loud to whoever meets it:
+the status read is `--untracked-files=no`, so a test run's *new* files
+have never been able to trip this; what it lists is tracked work.
+
+Still outstanding, and still only a live loop can close it: the conflict.
+`loop-301` appends to the same append-only journal and was cut before two
+other items landed, so the collision is live rather than theoretical. The
+fixtures already prove the shape on this exact layout — a conflict backs
+out of the tree that holds the base, names the files, leaves that tree
+clean, and the worker keeps its commits (`BaseInAWorktreeTests`,
+`WorktreeTests`) — which is why the live report is a confirmation and not
+the design.

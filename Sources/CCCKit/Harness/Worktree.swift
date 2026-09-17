@@ -1001,9 +1001,8 @@ public enum GitMerge {
         guard head == info.base else {
             return MergeOutcome(merged: false, said: "\(repo) is on \(head), not \(info.base); refusing to merge")
         }
-        if let status = try? g(["status", "--porcelain", "--untracked-files=no"]).stdout, !status.isEmpty {
-            let n = status.split(separator: "\n").count
-            return MergeOutcome(merged: false, said: "\(repo) has \(n) uncommitted change\(n == 1 ? "" : "s"); refusing to merge")
+        if let dirt = Git.dirty(g) {
+            return MergeOutcome(merged: false, said: "\(repo) has \(dirt.n) uncommitted change\(dirt.n == 1 ? "" : "s") (\(dirt.files)); refusing to merge")
         }
         let plural = "\(info.ahead) commit\(info.ahead == 1 ? "" : "s")"
         switch strategy {
@@ -1095,9 +1094,8 @@ public enum GitUpdate {
         guard head == info.branch else {
             return MergeOutcome(merged: false, said: "the worktree is on \(head), not \(info.branch); refusing to update")
         }
-        if let status = try? g(["status", "--porcelain", "--untracked-files=no"]).stdout, !status.isEmpty {
-            let n = status.split(separator: "\n").count
-            return MergeOutcome(merged: false, said: "\(info.branch) has \(n) uncommitted change\(n == 1 ? "" : "s"); commit or stash first, then update")
+        if let dirt = Git.dirty(g) {
+            return MergeOutcome(merged: false, said: "\(info.branch) has \(dirt.n) uncommitted change\(dirt.n == 1 ? "" : "s") (\(dirt.files)); commit or stash first, then update")
         }
         let plural = "\(info.behind) commit\(info.behind == 1 ? "" : "s")"
         do {
@@ -1219,9 +1217,8 @@ public enum GitPull {
         guard head == base else {
             return MergeOutcome(merged: false, said: "\(repo) is on \(head), not \(base); refusing to pull")
         }
-        if let status = try? g(["status", "--porcelain", "--untracked-files=no"]).stdout, !status.isEmpty {
-            let n = status.split(separator: "\n").count
-            return MergeOutcome(merged: false, said: "\(repo) has \(n) uncommitted change\(n == 1 ? "" : "s"); refusing to pull")
+        if let dirt = Git.dirty(g) {
+            return MergeOutcome(merged: false, said: "\(repo) has \(dirt.n) uncommitted change\(dirt.n == 1 ? "" : "s") (\(dirt.files)); refusing to pull")
         }
         let plural = "\(count) commit\(count == 1 ? "" : "s")"
         if let unpushed = info.baseUnpushed, unpushed > 0 {
@@ -1279,6 +1276,32 @@ public enum Git {
             let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return detail.isEmpty ? "git exited \(status)" : detail
         }
+    }
+
+    /// The dirty refusal's payload: how many tracked changes a checkout is
+    /// carrying **and which files they are**. The count alone cannot answer
+    /// the question that refusal actually raises — *is this genuinely dirty,
+    /// or is something of mine holding files open* — and the commander that
+    /// met these verbs first runs a 130-second test gate in the same tree it
+    /// merges into, so the paths are the half that tells it which
+    /// (2026-09-17, the reporter's prediction of the next refusal it would
+    /// meet in anger). Four then a count, the way a conflict names its
+    /// files. `--untracked-files=no` is why a build's or a test run's new
+    /// files are never the reason a merge is refused; what is listed is
+    /// tracked work.
+    public static func dirty(_ g: ([String]) throws -> Result) -> (n: Int, files: String)? {
+        guard let status = try? g(["status", "--porcelain", "--untracked-files=no"]).stdout,
+              !status.isEmpty else { return nil }
+        let lines = status.split(separator: "\n").map(String.init)
+        // Porcelain v1: two status letters, a space, then the path — and
+        // `old -> new` for a rename, where the new path is the one on disk.
+        let paths = lines.map { line -> String in
+            let path = line.count > 3 ? String(line.dropFirst(3)) : line
+            if let arrow = path.range(of: " -> ") { return String(path[arrow.upperBound...]) }
+            return path.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        }
+        return (lines.count, paths.prefix(4).joined(separator: ", ")
+                + (paths.count > 4 ? " (+\(paths.count - 4))" : ""))
     }
 
     /// `stdin` feeds a command that reads paths (`check-ignore --stdin`);

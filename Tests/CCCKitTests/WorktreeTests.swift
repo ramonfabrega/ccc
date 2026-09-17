@@ -185,10 +185,39 @@ import Testing
             let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
             for strategy in MergeStrategy.allCases {
                 let outcome = GitMerge.perform(strategy, on: info)
-                #expect(!outcome.merged && outcome.said.contains("1 uncommitted change"))
+                // Named, not just counted: the commander that meets this
+                // refusal is asking whether the dirt is its own test run.
+                #expect(!outcome.merged && outcome.said.contains("1 uncommitted change (a.txt)"), "\(outcome.said)")
             }
             #expect(try repo.git("rev-parse", "master") == before)
             #expect(try repo.git("status", "--porcelain", "--untracked-files=no").contains("M a.txt"))
+        }
+    }
+
+    /// Four paths then a count, and a rename reads as the path on disk:
+    /// the refusal has to fit one line in a banner and a `--json` field.
+    @Test func manyDirtyFilesAreCutToFourAndCounted() throws {
+        try withRepo { repo in
+            for name in ["d.txt", "e.txt", "f.txt", "g.txt", "h.txt"] {
+                try repo.commit(name, "x\n", message: "master \(name)")
+            }
+            try repo.commit("b.txt", "two\n", message: "wt one", worktree: true)
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+            let before = try repo.git("rev-parse", "master")
+            // A rename reads as the path that is now on disk, not as
+            // git's `old -> new` pair.
+            _ = try repo.git("mv", "d.txt", "moved.txt")
+            let renamed = GitMerge.perform(.noFF, on: info).said
+            #expect(renamed.contains("1 uncommitted change (moved.txt)"), "\(renamed)")
+            #expect(!renamed.contains("d.txt -> "), "\(renamed)")
+            for name in ["e.txt", "f.txt", "g.txt", "h.txt"] {
+                try "changed\n".write(to: repo.root.appending(path: name), atomically: true, encoding: .utf8)
+            }
+            let said = GitMerge.perform(.noFF, on: info).said
+            #expect(said.contains("5 uncommitted changes ("), "\(said)")
+            #expect(said.contains("(+1)"), "\(said)")
+            #expect(said.split(separator: ", ").count == 4, "four paths then a count: \(said)")
+            #expect(try repo.git("rev-parse", "master") == before, "refused before it touched master")
         }
     }
 
@@ -266,7 +295,7 @@ import Testing
             let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
             let before = try repo.git("rev-parse", "worktree-t")
             let outcome = GitUpdate.perform(on: info, worktree: repo.wt)
-            #expect(!outcome.merged && outcome.said.contains("1 uncommitted change"), "\(outcome.said)")
+            #expect(!outcome.merged && outcome.said.contains("1 uncommitted change (a.txt)"), "\(outcome.said)")
             #expect(try repo.git("rev-parse", "worktree-t") == before)
             // An untracked file is not a change in flight: the merge goes.
             try "edited\n".write(to: repo.worktree.appending(path: "a.txt"), atomically: true, encoding: .utf8)
@@ -630,7 +659,7 @@ import Testing
             #expect(try git("rev-parse master", root) == before)
             // And a dirty checkout is refused before anything else is tried.
             try "dirty\n".write(to: root.appending(path: "a.txt"), atomically: true, encoding: .utf8)
-            #expect(GitPull.perform(on: info).said.contains("uncommitted"))
+            #expect(GitPull.perform(on: info).said.contains("1 uncommitted change (a.txt)"))
         }
     }
 
