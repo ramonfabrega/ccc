@@ -5715,3 +5715,51 @@ for it is one slip of its own. Offered, and left as an offer.
 Disclosure is the cheap half and was done in the same message as the fix.
 The expensive version is the one nobody mentions and a later session
 inherits as green.
+
+## Two armed clears lost to an unreadable box, and what a clear does to a notification (2026-10-01)
+
+**The loss was the fire path's, not the caller's.** attrition's commander
+(job 3c382923) armed `ccc clear 3c382923 --then continue` at 01:29:30Z and
+02:43:22Z, and its brief blamed its own `--cancel`, run later as a status
+check, for consuming both. Both cancels printed "no clear was armed". The
+real overlay held the answer for the second one: `02:43:31Z — the clear on
+3c382923 did not fire: 3c382923's prompt box cannot be read; nothing was
+typed`. The commander's transcript has its turn ending at 02:43:25.7Z
+(`turn_duration` 02:43:27Z), with nothing after it until 02:57Z. So the
+gate fired on a genuinely idle row, four seconds after the turn ended, and
+the single read it took came back `.unreadable`. The first arm left no
+record (the second one overwrote it), but the transcript is just as quiet
+for 35 minutes after its turn ended (01:29:38Z → 02:04Z), and its cancel
+found nothing.
+
+**Not reproduced.** On a private headless ccc (own socket, own overlay):
+a small haiku fixture with the pane already on it, the same with the pane
+on another session (a fresh attach), and a draft fork of a 10 MB ccc
+transcript attached fresh. All of them read the box at once, cursor
+visible at (2, 36), with focus reported out. A draft reads `blocked`
+(waiting for its first prompt), so the gate correctly never fires on one.
+The app keeps no log, so the commander's grid at 02:43:31Z is gone.
+
+So two changes, neither of which needs the cause. The fire **re-reads the
+box for up to ten seconds** before typing; that is reads only, with no
+key pressed. And a refusal now **says what it saw**:
+`PromptBox.whyUnreadable` gives undrawn, hidden cursor, cursor off the
+grid, or the cursor's position and the row it sat on, and that sentence
+lands in the overlay record that `ccc clear <ref> --status` prints. The
+next loss names its shape.
+
+**What a clear does to a notification, measured once on sonnet**
+(fixture eec7ffce, auto mode, `--no-rc`). The session started `sleep 60;
+echo …` with `run_in_background` and ended its turn. ccc fired the armed
+clear at 07:21:08Z, 64 s before the task would exit. The new transcript
+(9c08635a) reads `/clear`, then the `--then` prompt at 07:21:08Z, then a
+cross-session message sent after the clear (enqueued/dequeued 07:21:17Z),
+then the task's own `<task-notification>` at 07:22:03Z, also enqueued and
+dequeued. **The clear did not kill the background task, and the
+notification of a task started before the clear is delivered to the
+cleared session, after the `--then` turn.** Nothing went to the old
+transcript after its own turn ended. One model, one run: the queue is
+the harness's, which makes it unlikely to vary by model, but a harness
+fact measured on one model gets re-run on a second before it is
+generalized (the haiku-only `--permission-mode` rewrite of 2026-09-07 is
+why).
