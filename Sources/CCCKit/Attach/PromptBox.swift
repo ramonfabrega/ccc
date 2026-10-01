@@ -55,6 +55,25 @@ public enum PromptBox {
         }
     }
 
+    /// What the grid showed when it read `.unreadable`, as a clause for
+    /// the refusal — which is the only trace a failed fire leaves.
+    /// attrition's commander lost two armed clears to "prompt box cannot be
+    /// read" (2026-10-01, 01:29Z and 02:43Z) on a row that was idle, with
+    /// no record of which of the five shapes it was; a fixture at every
+    /// size and focus state read the box fine. This is so the next one
+    /// names itself.
+    public static func whyUnreadable(_ grid: Grid) -> String {
+        let painted = grid.lines.filter { !$0.allSatisfy(\.isWhitespace) }.count
+        if LeaveGesture.isUndrawn(grid) { return "the pane had not drawn (\(painted) painted row\(painted == 1 ? "" : "s"))" }
+        let cursor = grid.cursor
+        let at = "col \(cursor.col), row \(cursor.row) of \(grid.cols)x\(grid.rows)"
+        guard cursor.row >= 0, cursor.row < grid.lines.count else { return "the cursor was off the grid (\(at))" }
+        let row = grid.lines[cursor.row].trimmingCharacters(in: .whitespaces)
+        let shown = row.count > 60 ? String(row.prefix(60)) + "…" : row
+        guard cursor.visible else { return "the cursor was hidden (\(at), on \"\(shown)\")" }
+        return "the cursor was at \(at), on \"\(shown)\""
+    }
+
     /// Read the box on the cursor's row. A `.hint` is the only reading
     /// that is not final: text is drawn past the cursor, which is either
     /// the harness's hint or a draft whose cursor was left at home, and

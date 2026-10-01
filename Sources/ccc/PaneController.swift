@@ -554,7 +554,7 @@ final class PaneController {
         guard box.isOurs else {
             throw AttachError.badHost(box.text.map {
                 "\(ref) has unsent text in its prompt box (\"\($0)\"); typing would submit it with ours"
-            } ?? "\(ref)'s prompt box cannot be read; nothing was typed")
+            } ?? "\(ref)'s prompt box cannot be read (\(PromptBox.whyUnreadable(session.host.snapshot()))); nothing was typed")
         }
         session.send(text: text)
         // The Enter after the text, not with it: a "\r" inside the same
@@ -670,6 +670,7 @@ final class PaneController {
         _ = try await switchTo(ref: ref)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
         if !wasOnScreen { await Self.waitUntilDrawn(session) }
+        await Self.waitUntilReadable(session)
         let before = session.host.snapshot()
         try await Self.type("/clear", into: session, ref: ref)
         let landed = await Self.waitUntilChanged(session, from: before)
@@ -677,6 +678,22 @@ final class PaneController {
         guard let then else { return "cleared \(ref)" }
         try await Self.type(then, into: session, ref: ref)
         return "cleared \(ref), then: \(then)"
+    }
+
+    /// The box reads as *something* — empty, a hint, a draft — or ten
+    /// seconds passed. Reads only, so waiting costs nothing and types
+    /// nothing; `type` still refuses whatever this ends on. A fire took
+    /// one read and dropped the arm on `.unreadable`, which is a reading a
+    /// passing state can produce (a repaint, a toast, a status line the
+    /// harness draws for a moment after a turn ends) — attrition lost two
+    /// clears that way on an idle row (2026-10-01).
+    private static func waitUntilReadable(_ session: AttachSession, timeout: Duration = .seconds(10)) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        while clock.now < deadline, session.isRunning {
+            if PromptBox.read(session.host.snapshot()) != .unreadable { return }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
     }
 
     /// The screen moved off `from` and settled again — the clear landing.

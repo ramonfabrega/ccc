@@ -366,6 +366,24 @@ import Testing
         #expect(PromptBox.read(blank).isOurs == false)
     }
 
+    /// The refusal names which unreadable it was. attrition's two lost
+    /// clears left only "cannot be read", which no fixture reproduced; the
+    /// next one carries the cursor and the row it sat on.
+    @Test func anUnreadableBoxSaysWhatItSaw() {
+        #expect(PromptBox.whyUnreadable(grid("  some transcript line", cursorCol: 2))
+                == "the cursor was at col 2, row 1 of 40x4, on \"some transcript line\"")
+        var hidden = grid("❯\u{00A0}", cursorCol: 2)
+        hidden.cursor.visible = false
+        #expect(PromptBox.whyUnreadable(hidden).hasPrefix("the cursor was hidden (col 2, row 1 of 40x4"))
+        let blank = Grid(cols: 10, rows: 4, lines: Array(repeating: "          ", count: 4),
+                         cursor: Grid.Cursor(col: 0, row: 0, visible: true))
+        #expect(PromptBox.whyUnreadable(blank) == "the pane had not drawn (0 painted rows)")
+        let long = String(repeating: "x", count: 80)
+        var wide = grid("", cursorCol: 0)
+        wide.lines[1] = long
+        #expect(PromptBox.whyUnreadable(wide).hasSuffix(String(repeating: "x", count: 60) + "…\""))
+    }
+
     /// `>` and `!` are prompts too (the plain-ASCII terminal, bash mode),
     /// the way `LeaveGesture` reads them.
     @Test func everyPromptGlyphReads() {
