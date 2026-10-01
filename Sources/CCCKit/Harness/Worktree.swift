@@ -965,6 +965,10 @@ public struct MergeOutcome: Sendable, Equatable {
     /// "merge master into this branch and resolve the conflicts" here,
     /// for the HUD's button and `ccc update --ask`. Nil otherwise.
     public var ask: String? = nil
+    /// Every path an update left conflicted in the worktree, when it was
+    /// told to keep them (`--keep-conflicts`) and did. Nil whenever the
+    /// tree is not mid-merge — which is every other outcome.
+    public var conflicts: [String]? = nil
 }
 
 /// The merge itself, **where the base branch is checked out** — the main
@@ -1064,13 +1068,33 @@ public enum GitMerge {
 /// master's. A conflict backs out (`merge --abort`) with the files named
 /// and carries the one offer a menu cannot make and a session can — ask
 /// it to do the merge, as a prompt through the pane.
+///
+/// **`keepConflicts` is that offer made possible.** The session's own
+/// `git merge` is what the auto-mode classifier refuses, so "ask it to
+/// merge" reached a lane that could not, and attrition's item 1293 sat
+/// 86 minutes for a human (2026-09-30). Kept, a conflict leaves the
+/// worktree mid-merge with its markers — resolving files, `git add` and
+/// `git commit` are all things a lane may do. Opt-in, because the menu
+/// must never leave a running session's tree half-merged under it; and
+/// the dirty refusal holds either way, since a merge over a half-written
+/// edit is what this verb exists not to make.
 public enum GitUpdate {
     /// The sentence the session is asked, when it comes to that.
     public static func prompt(base: String) -> String {
         "Merge \(base) into this branch and resolve the conflicts."
     }
 
-    public static func perform(on info: WorktreeInfo, worktree cwd: String,
+    /// `ccc update`'s exit when it left the tree mid-merge: not 1, which
+    /// promises "the branch is untouched", and the opposite is now true.
+    public static let keptExit: Int32 = 3
+
+    /// The sentence a session is asked when the merge is already in its
+    /// tree: the merge is done but for the files.
+    public static func resolvePrompt(base: String, files: String) -> String {
+        "Merging \(base) into this branch left conflicts in \(files): resolve them, `git add` them, and `git commit` to finish the merge."
+    }
+
+    public static func perform(on info: WorktreeInfo, worktree cwd: String, keepConflicts: Bool = false,
                                git: String = WorktreeProbe.defaultGit) -> MergeOutcome {
         func g(_ args: [String]) throws -> Git.Result { try Git.run(git, ["-C", cwd] + args) }
         // The tip, not the base branch by name: `origin/<base>` when the
@@ -1103,6 +1127,16 @@ public enum GitUpdate {
             return MergeOutcome(merged: true, said: "merged \(name) (\(plural), merge commit \(sha))")
         } catch {
             let conflicts = Git.conflicted(g)
+            // Kept only when git actually stopped on conflicted files. A
+            // merge that failed before staging any (an untracked file in
+            // the way) has nothing to resolve, and backs out as ever.
+            let paths = Git.conflictedPaths(g)
+            if keepConflicts, !paths.isEmpty {
+                return MergeOutcome(merged: false,
+                                    said: "merge \(name) conflicts in \(conflicts); left in place, \(info.branch) mid-merge — resolve, `git add` and `git commit` to finish (`git merge --abort` backs out)",
+                                    ask: resolvePrompt(base: tip, files: conflicts),
+                                    conflicts: paths)
+            }
             _ = try? g(["merge", "--abort"])
             return MergeOutcome(merged: false,
                                 said: "merge \(name) conflicts in \(conflicts); backed out, \(info.branch) untouched — ask the session to merge \(tip)",
@@ -1273,10 +1307,16 @@ public enum Git {
     /// the honest answer when git failed before it staged a conflict,
     /// which is a failure this sentence still has to be a sentence for.
     public static func conflicted(_ g: ([String]) throws -> Result) -> String {
-        let files = (try? g(["diff", "--name-only", "--diff-filter=U"]).stdout)?
-            .split(separator: "\n").map(String.init) ?? []
+        let files = conflictedPaths(g)
         if files.isEmpty { return "the working tree" }
         return files.prefix(4).joined(separator: ", ") + (files.count > 4 ? " (+\(files.count - 4))" : "")
+    }
+
+    /// Every unmerged path, uncut — what a caller resolving them needs,
+    /// where `conflicted` is what a sentence can carry.
+    public static func conflictedPaths(_ g: ([String]) throws -> Result) -> [String] {
+        (try? g(["diff", "--name-only", "--diff-filter=U"]).stdout)?
+            .split(separator: "\n").map(String.init) ?? []
     }
 
     /// The dirty refusal's payload: how many tracked changes a checkout is
@@ -1470,9 +1510,10 @@ extension ClaudeCLI {
     /// `ccc update <id> --json` on a remote host: the far side's own ccc,
     /// where the worktree is. `--json`, because the answer has a shape —
     /// the offered prompt on a conflict — that a sentence cannot carry.
-    public func updateArgv(id: String) -> [String]? {
+    public func updateArgv(id: String, keepConflicts: Bool = false) -> [String]? {
         guard let ccc = host.ccc, let destination = host.ssh else { return nil }
         return sshPrefix(tty: false, destination: destination) + [ccc, "update", id, "--json"]
+            + (keepConflicts ? ["--keep-conflicts"] : [])
     }
 
     /// Update a session's worktree branch from the repository's default
@@ -1481,7 +1522,7 @@ extension ClaudeCLI {
     /// worktree; the far side's verb for a remote ref, its JSON read
     /// leniently (a sentence alone, off a ccc that printed one, is the
     /// sentence).
-    public func update(id: String, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
+    public func update(id: String, keepConflicts: Bool = false, probe: WorktreeProbe = WorktreeProbe()) async throws -> MergeOutcome {
         if host.isLocal {
             let roster = RosterDecoder.decode(try await agentsJSON())
             let row = try roster.sessions.session(matching: id)
@@ -1489,15 +1530,18 @@ extension ClaudeCLI {
                 throw MergeError.notAWorktree(id, row.cwd)
             }
             let cwd = row.cwd
-            return await Task.detached(priority: .userInitiated) { GitUpdate.perform(on: info, worktree: cwd, git: probe.git) }.value
+            return await Task.detached(priority: .userInitiated) {
+                GitUpdate.perform(on: info, worktree: cwd, keepConflicts: keepConflicts, git: probe.git)
+            }.value
         }
-        guard let argv = updateArgv(id: id) else { throw MergeError.noRemoteCCC(host.name) }
+        guard let argv = updateArgv(id: id, keepConflicts: keepConflicts) else { throw MergeError.noRemoteCCC(host.name) }
         try prepareControlDirectory()
-        let result = try await run(argv, accepting: [0, 1], program: "ccc")
+        let result = try await run(argv, accepting: [0, 1, GitUpdate.keptExit], program: "ccc")
         let text = String(decoding: result.stdout, as: UTF8.self)
         if let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
            let said = object["said"] as? String {
-            return MergeOutcome(merged: result.status == 0, said: said, ask: object["ask"] as? String)
+            return MergeOutcome(merged: result.status == 0, said: said, ask: object["ask"] as? String,
+                                conflicts: object["conflicts"] as? [String])
         }
         let said = (text + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
         return MergeOutcome(merged: result.status == 0, said: said)

@@ -384,6 +384,79 @@ import Testing
         }
     }
 
+    /// `--keep-conflicts`: the back-out's opposite, for the lane whose own
+    /// `git merge` the classifier refuses (attrition 1293, 86 minutes for
+    /// a human). The tree is left mid-merge with its markers, every path is
+    /// named uncut, and what is left to do — resolve, add, commit — is the
+    /// part a lane may do; the commit then lands as master's merge.
+    @Test func aKeptConflictLeavesTheMergeToResolve() throws {
+        try withRepo { repo in
+            let files = ["a.txt", "p.txt", "q.txt", "r.txt", "s.txt"]
+            for name in files where name != "a.txt" {
+                try repo.commit(name, "base\n", message: "master \(name)")
+            }
+            for name in files {
+                try "theirs\n".write(to: repo.worktree.appending(path: name), atomically: true, encoding: .utf8)
+            }
+            _ = try repo.git("add", "-A", in: repo.worktree)
+            _ = try repo.git("commit", "-q", "--no-verify", "-m", "wt all", in: repo.worktree)
+            for name in files {
+                try "ours\n".write(to: repo.root.appending(path: name), atomically: true, encoding: .utf8)
+            }
+            _ = try repo.git("add", "-A")
+            _ = try repo.git("commit", "-q", "--no-verify", "-m", "master all")
+            let before = try repo.git("rev-parse", "worktree-t")
+            let master = try repo.git("rev-parse", "master")
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+
+            let outcome = GitUpdate.perform(on: info, worktree: repo.wt, keepConflicts: true)
+            #expect(!outcome.merged)
+            #expect(outcome.said == "merge master → worktree-t conflicts in a.txt, p.txt, q.txt, r.txt (+1); left in place, worktree-t mid-merge — resolve, `git add` and `git commit` to finish (`git merge --abort` backs out)",
+                    "\(outcome.said)")
+            // Uncut: the sentence names four, the caller resolving needs five.
+            #expect(outcome.conflicts == files)
+            #expect(outcome.ask?.hasPrefix("Merging master into this branch left conflicts in a.txt") == true)
+            let layout = try #require(WorktreeProbe.layout(of: repo.wt))
+            #expect(FileManager.default.fileExists(atPath: layout.gitdir + "/MERGE_HEAD"))
+            #expect(try String(contentsOf: repo.worktree.appending(path: "a.txt"), encoding: .utf8).contains("<<<<<<<"))
+            // Nothing committed for the lane, nothing moved on master.
+            #expect(try repo.git("rev-parse", "worktree-t") == before)
+            #expect(try repo.git("rev-parse", "master") == master)
+
+            // A second update meets a tree mid-merge, and refuses it as
+            // dirty — it never stacks a merge on an unresolved one.
+            let again = GitUpdate.perform(on: try #require(WorktreeProbe().fresh(forCwd: repo.wt)), worktree: repo.wt, keepConflicts: true)
+            #expect(!again.merged && again.conflicts == nil && again.said.contains("uncommitted"), "\(again.said)")
+
+            // The lane's half: resolve, add, commit — a merge commit with
+            // master as its second parent.
+            for name in files {
+                try "both\n".write(to: repo.worktree.appending(path: name), atomically: true, encoding: .utf8)
+            }
+            _ = try repo.git("add", "-A", in: repo.worktree)
+            _ = try repo.git("commit", "-q", "--no-edit", "--no-verify", in: repo.worktree)
+            #expect(try repo.git("rev-parse", "HEAD^1", in: repo.worktree) == before)
+            #expect(try repo.git("rev-parse", "HEAD^2", in: repo.worktree) == master)
+        }
+    }
+
+    /// Kept only when git stopped on files. An update that fails before
+    /// staging a conflict — an untracked file master would overwrite —
+    /// has nothing to resolve, and backs out exactly as it always did.
+    @Test func aKeptUpdateWithNoConflictedFilesStillBacksOut() throws {
+        try withRepo { repo in
+            try repo.commit("b.txt", "two\n", message: "wt one", worktree: true)
+            try repo.commit("n.txt", "master's\n", message: "master adds n")
+            try "mine, untracked\n".write(to: repo.worktree.appending(path: "n.txt"), atomically: true, encoding: .utf8)
+            let info = try #require(WorktreeProbe().fresh(forCwd: repo.wt))
+            let outcome = GitUpdate.perform(on: info, worktree: repo.wt, keepConflicts: true)
+            #expect(!outcome.merged && outcome.conflicts == nil, "\(outcome.said)")
+            #expect(outcome.said.contains("backed out"), "\(outcome.said)")
+            let layout = try #require(WorktreeProbe.layout(of: repo.wt))
+            #expect(!FileManager.default.fileExists(atPath: layout.gitdir + "/MERGE_HEAD"))
+        }
+    }
+
     @Test func theWireCarriesAsk() throws {
         let data = try JSONEncoder().encode(ControlRequest.ask(id: SessionRef(id: "a1b2"), prompt: "Merge master into this branch and resolve the conflicts."))
         let back = try JSONDecoder().decode(ControlRequest.self, from: data)

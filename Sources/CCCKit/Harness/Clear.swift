@@ -104,13 +104,40 @@ extension ClaudeCLI {
         /// Whether this call cancelled one that was already armed.
         public var cancelled: Bool
         public var said: String
+        /// `--status` only: when the armed clear was armed, ISO 8601 — a
+        /// string, so it crosses the hop in whatever shape it left in.
+        public var armedAt: String?
+        /// `--status` only: what became of the last clear on the row —
+        /// fired, refused or dropped — as the firing side said it.
+        public var last: String?
 
-        public init(ref: String, armed: Bool, then: String? = nil, cancelled: Bool = false, said: String) {
+        public init(ref: String, armed: Bool, then: String? = nil, cancelled: Bool = false, said: String,
+                    armedAt: String? = nil, last: String? = nil) {
             self.ref = ref
             self.armed = armed
             self.then = then
             self.cancelled = cancelled
             self.said = said
+            self.armedAt = armedAt
+            self.last = last
+        }
+    }
+
+    /// What `ccc clear` does to the row. `status` is the read — the one a
+    /// commander asking "am I still armed?" reaches for — and before it
+    /// existed the only per-row question the verb took was `--cancel`,
+    /// which answers by disarming: attrition's commander asked it four
+    /// times across two tranches and no clear fired in either
+    /// (2026-09-30 – 10-01, sessions ran to 402 k and 322 k of context).
+    public enum ClearAction: String, Sendable {
+        case arm, cancel, status
+
+        var flag: String? {
+            switch self {
+            case .arm: return nil
+            case .cancel: return "--cancel"
+            case .status: return "--status"
+            }
         }
     }
 
@@ -139,15 +166,52 @@ extension ClaudeCLI {
     public func clear(id: String, then: String? = nil, cancel: Bool = false,
                       overlayPath: String = RosterOverlay.defaultPath,
                       serving: @Sendable () -> Bool = { ControlClient().isReachable() }) async throws -> ClearOutcome {
+        try await clear(id: id, then: then, action: cancel ? .cancel : .arm, overlayPath: overlayPath, serving: serving)
+    }
+
+    public func clear(id: String, then: String? = nil, action: ClearAction,
+                      overlayPath: String = RosterOverlay.defaultPath,
+                      serving: @Sendable () -> Bool = { ControlClient().isReachable() }) async throws -> ClearOutcome {
+        let cancel = action == .cancel
         guard host.isLocal else {
             guard let ccc = host.ccc, let destination = host.ssh else { throw ClearError.noRemoteCCC(host.name) }
             var words = [ccc, "clear", id]
-            if cancel { words.append("--cancel") }
+            if let flag = action.flag { words.append(flag) }
             if let then { words += ["--then", Self.remoteWord(then)] }
+            // The read's answer has a shape a sentence cannot carry back
+            // (armed or not is the whole question), so it asks for JSON.
+            if action == .status { words.append("--json") }
             try prepareControlDirectory()
             let out = try await run(sshPrefix(tty: false, destination: destination) + words, program: "ccc")
+            if action == .status, let answer = try? JSONDecoder().decode(ClearOutcome.self, from: out) {
+                return answer
+            }
             let said = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            return ClearOutcome(ref: id, armed: !cancel, then: then, cancelled: cancel, said: said)
+            return ClearOutcome(ref: id, armed: action == .arm, then: then, cancelled: cancel, said: said)
+        }
+
+        if action == .status {
+            // Read-only, and lock-free for it: nothing is written, and a
+            // name resolves the way cancel's does — the overlay's own key
+            // first, the roster only as the fallback, and a roster that
+            // cannot answer is "no such key", never an error.
+            let overlay = RosterOverlay.load(path: overlayPath).overlay
+            var key = id
+            if overlay.marks[id] == nil, let json = try? await agentsJSON(),
+               let row = RosterDecoder.decode(json).sessions.sessionIfAny(matching: id) {
+                key = row.id
+            }
+            let mark = overlay.marks[key]
+            let stamp = ISO8601DateFormatter()
+            let last = mark?.fired.map { "\(SessionEvent.spell(Date().timeIntervalSince($0.at))) ago · \($0.said)" }
+            let tail = last.map { "; last: \($0)" } ?? ""
+            guard let pending = mark?.clear else {
+                return ClearOutcome(ref: key, armed: false, said: "no clear is armed on \(key)\(tail)", last: last)
+            }
+            let then = pending.then.map { ", then: \($0)" } ?? ""
+            return ClearOutcome(ref: key, armed: true, then: pending.then,
+                                said: "a clear is armed on \(key) (\(SessionEvent.spell(Date().timeIntervalSince(pending.armedAt))) ago); it fires when the row is idle\(then)\(tail)",
+                                armedAt: stamp.string(from: pending.armedAt), last: last)
         }
 
         if cancel {

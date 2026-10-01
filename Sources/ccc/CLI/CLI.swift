@@ -157,11 +157,11 @@ enum CLI {
                     stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
                     return 2
                 }
-                for flag in rest.filter({ $0.hasPrefix("--") }) where flag != "--ask" && flag != "--json" {
-                    stderr("ccc: unknown flag '\(flag)' (--ask)")
+                for flag in rest.filter({ $0.hasPrefix("--") }) where !["--ask", "--json", "--keep-conflicts"].contains(flag) {
+                    stderr("ccc: unknown flag '\(flag)' (--ask, --keep-conflicts)")
                     return 2
                 }
-                return try await update(ref: ref, ask: rest.contains("--ask"), json: json)
+                return try await update(ref: ref, ask: rest.contains("--ask"), keepConflicts: rest.contains("--keep-conflicts"), json: json)
             case "fetch", "pull", "ff":
                 // `ff` is `pull` under the name that says ff-only; the
                 // manifest carries it as an alias so there is one verb.
@@ -224,27 +224,34 @@ enum CLI {
                         }
                         then = rest[index + 1]
                         index += 1
-                    case "--cancel", "--json":
+                    case "--cancel", "--status", "--json":
                         break
                     default:
                         guard !arg.hasPrefix("--") else {
-                            stderr("ccc: unknown flag '\(arg)' (--then, --cancel)")
+                            stderr("ccc: unknown flag '\(arg)' (--then, --status, --cancel)")
                             return 2
                         }
                         words.append(arg)
                     }
                     index += 1
                 }
+                // One of three things is done to the row, and saying two is
+                // a caller that has not decided — refused, never guessed.
+                let action: ClaudeCLI.ClearAction = rest.contains("--status") ? .status : rest.contains("--cancel") ? .cancel : .arm
+                if action == .status, rest.contains("--cancel") || then != nil {
+                    stderr("ccc: --status reads and changes nothing; it takes neither --cancel nor --then")
+                    return 2
+                }
                 // No ref at all is the read half: what is armed right now.
                 guard let text = words.first else {
-                    if rest.contains("--cancel") { return usage() }
+                    if action != .arm { return usage() }
                     return try await armedClears(json: json)
                 }
                 guard let ref = SessionRef.parse(text) else {
                     stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
                     return 2
                 }
-                return try await clear(ref: ref, then: then, cancel: rest.contains("--cancel"), json: json)
+                return try await clear(ref: ref, then: then, action: action, json: json)
             case "archive", "unarchive", "pin", "unpin":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -481,8 +488,9 @@ enum CLI {
     /// and continue" step as a verb. It **arms** — the caller is normally
     /// the commander on its own ref, and a session cannot wait for its own
     /// turn to end — and the pane on that Mac fires it when the row goes
-    /// idle. `--cancel` disarms; no ref at all lists what is waiting.
-    static func clear(ref: SessionRef, then: String?, cancel: Bool, json: Bool) async throws -> Int32 {
+    /// idle. `--status` asks without touching, `--cancel` disarms; no ref
+    /// at all lists what is waiting.
+    static func clear(ref: SessionRef, then: String?, action: ClaudeCLI.ClearAction, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
         guard let host = loaded.config.host(named: ref.host) else {
@@ -495,7 +503,7 @@ enum CLI {
         }
         let outcome: ClaudeCLI.ClearOutcome
         do {
-            outcome = try await cli.clear(id: ref.id, then: then, cancel: cancel)
+            outcome = try await cli.clear(id: ref.id, then: then, action: action)
         } catch {
             stderr("ccc: \(error)")
             return 1
@@ -636,7 +644,7 @@ enum CLI {
     /// the prompt a session could be given, and `--ask` gives it — the
     /// pane attaches to the session and types it (needs the app). The
     /// exit stays 1 then: the update itself did not happen.
-    static func update(ref: SessionRef, ask: Bool, json: Bool) async throws -> Int32 {
+    static func update(ref: SessionRef, ask: Bool, keepConflicts: Bool, json: Bool) async throws -> Int32 {
         let loaded = HostConfig.load()
         for issue in loaded.issues { stderr("ccc: \(issue)") }
         guard let host = loaded.config.host(named: ref.host) else {
@@ -647,7 +655,7 @@ enum CLI {
             stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
             return 1
         }
-        let outcome = try await cli.update(id: ref.id)
+        let outcome = try await cli.update(id: ref.id, keepConflicts: keepConflicts)
         var asked: String?
         if ask, let prompt = outcome.ask {
             switch try ControlClient().send(.ask(id: ref, prompt: prompt)) {
@@ -657,15 +665,28 @@ enum CLI {
             }
         }
         if json {
-            var object = ["ref": ref.description, "updated": outcome.merged ? "true" : "false", "said": outcome.said]
-            if let prompt = outcome.ask { object["ask"] = prompt }
-            if let asked { object["asked"] = asked }
-            printJSON(object)
+            printJSON(UpdateAnswer(ref: ref.description, updated: outcome.merged ? "true" : "false", said: outcome.said,
+                                   ask: outcome.ask, asked: asked, conflicts: outcome.conflicts))
         } else {
             print(outcome.said)
+            // One path a line, uncut: the sentence names four, and the
+            // caller about to resolve them needs every one.
+            for path in outcome.conflicts ?? [] { print(path) }
             if let asked { print(asked) }
         }
-        return outcome.merged ? 0 : 1
+        if outcome.merged { return 0 }
+        return outcome.conflicts == nil ? 1 : GitUpdate.keptExit
+    }
+
+    /// `ccc update --json`. `updated` stays the string it always was, so a
+    /// reader of the old shape reads this one.
+    struct UpdateAnswer: Encodable {
+        var ref: String
+        var updated: String
+        var said: String
+        var ask: String?
+        var asked: String?
+        var conflicts: [String]?
     }
 
     /// `ccc fetch <ref>` and `ccc pull <ref>` (v6 slice 7): the

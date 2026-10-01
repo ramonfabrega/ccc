@@ -103,6 +103,40 @@ import Testing
         }
     }
 
+    /// `--status`: "am I still armed?" with an answer that consumes
+    /// nothing. Before it the only per-row question was `--cancel`, and
+    /// attrition's commander asked that one four times across two tranches
+    /// — no clear fired in either. Read twice, by name and by id, and the
+    /// arm is still there for the firing side.
+    @Test func statusReadsTheArmAndLeavesIt() async throws {
+        try await withTemp { dir in
+            let overlay = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            let before = try await cli.clear(id: "probe", action: .status, overlayPath: overlay, serving: { false })
+            #expect(!before.armed && before.ref == "a1b2" && before.said == "no clear is armed on a1b2", "\(before.said)")
+
+            _ = try await cli.clear(id: "a1b2", then: "carry on", overlayPath: overlay, serving: serving)
+            for word in ["probe", "a1b2"] {
+                let status = try await cli.clear(id: word, action: .status, overlayPath: overlay, serving: { false })
+                #expect(status.armed && status.ref == "a1b2" && status.then == "carry on" && !status.cancelled)
+                #expect(status.armedAt != nil)
+                #expect(status.said.hasPrefix("a clear is armed on a1b2 ("), "\(status.said)")
+                #expect(status.said.hasSuffix("it fires when the row is idle, then: carry on"), "\(status.said)")
+            }
+            #expect(RosterOverlay.load(path: overlay).overlay.armedClears.map(\.id) == ["a1b2"])
+
+            // What became of the last one rides along, so a fresh context
+            // asking after a fire learns it fired.
+            var loaded = RosterOverlay.load(path: overlay).overlay
+            let uuid = "a1b2c3d4-0000-0000-0000-000000000000"
+            loaded.record(ClearRecord(said: "cleared a1b2 and typed: carry on", fired: true), id: "a1b2", sessionId: uuid)
+            loaded.arm(nil, id: "a1b2", sessionId: uuid)
+            try loaded.save(path: overlay)
+            let after = try await cli.clear(id: "a1b2", action: .status, overlayPath: overlay, serving: { false })
+            #expect(!after.armed && after.last?.hasSuffix("cleared a1b2 and typed: carry on") == true, "\(after.said)")
+        }
+    }
+
     /// An arm is a promise that something types minutes from now, and the
     /// only things that can are the app and a headless attach — both of
     /// which serve the control socket. With neither up the mark would sit

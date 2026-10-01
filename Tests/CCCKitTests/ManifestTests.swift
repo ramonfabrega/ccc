@@ -182,7 +182,9 @@ import Testing
     @Test func aVerbsHelpCarriesItsJSONAndItsExit() throws {
         let update = try #require(CommandManifest.verb(named: "update"))
         let text = CommandManifest.help(for: update)
-        #expect(text.contains("ccc update <ref> [--ask] [--json]"))
+        #expect(text.contains("ccc update <ref> [--ask] [--keep-conflicts] [--json]"))
+        // Two exits that promise opposite things about the tree.
+        #expect(text.contains("3 when --keep-conflicts left it mid-merge"))
         // The correction that started all of this: the base, not the
         // default branch, and the sentence that sends a brief here.
         #expect(text.contains("recorded, else the repo's default branch"))
