@@ -5763,3 +5763,26 @@ the harness's, which makes it unlikely to vary by model, but a harness
 fact measured on one model gets re-run on a second before it is
 generalized (the haiku-only `--permission-mode` rewrite of 2026-09-07 is
 why).
+
+## Cut as v0.1.38 (2026-10-01)
+
+`v0.1.38`, build **255**, 5,348,403 bytes, notarized and published to both
+CDN keys. The live feed's `length=` matches the zip's real
+`content-length` (`ota verify --feed ccc`: `ok … version 255 length
+5348403`), and `scripts/install --dist` put the released bytes on studio
+(`ccc 0.1.38 (255)`). This time master was fast-forwarded to the bump
+before the tag, so the tag, master and the branch all named `5e1bf5b` at
+the cut. This note follows the tag, as every cut's note does.
+
+What it carries for attrition's commander and lanes: `ccc clear <ref>
+--status`, `ccc update <ref> --keep-conflicts` (exit 3), the fire path's
+ten-second re-read, and a refusal that names what it saw. Fourteen
+commits of the 2026-09-17 merge and update work since `v0.1.37` ride
+along.
+
+**Read on the released bytes**, off `/opt/homebrew/bin/ccc`: `ccc clear
+3c382923 --status` prints `no clear is armed on 3c382923; last: 4h49m ago
+· the clear on 3c382923 did not fire: 3c382923's prompt box cannot be
+read; nothing was typed`. That is the 02:43:31Z record above, now visible
+to the session it was about. The next refusal of that kind will carry the
+cursor and the row it saw.
