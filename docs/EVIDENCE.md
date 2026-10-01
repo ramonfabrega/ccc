@@ -5777,8 +5777,8 @@ the cut. This note follows the tag, as every cut's note does.
 What it carries for attrition's commander and lanes: `ccc clear <ref>
 --status`, `ccc update <ref> --keep-conflicts` (exit 3), the fire path's
 ten-second re-read, and a refusal that names what it saw. Fourteen
-commits of the 2026-09-17 merge and update work since `v0.1.37` ride
-along.
+commits since `v0.1.37`: those three, the bump, and ten of the
+2026-09-17 merge and update work that had not been cut yet.
 
 **Read on the released bytes**, off `/opt/homebrew/bin/ccc`: `ccc clear
 3c382923 --status` prints `no clear is armed on 3c382923; last: 4h49m ago
