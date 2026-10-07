@@ -5832,3 +5832,18 @@ snapshot showed `❯ /clear`, the prompt, and `⏺ CROSS-CLEAR-FIRED`. Nothing
 in the arm or fire path reads the caller; the help's "the caller is
 normally the commander on its own ref" described the first user and now
 says so.
+
+## Cut as v0.1.39 (2026-10-07)
+
+`v0.1.39`, build **259**, 5,364,349 bytes, notarized and published to both
+CDN keys; `ota verify --feed ccc` → `ok … version 259 length 5364349`, and
+`scripts/install --dist` put the released bytes on studio (`ccc 0.1.39
+(259)`). Master was fast-forwarded to the bump before the tag, so the tag,
+master and the branch all named `195568b` at the cut. Two commits since
+`v0.1.38`: `ccc forget` and the bump.
+
+**Read on the released bytes**, off `/opt/homebrew/bin/ccc`, on a haiku
+fixture in `~/cc-test`: live → `332c16b7 (fx-forget-rel) is blocked;
+forget drops finished rows — ccc stop 332c16b7 first`, exit 1; after
+`claude stop` → `removed 332c16b7`, exit 0, and the row is off `claude
+agents --json --all`.
