@@ -78,6 +78,9 @@ ccc hook [--settings]               # the harness's Notification hook: JSON on s
 ccc rm <ref> [--json]               # delete a session and its worktree, when the harness says that is safe.
                                     # The BRANCH goes only if its commits are elsewhere — in its recorded base
                                     # or on origin; otherwise the tree goes, the branch stays, `said` says why
+ccc forget <ref> [--json]           # drop a finished row and KEEP its worktree and branch: `claude rm`, refused
+                                    # when the row still has a process (`done` ends a turn — `ccc stop` first),
+                                    # or its job file names a tree the harness cut, or ccc cut it (those are rm's)
 
 # spawning, and the session's repository
 ccc spawn [--host <n>] [--cwd <d>] [--name <n>] [--model <m>] [--agent <a>] [--permission-mode <m>] [--rc]
@@ -101,10 +104,11 @@ ccc stop <ref> [--json]             # end a running session; its conversation an
                                     # (`ccc attach` resumes it). `ccc rm` is the one that deletes
 ccc clear <ref> [--then "<prompt>"] [--json]
                                     # arm a /clear: when the row next goes idle, ccc types /clear into its
-                                    # pane, then --then's prompt. THE CALLER IS THE COMMANDER ON ITS OWN REF,
-                                    # the last act after an item lands — which is why it arms rather than
-                                    # waits (while this call runs, that row is busy because of this call).
-                                    # Commit the bank first: a dirty worktree is refused. A person's unsent
+                                    # pane, then --then's prompt. It arms rather than waits because the usual
+                                    # caller is the commander on its own ref, busy because of this call; any
+                                    # session may clear another, and the caller is never checked.
+                                    # Commit the bank first: the target's dirty worktree is refused, at arm and
+                                    # again at fire. A person's unsent
                                     # draft in the box stops it. Needs a ccc with a pane on that Mac (the app,
                                     # or `ccc attach --headless`) — arming is refused when none is serving,
                                     # since nothing would fire it. --cancel disarms; no ref lists what this

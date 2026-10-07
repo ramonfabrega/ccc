@@ -108,6 +108,13 @@ enum CLI {
                     return 2
                 }
                 return try await rm(ref: ref, json: json)
+            case "forget":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await forget(ref: ref, json: json)
             case "stop":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -790,6 +797,25 @@ enum CLI {
         var removed: String
         var said: String
         var worktree: WorktreeProbe.Cleanup?
+    }
+
+    /// Drop a finished row and keep its worktree: `claude rm`, run only
+    /// when it would take the row and nothing else (`ForgetGuard`). A
+    /// refusal is exit 1 with the reason, the same shape as rm's "kept".
+    static func forget(ref: SessionRef, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let result = try await cli.forget(id: ref.id)
+        if json { printJSON(result) } else { print(result.said) }
+        return result.forgotten ? 0 : 1
     }
 
     /// Stop a session: `claude stop` behind the ref's host prefix. The

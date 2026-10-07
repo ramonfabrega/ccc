@@ -155,6 +155,8 @@ final class MainWindowController: NSWindowController {
             self?.mark(ref, change)
         }, delete: { [weak self] ref in
             self?.confirmDelete(ref)
+        }, forget: { [weak self] ref in
+            self?.confirmForget(ref)
         }, newSession: { [weak self] in
             self?.newSessionAction(nil)
         }, newSessionHere: { [weak self] ref in
@@ -695,6 +697,30 @@ final class MainWindowController: NSWindowController {
         Task { @MainActor in
             do {
                 showNotice(try await controller.delete(ref))
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    /// The roster's Forget: `ccc forget <ref>`'s twin. The alert says what
+    /// stays, since staying is the whole difference from Delete; a refusal
+    /// (a tree `rm` would take) comes back as the notice.
+    func confirmForget(_ ref: SessionRef) {
+        let row = controller.poller.state.rows.first { $0.ref == ref }
+        let alert = NSAlert()
+        alert.messageText = "Forget \(row?.session.name ?? ref.description)?"
+        let cwd = row.map { controller.hosts.shortCwd($0.session.cwd, host: $0.host) } ?? ""
+        alert.informativeText = "Drops the row" + (ref.isLocal ? "" : " on \(ref.host)")
+            + ". Its folder, worktree and branch stay. Refused if `claude rm` would remove a worktree with it."
+            + (cwd.isEmpty ? "" : "\n\n\(cwd)")
+        alert.addButton(withTitle: "Forget")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { @MainActor in
+            do {
+                let result = try await controller.forget(ref)
+                showNotice(result.said, kind: result.forgotten ? .answer : .problem)
             } catch {
                 showNotice("\(error)", kind: .problem)
             }

@@ -847,6 +847,14 @@ final class PaneController {
         return result.said
     }
 
+    /// `ccc forget <ref>` behind the host prefix, with the poll after that
+    /// `delete` does.
+    func forget(_ ref: SessionRef) async throws -> ClaudeCLI.ForgetResult {
+        let result = try await cli(for: ref).forget(id: ref.id)
+        await poller.poller(for: ref.host)?.tick()
+        return result
+    }
+
     /// The wake-up gesture: evict every remote ssh master and poll again,
     /// then bring back a remote pane the sleep killed. Called by the app on
     /// `NSWorkspace.didWakeNotification` and by `ccc hosts reconnect`.

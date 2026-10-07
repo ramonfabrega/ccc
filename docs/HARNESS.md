@@ -70,15 +70,14 @@ behind `ssh`.
   so ccc inherits it rather than re-deciding it — **plus the worktree ccc
   cut itself** (item 24), which the harness never knew about because
   `--base` hands it a plain cwd.
-  **"Its worktree" means the one it made, for a session that ran.**
-  Measured 2026-09-06 on one fixture repo, both trees cut by the harness:
-  a session that had run was cleaned and the answer named the tree
-  (`removed <id>` then `  worktree: …/worktrees/started`); a **draft that
-  never started** was not — `rm` named no worktree and the tree stayed,
-  twice, still `locked` by a `claude session` lock whose pid was dead.
-  ccc leaves both alone: without a record it cannot tell a tree the
-  harness cut for this session from one the user pointed `--cwd` at by
-  hand. Queue item 26.
+  **"Its worktree" is the one its job file names** (`worktreePath`,
+  written for a `--worktree` spawn): `rm` takes that tree and no other. A
+  `--cwd` session in an existing tree loses only its row, even when the
+  tree is clean and pushed (2026-10-07); a `--worktree` draft that never
+  started kept its tree, `locked` by a dead pid (2026-09-06, queue item
+  26). `ccc forget` is `rm` refused when that key or `ccc-cut` is present,
+  or the row still has a process (`docs/EVIDENCE.md` "forget — what
+  `claude rm` takes", "worktrees/started").
 - Non-interactive `ssh localhost` has a minimal PATH and **no `claude` on
   it**; the remote command must be an absolute path (or `zsh -lc`). v2
   fact, learned setting up experiment 3.

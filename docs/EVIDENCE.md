@@ -5786,3 +5786,49 @@ commits since `v0.1.37`: those three, the bump, and ten of the
 read; nothing was typed`. That is the 02:43:31Z record above, now visible
 to the session it was about. The next refusal of that kind will carry the
 cursor and the row it saw.
+
+## forget — what `claude rm` takes, and a clear from another session (2026-10-07)
+
+Asked by attrition's steer: its `spawn --replace` hand-offs left a stopped
+row per hand-off on `worktree-replan-pdb`, a worktree several sessions
+share (21 GB target), and `ccc rm` read as the verb that takes the tree.
+
+**`claude rm` takes a worktree only when the job file names one.** Owned
+fixtures, harness 2.1.285, haiku, `~/cc-test/rmfx` (a repo with a bare
+remote; `worktree-shared` clean and pushed, the worst case):
+
+- two sessions `ccc spawn --cwd …/worktrees/shared`; `claude stop` one,
+  `claude rm` each → `removed <id>`, exit 0, **no `worktree:` line**;
+  `git worktree list` still shows `shared` and the branch after both,
+  including the last one standing in it. Their `state.json` carries no
+  `worktree*` key.
+- one `ccc spawn --cwd <repo> --worktree=fxcut` → its `state.json` carries
+  `worktreePath` and `worktreeBranch`; `claude rm` → `removed <id>` then
+  `worktree: “…/fxcut”`, and the tree is gone.
+
+So the six replan-pdb rows (no `worktreePath`, `respawnFlags` without
+`--worktree`, no `ccc-cut` in attrition's config) were row-only for `ccc
+rm`; steer ran it on the four archived ones and the tree, branch and target
+stayed.
+
+**`status` and `pid` arrive together, only while a process is attached.**
+`claude agents --json --all`, 15 background rows: `working` 7/7 with both;
+`done` 7 with neither and 1 with both — the live steer, `done/busy`. So
+`done` ends a turn, not a session, and `ForgetGuard` refuses either field.
+
+**`ccc forget`, live on the debug build** (same fixture repo): a session
+still up → `… is blocked; forget drops finished rows — ccc stop … first`,
+exit 1; a stopped `--worktree=fgcut` session → `… owns the worktree
+…/fgcut — the harness cut it …`, exit 1, nothing removed; a stopped `--cwd`
+session in `shared` → `{forgotten: true, said: "removed 268c2be7"}`, exit
+0, `shared` intact, the row off the roster.
+
+**A cross-session clear fires.** Fixture `3259b487` (haiku, `~/cc-test`),
+a private headless ccc on its own socket and overlay
+(`private-headless-ccc` shape); *this* session ran `ccc clear fx-clear-x
+--then "Reply with exactly: CROSS-CLEAR-FIRED"` → `armed: true`; within
+seconds `--status` read `last: 3s ago · cleared 3259b487, then: …` and the
+snapshot showed `❯ /clear`, the prompt, and `⏺ CROSS-CLEAR-FIRED`. Nothing
+in the arm or fire path reads the caller; the help's "the caller is
+normally the commander on its own ref" described the first user and now
+says so.

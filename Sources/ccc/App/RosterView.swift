@@ -44,6 +44,8 @@ struct RosterView: View {
     let mark: (SessionRef, MarkChange) -> Void
     /// The harness's `rm`, behind a confirmation the controller owns.
     let delete: (SessionRef) -> Void
+    /// `ccc forget <ref>`: the same `rm`, refused when it would take a tree.
+    let forget: (SessionRef) -> Void
     /// The New Session sheet (v5) — ⌘N's twin in the header.
     let newSession: () -> Void
     /// The same sheet on a row's host and folder (slice 3): `ccc spawn
@@ -281,6 +283,12 @@ struct RosterView: View {
             try? AppDelegate.setMuted(row.host, !muted)
         }
         Divider()
+        // Offered only on a row with no process: the guard's first test,
+        // read off the row. The rest (a tree that would go) needs the job
+        // file and git, and lands as the notice when the click is refused.
+        Button("Forget…") { forget(row.ref) }
+            .disabled(!row.session.isAttachable || row.session.pid != nil || row.session.status != nil
+                      || ![.done, .stopped, .failed].contains(row.session.state))
         Button("Delete…") { delete(row.ref) }.disabled(!row.session.isAttachable)
     }
 
