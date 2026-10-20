@@ -37,6 +37,9 @@ ota bundle --name ccc --bundle-id com.ramonfabrega.ccc \
     --icon Design/AppIcon.icns \
     --feed ccc --public-key "uxO7dN1BcjeU4YqBP6Anf4LVVoIueNOkRVna1AjpEBQ=" \
     --out .build/dist/ccc.app
+# ccc:// (CCCURL): an array of dicts, which --extra cannot write. Before
+# `ota release`, which is where the signature seals the plist.
+scripts/url-scheme .build/dist/ccc.app
 
 ota release .build/dist/ccc.app --feed ccc "$@"
 

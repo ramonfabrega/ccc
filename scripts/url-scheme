@@ -1,0 +1,25 @@
+#!/bin/zsh
+# Register ccc:// in a built bundle's Info.plist: CFBundleURLTypes, which
+# `ota bundle --extra` cannot write (its values are strings, and this key is
+# an array of dicts). Run between `ota bundle` and the signature — editing
+# Info.plist after signing breaks the seal.
+#
+#   scripts/url-scheme .build/ccc.app
+#
+# The grammar is CCCURL's (Sources/CCCKit/Control/URLScheme.swift):
+# ccc://attach/<ref>. LaunchServices learns the scheme when the bundle is
+# registered, which `scripts/install`'s lsregister and a first launch both do.
+set -euo pipefail
+app="${1:?usage: scripts/url-scheme <app bundle>}"
+plist="$app/Contents/Info.plist"
+[ -f "$plist" ] || { echo "no $plist" >&2; exit 1; }
+pb=/usr/libexec/PlistBuddy
+$pb -c 'Delete :CFBundleURLTypes' "$plist" 2>/dev/null || true
+$pb -c 'Add :CFBundleURLTypes array' \
+    -c 'Add :CFBundleURLTypes:0 dict' \
+    -c 'Add :CFBundleURLTypes:0:CFBundleURLName string com.ramonfabrega.ccc' \
+    -c 'Add :CFBundleURLTypes:0:CFBundleTypeRole string Viewer' \
+    -c 'Add :CFBundleURLTypes:0:CFBundleURLSchemes array' \
+    -c 'Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ccc' \
+    "$plist"
+echo "registered ccc:// in $plist"

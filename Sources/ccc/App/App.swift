@@ -75,9 +75,14 @@ enum App {
         // A relaunch — Sparkle's, or ⌘Q and back — lands on the session the
         // window was in, the way the agents view keeps its focus. After the
         // first poll, so a session that ended meanwhile is not attached to.
+        // A link that launched the app names the session to land on, so
+        // it takes the place of the remembered one.
+        let launchURLs = pendingURLs
+        pendingURLs = []
+        for url in launchURLs { window.open(url) }
         Task { @MainActor [weak controller] in
             await controller?.poller.tick()
-            controller?.reattachAfterRelaunch()
+            if launchURLs.isEmpty { controller?.reattachAfterRelaunch() }
             // The launch fetch (v6 slice 7): every local worktree row's
             // repository, once, so the ⇣ marks are as of now rather than
             // as of whenever a shell last fetched. Measured in `ccc stats`.
@@ -96,6 +101,19 @@ enum App {
             }
         }
     }
+
+    /// `ccc://` links (`CCCURL`, registered by `scripts/url-scheme`). A
+    /// link that launched the app arrives before the window exists, so it
+    /// waits in `pendingURLs` and is opened at the end of launch.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let window else {
+            pendingURLs += urls
+            return
+        }
+        for url in urls { window.open(url) }
+    }
+
+    private var pendingURLs: [URL] = []
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -217,6 +235,8 @@ enum App {
         let repoShell = session.addItem(withTitle: "Open in Terminal at Repository", action: #selector(MainWindowController.openRepoShellAction(_:)), keyEquivalent: "t")
         repoShell.keyEquivalentModifierMask = [.command, .option]
         session.addItem(withTitle: "Close Terminal", action: #selector(MainWindowController.closeShellAction(_:)), keyEquivalent: "T")
+        // The job in lore's explorer; `ccc lore <ref>` is the twin.
+        session.addItem(withTitle: "Open in lore", action: #selector(MainWindowController.openLoreAction(_:)), keyEquivalent: "l")
         session.addItem(withTitle: "Refresh Roster", action: #selector(MainWindowController.refreshAction(_:)), keyEquivalent: "r")
         let sessionItem = NSMenuItem()
         sessionItem.submenu = session

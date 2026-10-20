@@ -173,6 +173,8 @@ final class MainWindowController: NSWindowController {
             self?.pull(ref)
         }, openShell: { [weak self] ref, atRepo in
             self?.openShell(ref, atRepo: atRepo)
+        }, openLore: { [weak self] ref in
+            self?.openLore(ref)
         }, shellIsOpen: { [weak self] ref, atRepo in
             self?.controller.shellIsOpen(ref, atRepo: atRepo) ?? false
         }, closeShell: { [weak self] in
@@ -572,6 +574,53 @@ final class MainWindowController: NSWindowController {
             return
         }
         openShell(ref, atRepo: true)
+    }
+
+    /// Open in lore: the row's job on lore's explorer, in the default
+    /// browser — from the row's menu, `l` on the selected row, or ⌘L for
+    /// the attached session (else the selected row). `ccc lore <ref>` is
+    /// the twin. A remote row's page comes from that host's lore, asked
+    /// over the hop, so this can take a round trip.
+    func openLore(_ ref: SessionRef) {
+        Task { @MainActor in
+            do {
+                NSWorkspace.shared.open(try await controller.loreURL(ref))
+            } catch {
+                showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    @objc func openLoreAction(_ sender: Any?) {
+        guard let ref = controller.poller.attachedRef ?? currentSelection else {
+            showNotice("select or attach a session first", kind: .problem)
+            return
+        }
+        openLore(ref)
+    }
+
+    /// A `ccc://` link (`CCCURL`): what another app hands this one. An
+    /// attach is the row's click, once the roster has polled, so a bare
+    /// id resolves on whichever host has it. A link ccc cannot read gets
+    /// the window and a notice.
+    func open(_ url: URL) {
+        showWindow(nil)
+        NSApp.activate()
+        do {
+            switch try CCCURL.parse(url) {
+            case .attach(let ref):
+                Task { @MainActor in
+                    await controller.poller.tick()
+                    do {
+                        attach(try controller.poller.state.resolve(ref))
+                    } catch {
+                        showNotice("\(error)", kind: .problem)
+                    }
+                }
+            }
+        } catch {
+            showNotice("\(error)", kind: .problem)
+        }
     }
 
     @objc func closeShellAction(_ sender: Any?) {

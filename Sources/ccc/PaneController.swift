@@ -315,7 +315,13 @@ final class PaneController {
     /// before. The "busy" refusal was v0's guard, and every gesture that
     /// met it (⇧⌘N's attach-when-started, a second row's ⏎) had to work
     /// around it. Returns the sentence.
-    func switchTo(ref: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> String {
+    ///
+    /// The ref is resolved against the roster first (`State.resolve`), so
+    /// the CLI's `ccc attach <name>`, a `ccc://attach/<id>` link and the
+    /// row's click all mean the same row. A bare id that only another host
+    /// has attaches there.
+    func switchTo(ref named: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> String {
+        let ref = try poller.state.resolve(named)
         guard let outgoing = session, outgoing.isRunning else {
             try attach(ref: ref, cols: cols, rows: rows)
             return "attached \(ref)"
@@ -853,6 +859,12 @@ final class PaneController {
         let result = try await cli(for: ref).forget(id: ref.id)
         await poller.poller(for: ref.host)?.tick()
         return result
+    }
+
+    /// "Open in lore": the job's page on the lore that indexes the row's
+    /// host (`LoreLink`), the twin of `ccc lore <ref>`.
+    func loreURL(_ ref: SessionRef) async throws -> URL {
+        try await cli(for: ref).loreURL(id: ref.id)
     }
 
     /// The wake-up gesture: evict every remote ssh master and poll again,

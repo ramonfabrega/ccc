@@ -142,7 +142,11 @@ ccc shell <ref> [--repo] | --close  # ⌘T's twin: a shell pane under the sessio
 # the pane
 ccc attach <ref> [--headless [--cols N --rows N]]
                                     # attach in the window, or headless: a PTY + the socket, no window
-                                    # <ref> is `id` on this Mac, `host:id` anywhere else
+                                    # <ref> is an id or a name, bare or `host:<id|name>`; a bare ref this Mac
+                                    # lacks is the one host's that has it. `ccc://attach/<ref>` (percent-encoded)
+                                    # is the same attach from another app — lore's pages link it
+ccc lore <ref> [--print] [--json]   # the row's Open in lore (`l`, ⌘L): <lore>/job/<id> in the browser, asked
+                                    # of the lore on <ref>'s host (a remote host's own `ccc lore`); --print opens nothing
 ccc snapshot [--json] [--color]     # the pane's grid as text — how an agent sees what you see
                                     # --color adds the resolved #RRGGBB per run: colour with no screen
 ccc send "text" | --key ctrl-z      # type; named keys go through the core's key encoder

@@ -35,6 +35,8 @@ else
       --icon Design/AppIcon.icns \
       --out .build/ccc.app
   APP_SRC=".build/ccc.app"
+  # ccc:// (CCCURL), before the signature seals the plist.
+  scripts/url-scheme "$APP_SRC"
   # Ad-hoc, so LaunchServices and TCC see one stable identity for this Mac.
   codesign --force --sign - "$APP_SRC"
 fi

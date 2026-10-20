@@ -179,11 +179,16 @@ public struct RosterDecodeResult: Sendable, Equatable {
 public enum RefLookupError: Error, CustomStringConvertible, Equatable {
     case noSuchSession(String)
     case ambiguousName(String, [String])
+    /// A bare ref this Mac's roster lacks and two other hosts both answer
+    /// (`RosterPoller.State.resolve`). The refs are host-qualified.
+    case ambiguousHost(String, [String])
     public var description: String {
         switch self {
         case .noSuchSession(let ref): return "no session '\(ref)' in the roster"
         case .ambiguousName(let name, let ids):
             return "'\(name)' is the name of \(ids.count) live sessions (\(ids.joined(separator: ", "))); use an id"
+        case .ambiguousHost(let ref, let refs):
+            return "'\(ref)' answers on \(refs.count) hosts (\(refs.joined(separator: ", "))); name the host"
         }
     }
 }

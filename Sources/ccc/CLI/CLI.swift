@@ -101,6 +101,13 @@ enum CLI {
                     return Headless.run(ref: ref, cols: grid.cols, rows: grid.rows)
                 }
                 return try request(.attach(id: ref), json: json)
+            case "lore":
+                guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
+                guard let ref = SessionRef.parse(text) else {
+                    stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                    return 2
+                }
+                return try await lore(ref: ref, print: rest.contains("--print"), json: json)
             case "rm":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -797,6 +804,38 @@ enum CLI {
         var removed: String
         var said: String
         var worktree: WorktreeProbe.Cleanup?
+    }
+
+    /// "Open in lore"'s twin: the job's page on the lore of the ref's
+    /// host (`LoreLink`), opened here unless --print. The far side's
+    /// answer to a remote ask is this verb with --print --json.
+    static func lore(ref: SessionRef, print printOnly: Bool, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        guard let host = loaded.config.host(named: ref.host) else {
+            stderr("ccc: unknown host '\(ref.host)' (known: \(loaded.config.hosts.map(\.name).joined(separator: ", ")))")
+            return 2
+        }
+        guard let cli = ClaudeCLI.of(host) else {
+            stderr("ccc: \(host.validate() ?? "claude not found for host '\(ref.host)'")")
+            return 1
+        }
+        let url: URL
+        do {
+            url = try await cli.loreURL(id: ref.id)
+        } catch {
+            stderr("ccc: \(error)")
+            return 1
+        }
+        if !printOnly {
+            let opened = try await Subprocess.run(["/usr/bin/open", url.absoluteString])
+            if opened.status != 0 {
+                stderr("ccc: open \(url.absoluteString) exited \(opened.status): \(String(decoding: opened.stderr, as: UTF8.self))")
+                return 1
+            }
+        }
+        if json { printJSON(LoreLink.Answer(ref: ref.description, url: url.absoluteString)) } else { print(url.absoluteString) }
+        return 0
     }
 
     /// Drop a finished row and keep its worktree: `claude rm`, run only

@@ -62,6 +62,8 @@ struct RosterView: View {
     let pull: (SessionRef) -> Void
     /// Open in Terminal (v6 slice 4): `ccc shell <ref>`.
     let openShell: (SessionRef, _ atRepo: Bool) -> Void
+    /// Open in lore: `ccc lore <ref>` — the job's page in lore's explorer.
+    let openLore: (SessionRef) -> Void
     /// Whether the shell pane on screen is the one this row's item would
     /// open (v12 slice 1) — asked when the menu opens, so the item reads
     /// "Close Terminal" for the row the shell is actually in.
@@ -141,6 +143,7 @@ struct RosterView: View {
             // surface opens and closes, the menu bar keeps the two verbs
             // apart (⌘T opens or focuses, ⇧⌘T closes from anywhere).
             .onKeyPress("t") { press { shellIsOpen($0, false) ? closeShell() : openShell($0, false) } }
+            .onKeyPress("l") { press(openLore) }
             .onKeyPress(.rightArrow) {
                 focusPane()
                 return .handled
@@ -222,6 +225,9 @@ struct RosterView: View {
         // left the pane looking like it had no way out.
         terminalItem(row, atRepo: false)
         if row.worktree != nil { terminalItem(row, atRepo: true) }
+        // Beside the terminal: lore renders the job across its /clears and
+        // respawns (history, cost, threads), which ccc does not.
+        Button("Open in lore") { openLore(row.ref) }
         // The worktree's landing (v6): three strategies, each enabled by
         // what the row measures — fast-forward only while master has not
         // moved, merge and squash whenever there is work — and the

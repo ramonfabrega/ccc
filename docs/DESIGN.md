@@ -517,6 +517,32 @@ raw → wiki → canon), after the queue guard fired twice in one evening and
 subtraction was twice the right answer — which is the instrument working,
 and also the signal that rules were competing for lines meant for work.
 
+## 10. ccc and lore link to each other (2026-10-20)
+
+Agreed with lore in a design sync Ramon was in. **lore renders anything
+that needs its index** (history, cost, dialogue, threads, a job across
+/clears and respawns). **ccc renders anything that needs a PTY or a live
+control** (attach, spawn, stop, the live roster). Neither copies the
+other's half. Each links to the other for the thing the other owns.
+
+- **Out: Open in lore** (row menu, Session menu ⌘L, `l`, `ccc lore <ref>`)
+  opens `<lore>/job/<daemon id>`. The daemon id is the one that survives
+  /clear. The URL comes from **the lore on the row's host**, the one that
+  indexes it: `~/.lore/server.json`, else `lore server status --json`. A
+  remote row asks the far side's `ccc lore --print --json`, so air never
+  learns studio's address and nothing hardcodes one. lore's bin is a shim
+  that execs `bun`, which a LaunchServices PATH lacks, so the child's PATH
+  carries the shim's directory.
+- **In: `ccc://attach/<ref>`** (`CCCURL`, registered by
+  `scripts/url-scheme` because `ota bundle --extra` writes strings only).
+  `<ref>` is what `ccc attach` takes. Resolution is the same function for
+  the link, the CLI and the click (`RosterPoller.State.resolve`): local
+  first, then the one other host that has it, two answering is refused.
+  That last step is what lets one link from studio's lore attach from
+  either Mac. Bridge and session ids are not accepted: the roster carries
+  no bridge id, a session id moves at /clear, and every job attach can
+  reach is still on the daemon's roster, so lore has its daemon id.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past
