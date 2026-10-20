@@ -5847,3 +5847,34 @@ fixture in `~/cc-test`: live → `332c16b7 (fx-forget-rel) is blocked;
 forget drops finished rows — ccc stop 332c16b7 first`, exit 1; after
 `claude stop` → `removed 332c16b7`, exit 0, and the row is off `claude
 agents --json --all`.
+
+## ccc ↔ lore links, cut as v0.1.40 (2026-10-20)
+
+Asked for by lore in a design sync Ramon was in (docs/DESIGN.md §10). The
+grammar went to lore before the cut, and lore accepted it as written.
+
+`v0.1.40`, build **262**, 5,394,203 bytes, notarized and published to both
+CDN keys. `ota verify --feed ccc` → `ok … version 262 length 5394203`;
+`scripts/install --dist` → `ccc 0.1.40 (262)`. Master was fast-forwarded
+to the bump (`c339370`) before the tag. Three commits since `v0.1.39`: its
+evidence note, the links, and the bump. `scripts/package --ad-hoc` ran
+first and showed `CFBundleURLTypes` surviving the signature with
+`codesign --verify --deep --strict` clean.
+
+**Measured before the code:** lore's bin is a two-line shim, `exec bun
+…/lore.js`. Under a LaunchServices PATH (`env -i PATH=/usr/bin:/bin`) it
+answers `exec: bun: not found`. That is why `LoreLink` puts the shim's
+directory on the child's PATH. With that fix, the same `env -i` run of
+`ccc lore d573a0e9 --print` → `http://100.81.87.24:4949/job/d573a0e9`,
+and the page answers 200.
+
+**Read on the released bytes**, from the app on studio. LaunchServices
+maps `ccc://attach/x` to `~/Applications/ccc.app`. The pane was attached
+to `edecbbfc`. `open 'ccc://attach/golf'`, a name, moved it to
+`edfd2a18`, and `open 'ccc://attach/edecbbfc'` moved it back. Both were
+read off `ccc snapshot --json`'s `attachedTo`. **Not yet proved**: a cold
+launch by link (it would have meant quitting the app in use), and the
+cross-host step, which needs air on 262 opening a bare studio id.
+`ccc capture` was unavailable: Screen Recording is off for this Claude
+Code version. `ccc peek` does not draw the notice HUD, so the refusal
+notice was not read either.
