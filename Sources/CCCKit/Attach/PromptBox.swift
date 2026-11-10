@@ -88,6 +88,15 @@ public enum PromptBox {
         guard line.count >= 2, LeaveGesture.prompts.contains(line[0]), LeaveGesture.gaps.contains(line[1]) else {
             return .unreadable
         }
+        // An input box never has its cursor on the glyph or the gap. A
+        // question dialog does: measured 2026-11-10 on an AskUserQuestion
+        // (harness 2.1.321), the selected option is drawn `❯ 1. A` at
+        // column 0 with the cursor visible **on column 0** — glyph, gap,
+        // text past the cursor — and this read called it a hint, which is
+        // ours to type over. `/clear` + Enter there picks option 1 for
+        // the user. Nothing reached it only because every `blocked` row
+        // waited upstream; this is the pane's own answer.
+        guard cursor.col >= 2 else { return .unreadable }
         // Trailing blanks the way `Grid.rendered` drops them, with the
         // harness's NO-BREAK SPACE counted as one.
         let drawn = String(line.dropFirst(2).reversed()

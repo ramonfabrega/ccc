@@ -39,20 +39,34 @@ public struct SessionMark: Codable, Sendable, Equatable {
     /// state the fleet can reach in silence, which is how the keying bug
     /// below lived through two probes.
     public var fired: ClearRecord?
+    /// The records before `fired`, newest first (2026-11-10). One record
+    /// per row meant the newest overwrote the rest: a drop erased the
+    /// three fires before it on steer's row, on the day the question was
+    /// "what did the three that fired have in common". `fired` stays the
+    /// latest, where every older build and the far side of the hop reads
+    /// it; this is only the tail, absent until there is one.
+    public var earlier: [ClearRecord]?
+
+    /// How many records a row keeps, `fired` included.
+    public static let recordsKept = 8
 
     public init(archived: Date? = nil, pinned: Date? = nil, clear: PendingClear? = nil,
-                sessionId: String? = nil, fired: ClearRecord? = nil) {
+                sessionId: String? = nil, fired: ClearRecord? = nil, earlier: [ClearRecord]? = nil) {
         self.archived = archived
         self.pinned = pinned
         self.clear = clear
         self.sessionId = sessionId
         self.fired = fired
+        self.earlier = earlier
     }
 
     public var isEmpty: Bool { archived == nil && pinned == nil && clear == nil && fired == nil }
 
     /// The newest thing that happened to this mark, for pruning.
     var madeAt: Date { [archived, pinned, clear?.armedAt, fired?.at].compactMap { $0 }.max() ?? .distantPast }
+
+    /// Every record on the row, newest first.
+    public var records: [ClearRecord] { (fired.map { [$0] } ?? []) + (earlier ?? []) }
 }
 
 /// What one armed clear did, kept on the mark it was armed on. Three
@@ -69,6 +83,19 @@ public struct ClearRecord: Codable, Sendable, Equatable {
         self.at = at
         self.said = said
         self.fired = fired
+    }
+
+    /// The sentence a clear that typed leaves behind. When the row had
+    /// ended its turn on an ask, the ask is quoted: the clear went over a
+    /// question, and the record is the one place that still says which.
+    public static func cleared(_ ref: String, then: String?, over ask: String? = nil) -> String {
+        var said = "cleared \(ref)"
+        if let ask = ask?.split(whereSeparator: \.isNewline).first.map(String.init)?
+            .trimmingCharacters(in: .whitespaces), !ask.isEmpty {
+            said += " over its ask (“\(ask.count > 120 ? String(ask.prefix(120)) + "…" : ask)”)"
+        }
+        if let then { said += ", then: \(then)" }
+        return said
     }
 }
 
@@ -92,10 +119,15 @@ public struct PendingClear: Codable, Sendable, Equatable {
         self.then = then
     }
 
+    /// How long an arm may wait before the wait itself is written down.
+    /// A clear normally fires within seconds of the turn that armed it
+    /// ending; ten minutes armed is a wait somebody should be told about.
+    public static let waitBound: TimeInterval = 600
+
     /// What the verb prints and the notice repeats.
     public func said(_ id: String) -> String {
         let tail = then.map { ", then: \($0)" } ?? ""
-        return "armed a clear on \(id); it fires when the row is idle\(tail)"
+        return "armed a clear on \(id); it fires when its turn ends\(tail)"
     }
 }
 
@@ -189,8 +221,19 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
         return mark
     }
 
+    /// The mark a write starts from: the one that applies, or a fresh one
+    /// when the row's uuid has moved on. What a fresh one keeps is the
+    /// clear records — they are a log of what happened on this id, each
+    /// with its own instant, not an opinion about the session, and a
+    /// clear changes the uuid by design: without this every arm erased
+    /// the record of the fire before it.
+    private func writable(_ id: String, sessionId: String?) -> SessionMark {
+        if let mark = mark(for: id, sessionId: sessionId) { return mark }
+        return SessionMark(fired: marks[id]?.fired, earlier: marks[id]?.earlier)
+    }
+
     public mutating func set(_ change: MarkChange, id: String, sessionId: String?, at now: Date = Date()) {
-        var mark = mark(for: id, sessionId: sessionId) ?? SessionMark()
+        var mark = writable(id, sessionId: sessionId)
         switch change {
         case .archive: mark.archived = now
         case .unarchive: mark.archived = nil
@@ -205,7 +248,7 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
     /// there, so a cancel can say whether it cancelled anything.
     @discardableResult
     public mutating func arm(_ clear: PendingClear?, id: String, sessionId: String?) -> PendingClear? {
-        var mark = mark(for: id, sessionId: sessionId) ?? SessionMark()
+        var mark = writable(id, sessionId: sessionId)
         let previous = mark.clear
         mark.clear = clear
         if mark.sessionId == nil { mark.sessionId = sessionId }
@@ -216,10 +259,32 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
     /// Write down what a clear did, on the mark it was armed on. Called
     /// by whichever pane took the mark, right after it took it.
     public mutating func record(_ outcome: ClearRecord, id: String, sessionId: String?) {
-        var mark = mark(for: id, sessionId: sessionId) ?? SessionMark()
+        var mark = writable(id, sessionId: sessionId)
+        let tail = Array(mark.records.prefix(SessionMark.recordsKept - 1))
+        mark.earlier = tail.isEmpty ? nil : tail
         mark.fired = outcome
         if mark.sessionId == nil { mark.sessionId = sessionId }
         marks[id] = mark.isEmpty ? nil : mark
+    }
+
+    /// An arm that has waited past the bound says so, once: a record a
+    /// reader finds as `last:`, with the reason the gate gave at that
+    /// moment. Returns the record when it wrote one. Once per arm, and
+    /// the overlay is what remembers — any record newer than the arm is
+    /// this note, since a fire, a refusal and a drop all disarm first —
+    /// so two panes on one Mac do not both say it. The live reason is
+    /// `--status`'s; this is the trace for whoever was not asking.
+    @discardableResult
+    public mutating func noteWaiting(id: String, why: String, bound: TimeInterval = PendingClear.waitBound,
+                                     now: Date = Date()) -> ClearRecord? {
+        guard let mark = marks[id], let pending = mark.clear else { return nil }
+        let waited = now.timeIntervalSince(pending.armedAt)
+        guard waited >= bound else { return nil }
+        if let last = mark.fired, last.at >= pending.armedAt { return nil }
+        let note = ClearRecord(at: now, said: "the clear armed on \(id) has waited \(SessionEvent.spell(waited)): \(why)",
+                               fired: false)
+        record(note, id: id, sessionId: mark.sessionId)
+        return note
     }
 
     /// Every row with a clear waiting, newest first. The read half of
@@ -234,7 +299,7 @@ public struct RosterOverlay: Codable, Sendable, Equatable {
     /// of the same read. An arm that vanished from `armedClears` is here,
     /// with the sentence that says whether it typed or was dropped.
     public var firedClears: [(id: String, record: ClearRecord)] {
-        marks.compactMap { entry in entry.value.fired.map { (id: entry.key, record: $0) } }
+        marks.flatMap { entry in entry.value.records.map { (id: entry.key, record: $0) } }
             .sorted { $0.record.at > $1.record.at }
     }
 

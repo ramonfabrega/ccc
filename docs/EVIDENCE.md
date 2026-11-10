@@ -5878,3 +5878,93 @@ cross-host step, which needs air on 262 opening a bare studio id.
 `ccc capture` was unavailable: Screen Recording is off for this Claude
 Code version. `ccc peek` does not draw the notice HUD, so the refusal
 notice was not read either.
+
+## item 27 — the arm that waited on its own ask (2026-11-10)
+
+Reported by steer, attrition's driver row, with Ramon's go-ahead. Not cut:
+the code is on `worktree-v2`, and nothing here is proved on released bytes.
+
+**What happened** (ccc 0.1.40 build 262, row `d388900a`): armed at
+08:20:58Z as the banking turn's last act; `--status` at 08:24:55Z said "a
+clear is armed … (3m ago); it fires when the row is idle"; the turn ended
+08:25:06Z with nothing in flight, on a Mac that was awake. It never fired.
+At 16:00:43Z Ramon cleared by hand and the record read "dropped the clear
+armed on d388900a: another session answers to that id now" — 7h35m armed.
+The three clears that fired on the same row that day (02:10:46Z,
+05:08:37Z, 07:03:02Z) fired within ~4 s of a turn that ended `done`. This
+one ended `blocked`: the closing message asked for two things.
+
+**The gate did it, twice, on purpose.** `ClearWindow.of` returned `.wait`
+for any roster `state: blocked`, before `tempo` was read — and an
+ask-ended turn's job file reads `tempo: blocked`, not `idle`, so the next
+check would have held it too. The wait had no bound and no words:
+`--status` printed one constant sentence whatever the row was doing.
+
+**`blocked` is two shapes, and they are separable.** Five owned fixtures
+in `~/cc-test`, haiku and sonnet agreeing (the model is not the variable),
+harness 2.1.321:
+
+| shape | roster `state` · `status` · `waitingFor` | job `state` · `tempo` | `needs` |
+|---|---|---|---|
+| turn ended on a prose ask | `blocked` · `idle` · — | `blocked` · `blocked` | the question |
+| AskUserQuestion up | `blocked` · `waiting` · `input needed` | `working` · `blocked` | `answer: Which option? (A · B)` |
+| permission prompt up | `blocked` · `waiting` · `permission prompt` | `working` · `blocked` | `approve Bash: touch …` |
+
+This supersedes the 2026-09-02 reading in `docs/HARNESS.md`, where an
+AskUserQuestion came back `blocked` / `idle` with no `waitingFor`: the
+harness now marks it. `tempo` is `blocked` in all three, so it cannot be
+the discriminator; `status` / `waitingFor` is. A parked worker's ask-ended
+row carries no `status` at all (`c3a77e0e`, live), which reads as the
+first shape.
+
+**The pane's last guard did not hold against a question dialog.** Read off
+the AskUserQuestion fixture through a private headless pane: the selected
+option is drawn `❯ 1. A` from column 0, cursor **visible on column 0, on
+that row**. `PromptBox.read` took glyph + gap + text past the cursor for a
+hint — "ours to type over" — so `type` would have sent `/clear` and Enter
+into the dialog, and Enter there picks option 1. Nothing reached it only
+because every `blocked` row waited upstream. The permission dialog indents
+its `❯` (` ❯ 1. Yes`, cursor col 1) and always read `.unreadable`.
+`PromptBox.read` now refuses any row whose cursor sits left of column 2.
+Proved on the captured shape in a unit test; **not** proved live, since
+nothing routes a typed line at a dialog any more. `update --ask` types
+through the same guard and was exposed to the same misread.
+
+**What changed.**
+
+- An ask-ended turn fires; a dialog waits. The earlier rule waited on
+  both because the clear "would throw the question away". It does not:
+  the poll already bannered it, the transcript keeps it, and the fire's
+  record now quotes it.
+- `ClearWindow.read` returns the window *and its reason*; `--status`, the
+  bare listing and the pane all read that one value.
+- An arm that waits ten minutes records why, once (`last:`), and the
+  window says it.
+- A row keeps its last 8 records, and an arm on the session after a clear
+  no longer erases them (the uuid guard was starting every arm from an
+  empty mark).
+
+**Read on the dev build**, private socket and overlay, the app untouched:
+
+```
+ccc clear 76d3febc --status
+  → a clear is armed on 76d3febc (5s ago); waiting: a dialog is up (input needed), row last moved 8m ago, then: …
+ccc clear cdbaf4ba --status
+  → a clear is armed on cdbaf4ba (5s ago); waiting: a dialog is up (permission prompt), row last moved 8m ago
+ccc clear 32391c8b --then "Reply with exactly: after-clear ok"      (the ask-ended row)
+  → … its turn ended on an ask; it fires on the next tick …
+ccc: cleared 32391c8b over its ask (“Which do you want me to do next, option A or option B?”), then: Reply with exactly: after-clear ok
+```
+
+and the pane afterwards showed the `--then` prompt answered in a fresh
+context. Both dialogs were still up, untouched, a minute later. With the
+permission fixture's `armedAt` set back eleven minutes by hand:
+
+```
+ccc: the clear armed on cdbaf4ba has waited 11m: a dialog is up (permission prompt)     (once)
+```
+
+**Not measured:** a `sandbox request`, `worker request` or `dialog open`
+row (they carry `waitingFor`, so they wait, but no fixture produced one);
+and whether the daemon's reading of closing prose as `blocked` versus
+`done` is stable for the same words.

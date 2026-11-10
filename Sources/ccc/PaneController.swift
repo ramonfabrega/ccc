@@ -597,13 +597,16 @@ final class PaneController {
             // aimed at a session that no longer exists, and the short id
             // it names now belongs to another one.
             let moved = mark.sessionId != nil && row?.session.sessionId != nil && mark.sessionId != row?.session.sessionId
-            let window: ClearWindow = moved ? .gone : (row.map { ClearWindow.of($0.session, job: $0.job) } ?? (polled ? .gone : .wait))
-            switch window {
-            case .wait: continue
+            let reading: ClearWindow.Reading = moved
+                ? .init(.gone, "another session answers to that id now")
+                : row.map { ClearWindow.read($0.session, job: $0.job) }
+                    ?? (polled ? .init(.gone, "its session is gone") : .init(.wait, "this Mac's roster has not been read yet"))
+            switch reading.window {
+            case .wait:
+                noteWaiting(id, mark: mark, why: reading.why)
             case .gone:
                 guard disarm(id, sessionId: mark.sessionId) else { continue }
-                lastClear = "dropped the clear armed on \(id): "
-                    + (moved ? "another session answers to that id now" : "its session is gone")
+                lastClear = "dropped the clear armed on \(id): \(reading.why)"
                 report(id, sessionId: mark.sessionId, said: lastClear!, fired: false)
             case .now:
                 // The bank again, at the moment it matters: the tree may
@@ -624,8 +627,11 @@ final class PaneController {
                 }
                 guard let pending = mark.clear, disarm(id, sessionId: mark.sessionId) else { continue }
                 var fired = true
+                // A row that ended its turn asking is cleared over the
+                // ask, and the record quotes it — the pane will not.
+                let ask = row?.session.state == .blocked ? row?.job?.needs : nil
                 do {
-                    lastClear = try await performClear(ref, then: pending.then)
+                    lastClear = try await performClear(ref, then: pending.then, over: ask)
                 } catch {
                     lastClear = "the clear on \(id) did not fire: \(error)"
                     fired = false
@@ -653,6 +659,26 @@ final class PaneController {
         onClearFired?(said)
     }
 
+    /// An arm that has waited past the bound is written down, once, with
+    /// what it is waiting on (`RosterOverlay.noteWaiting`). The check
+    /// before the lock is the same one the overlay makes under it, so a
+    /// waiting arm costs this tick nothing after its one note.
+    private func noteWaiting(_ id: String, mark: SessionMark, why: String) {
+        guard let armedAt = mark.clear?.armedAt, Date().timeIntervalSince(armedAt) >= PendingClear.waitBound,
+              mark.fired.map({ $0.at < armedAt }) ?? true else { return }
+        let path = overlayPath
+        let note = try? RosterOverlay.locked(path: path) { () -> ClearRecord? in
+            var overlay = RosterOverlay.load(path: path).overlay
+            guard let note = overlay.noteWaiting(id: id, why: why) else { return nil }
+            try overlay.save(path: path)
+            return note
+        }
+        if let said = note?.said {
+            lastClear = said
+            onClearFired?(said)
+        }
+    }
+
     /// Take the mark, under the lock. False when somebody else took it
     /// first, which is the answer that keeps two panes from both typing.
     @discardableResult
@@ -671,7 +697,7 @@ final class PaneController {
     /// sleep: the clear is watched for on the grid, because a prompt typed
     /// before it lands is a prompt typed into the box the clear is about
     /// to submit.
-    func performClear(_ ref: SessionRef, then: String?) async throws -> String {
+    func performClear(_ ref: SessionRef, then: String?, over ask: String? = nil) async throws -> String {
         let wasOnScreen = session?.isRunning == true
         _ = try await switchTo(ref: ref)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
@@ -681,9 +707,9 @@ final class PaneController {
         try await Self.type("/clear", into: session, ref: ref)
         let landed = await Self.waitUntilChanged(session, from: before)
         guard landed else { return "typed /clear on \(ref); the screen never changed" }
-        guard let then else { return "cleared \(ref)" }
+        guard let then else { return ClearRecord.cleared("\(ref)", then: nil, over: ask) }
         try await Self.type(then, into: session, ref: ref)
-        return "cleared \(ref), then: \(then)"
+        return ClearRecord.cleared("\(ref)", then: then, over: ask)
     }
 
     /// The box reads as *something* — empty, a hint, a draft — or ten

@@ -121,8 +121,16 @@ import Testing
                 #expect(status.armed && status.ref == "a1b2" && status.then == "carry on" && !status.cancelled)
                 #expect(status.armedAt != nil)
                 #expect(status.said.hasPrefix("a clear is armed on a1b2 ("), "\(status.said)")
-                #expect(status.said.hasSuffix("it fires when the row is idle, then: carry on"), "\(status.said)")
+                // The row is idle and nothing is serving: the read says
+                // that, where it used to say the constant "it fires when
+                // the row is idle" whatever the row was doing.
+                #expect(status.said.contains("); the row is idle, but no ccc is serving "), "\(status.said)")
+                #expect(status.said.hasSuffix(", then: carry on"), "\(status.said)")
+                #expect(status.waiting?.hasPrefix("no ccc is serving ") == true)
             }
+            let served = try await cli.clear(id: "a1b2", action: .status, overlayPath: overlay, serving: serving, job: { _ in nil })
+            #expect(served.said.hasSuffix("); the row is idle; it fires on the next tick, then: carry on"), "\(served.said)")
+            #expect(served.waiting == nil)
             #expect(RosterOverlay.load(path: overlay).overlay.armedClears.map(\.id) == ["a1b2"])
 
             // What became of the last one rides along, so a fresh context
@@ -223,8 +231,44 @@ import Testing
         }
     }
 
-    /// The gate. `blocked` is a session holding a question up, and the box
-    /// under that question answers it — never our seat.
+    /// **The seven hours** (2026-11-10): steer armed a clear as its banking
+    /// turn's last act, the turn closed with two asks, the daemon read the
+    /// close as `blocked`, and the arm sat 7h35m printing "it fires when
+    /// the row is idle". The row then was exactly the first shape below.
+    /// Measured the same day on five owned fixtures, haiku and sonnet: an
+    /// ask-ended turn and an open dialog are both `blocked` with `tempo:
+    /// blocked`, and the roster's `status` / `waitingFor` is what tells
+    /// them apart. The first fires; a dialog is never typed into.
+    @Test func aTurnThatEndedOnAnAskFiresAndADialogWaits() {
+        func row(_ status: Session.Status?, waitingFor: String? = nil) -> Session {
+            Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(), state: .blocked,
+                    status: status, waitingFor: waitingFor)
+        }
+        let asked = JobInfo(needs: "Which do you want me to do next, option A or option B?", tempo: "blocked")
+        #expect(ClearWindow.read(row(.idle), job: asked) == .init(.now, "its turn ended on an ask"))
+        // A parked worker carries no `status` at all, and is the same row.
+        #expect(ClearWindow.of(row(nil), job: asked) == .now)
+
+        // The two dialogs, as the roster spelled them.
+        let question = ClearWindow.read(row(.waiting, waitingFor: "input needed"), job: JobInfo(tempo: "blocked"))
+        #expect(question == .init(.wait, "a dialog is up (input needed)"))
+        let permission = ClearWindow.read(row(.waiting, waitingFor: "permission prompt"), job: JobInfo(tempo: "blocked"))
+        #expect(permission == .init(.wait, "a dialog is up (permission prompt)"))
+        // Either field alone is a dialog: the two were not always sent
+        // together, and a missing one must not read as "no dialog".
+        #expect(ClearWindow.of(row(.waiting), job: asked) == .wait)
+        #expect(ClearWindow.of(row(.idle, waitingFor: "dialog open"), job: asked) == .wait)
+
+        // A stale `blocked` over a turn that is generating again
+        // (docs/EVIDENCE.md "A mid-turn /clear discards the running turn").
+        #expect(ClearWindow.read(row(.idle), job: JobInfo(tempo: "active")) == .init(.wait, "its turn is running"))
+        // No job file: a blocked row is not ours to judge.
+        #expect(ClearWindow.of(row(.idle), job: nil) == .wait)
+        #expect(ClearWindow.of(row(.idle), job: JobInfo(tempo: "whatever-comes-next")) == .wait)
+    }
+
+    /// The gate otherwise. Without a job file a `blocked` row waits: the
+    /// roster alone cannot say the turn is over.
     @Test func onlyAnIdleBackgroundRowIsOurSeat() {
         func session(_ state: Session.State?, _ status: Session.Status?, kind: Session.Kind = .background) -> Session {
             Session(id: "a1b2", cwd: "/x", kind: kind, startedAt: Date(), state: state, status: status)
@@ -254,10 +298,42 @@ import Testing
         #expect(ClearWindow.of(busy, job: JobInfo(tempo: "active")) == .wait)
         // A word this build has not met is "not idle", never a fire.
         #expect(ClearWindow.of(busy, job: JobInfo(tempo: "whatever-comes-next")) == .wait)
-        // `blocked` still comes from the roster and outranks any tempo.
-        let blocked = Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(),
-                              state: .blocked, status: .idle)
-        #expect(ClearWindow.of(blocked, job: JobInfo(tempo: "idle")) == .wait)
+        // A job file that says a question is up under a roster that has
+        // not said which kind: wait for the roster.
+        #expect(ClearWindow.of(busy, job: JobInfo(tempo: "blocked")) == .wait)
+    }
+
+    /// What `--status` and the bare listing say about an armed clear: the
+    /// gate's reason, plus the three things the gate does not look at.
+    @Test func theOutlookNamesWhatAnArmIsWaitingOn() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let mark = SessionMark(clear: PendingClear(armedAt: now.addingTimeInterval(-3 * 3600)), sessionId: "uuid-a")
+        func row(_ state: Session.State, _ status: Session.Status?, waitingFor: String? = nil, uuid: String = "uuid-a") -> Session {
+            Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(), state: state, status: status,
+                    waitingFor: waitingFor, sessionId: uuid)
+        }
+        func outlook(_ row: Session?, job: JobInfo? = nil, read: Bool = true, serving: Bool = true) -> ClearOutlook {
+            ClearOutlook.of(mark: mark, row: row, rosterRead: read, job: job, serving: serving, socket: "/s", now: now)
+        }
+        // The line steer needed at 08:24Z, with the one clock there is.
+        let dialog = outlook(row(.blocked, .waiting, waitingFor: "permission prompt"),
+                             job: JobInfo(updatedAt: now.addingTimeInterval(-2 * 3600), tempo: "blocked"))
+        #expect(dialog.said == "waiting: a dialog is up (permission prompt), row last moved 2h ago")
+        #expect(dialog.waiting == "a dialog is up (permission prompt), row last moved 2h ago")
+        #expect(outlook(row(.working, .busy), job: JobInfo(tempo: "active")).said == "waiting: its turn is running")
+
+        let free = outlook(row(.done, .idle), job: JobInfo(tempo: "idle"))
+        #expect(free == ClearOutlook(said: "the row is idle; it fires on the next tick", waiting: nil))
+        // Free, and nothing up to type: the other way an arm sits forever.
+        let unserved = outlook(row(.done, .idle), job: JobInfo(tempo: "idle"), serving: false)
+        #expect(unserved.said.hasPrefix("the row is idle, but no ccc is serving /s to fire it"))
+        #expect(unserved.waiting != nil)
+
+        #expect(outlook(nil).said == "it will be dropped: its session is off the roster")
+        #expect(outlook(row(.done, .idle, uuid: "uuid-b")).said == "it will be dropped: another session answers to that id now")
+        #expect(outlook(row(.stopped, nil)).said == "it will be dropped: its session was stopped")
+        // A roster that could not be read: the old sentence, and no claim.
+        #expect(outlook(nil, read: false) == ClearOutlook(said: "it fires when its turn ends", waiting: nil))
     }
 
     /// No job file, or one from a ccc across the hop that predates
@@ -309,6 +385,79 @@ import Testing
         #expect(overlay.marks["a1b2"]?.fired?.said == "cleared a1b2")
         overlay.arm(nil, id: "a1b2", sessionId: "uuid-a")
         #expect(overlay.marks["a1b2"]?.fired?.fired == true)
+    }
+
+    /// One record per row meant the newest overwrote the rest — on steer's
+    /// row a drop erased the three fires before it, on the day the
+    /// question was what those three had in common. A row keeps its last
+    /// eight, `fired` stays the newest, and **an arm on the session that
+    /// follows a clear does not erase them**: a clear changes the uuid by
+    /// design, so the uuid guard used to start every arm from nothing.
+    @Test func aRowKeepsItsLastFewRecordsAcrossClears() {
+        var overlay = RosterOverlay()
+        for n in 1...3 {
+            let uuid = "uuid-\(n)"
+            overlay.arm(PendingClear(armedAt: Date(timeIntervalSince1970: Double(n) * 100)), id: "a1b2", sessionId: uuid)
+            overlay.arm(nil, id: "a1b2", sessionId: uuid)
+            overlay.record(ClearRecord(at: Date(timeIntervalSince1970: Double(n) * 100 + 4), said: "cleared a1b2 (\(n))", fired: true),
+                           id: "a1b2", sessionId: uuid)
+        }
+        overlay.record(ClearRecord(at: Date(timeIntervalSince1970: 900), said: "dropped the clear armed on a1b2: another session answers to that id now", fired: false),
+                       id: "a1b2", sessionId: "uuid-3")
+        #expect(overlay.firedClears.map(\.record.said) == [
+            "dropped the clear armed on a1b2: another session answers to that id now",
+            "cleared a1b2 (3)", "cleared a1b2 (2)", "cleared a1b2 (1)",
+        ])
+        #expect(overlay.marks["a1b2"]?.fired?.fired == false)
+        // An opinion about a session still does not follow the id.
+        overlay.set(.pin, id: "a1b2", sessionId: "uuid-3")
+        overlay.arm(PendingClear(), id: "a1b2", sessionId: "uuid-4")
+        #expect(overlay.marks["a1b2"]?.pinned == nil)
+        #expect(overlay.marks["a1b2"]?.records.count == 4)
+
+        // Bounded: the ninth pushes the first out.
+        for n in 5...12 {
+            overlay.record(ClearRecord(at: Date(timeIntervalSince1970: Double(n) * 1000), said: "cleared a1b2 (\(n))", fired: true),
+                           id: "a1b2", sessionId: "uuid-4")
+        }
+        let kept = overlay.marks["a1b2"]?.records.map(\.said) ?? []
+        #expect(kept.count == SessionMark.recordsKept)
+        #expect(kept.first == "cleared a1b2 (12)" && kept.last == "cleared a1b2 (5)")
+    }
+
+    /// An arm that waits past the bound says so once, with the reason,
+    /// where the next reader finds it as `last:`. Not before the bound,
+    /// not twice for one arm, and again for the arm after.
+    @Test func aLongWaitIsWrittenDownOnce() {
+        var overlay = RosterOverlay()
+        let armedAt = Date(timeIntervalSince1970: 1_000)
+        overlay.arm(PendingClear(armedAt: armedAt), id: "a1b2", sessionId: "uuid-a")
+        #expect(overlay.noteWaiting(id: "a1b2", why: "its turn is running", now: armedAt.addingTimeInterval(599)) == nil)
+        let note = overlay.noteWaiting(id: "a1b2", why: "a dialog is up (permission prompt)", now: armedAt.addingTimeInterval(601))
+        #expect(note?.said == "the clear armed on a1b2 has waited 10m: a dialog is up (permission prompt)")
+        #expect(note?.fired == false)
+        #expect(overlay.marks["a1b2"]?.clear != nil)
+        #expect(overlay.noteWaiting(id: "a1b2", why: "its turn is running", now: armedAt.addingTimeInterval(7 * 3600)) == nil)
+        #expect(overlay.marks["a1b2"]?.records.count == 1)
+        // Nothing armed, nothing to note.
+        #expect(overlay.noteWaiting(id: "c3d4", why: "x", now: armedAt.addingTimeInterval(9_999)) == nil)
+
+        let again = armedAt.addingTimeInterval(8 * 3600)
+        overlay.arm(PendingClear(armedAt: again), id: "a1b2", sessionId: "uuid-a")
+        #expect(overlay.noteWaiting(id: "a1b2", why: "its turn is running", now: again.addingTimeInterval(700)) != nil)
+        #expect(overlay.marks["a1b2"]?.records.count == 2)
+    }
+
+    /// A clear that went over an ask quotes it, one line and bounded:
+    /// the pane no longer shows the question, and the banner is gone.
+    @Test func aClearOverAnAskQuotesIt() {
+        #expect(ClearRecord.cleared("a1b2", then: nil) == "cleared a1b2")
+        #expect(ClearRecord.cleared("a1b2", then: "carry on") == "cleared a1b2, then: carry on")
+        #expect(ClearRecord.cleared("a1b2", then: "carry on", over: "Reap run 1560?\nAnd the kill rule?")
+                == "cleared a1b2 over its ask (“Reap run 1560?”), then: carry on")
+        #expect(ClearRecord.cleared("a1b2", then: nil, over: "  \n") == "cleared a1b2")
+        let long = ClearRecord.cleared("a1b2", then: nil, over: String(repeating: "x", count: 300))
+        #expect(long.count == "cleared a1b2 over its ask (“”)".count + 121)
     }
 
     /// It rides the file like every other mark, and an older ccc's
@@ -364,6 +513,23 @@ import Testing
                          cursor: Grid.Cursor(col: 0, row: 0, visible: true))
         #expect(PromptBox.read(blank) == .unreadable)
         #expect(PromptBox.read(blank).isOurs == false)
+    }
+
+    /// **A question dialog is not a hint.** Captured 2026-11-10 off a live
+    /// AskUserQuestion (harness 2.1.321): the selected option is drawn
+    /// `❯ 1. A` from column 0 with the cursor visible on column 0. Glyph,
+    /// gap, text past the cursor — every mark of a hint, and `type` would
+    /// have sent `/clear` and Enter into it, which picks option 1. The
+    /// permission dialog indents its `❯` and never read as a box.
+    @Test func aQuestionDialogsSelectedOptionIsNotAPromptBox() {
+        let asking = grid("❯ 1. A", cursorCol: 0)
+        #expect(PromptBox.read(asking) == .unreadable)
+        #expect(PromptBox.read(asking).isOurs == false)
+        #expect(PromptBox.whyUnreadable(asking) == "the cursor was at col 0, row 1 of 40x4, on \"❯ 1. A\"")
+        #expect(PromptBox.read(grid("❯ 2. B", cursorCol: 1)) == .unreadable)
+        #expect(PromptBox.read(grid(" ❯ 1. Yes", cursorCol: 1)) == .unreadable)
+        // The same words in a real box, cursor on the prompt column.
+        #expect(PromptBox.read(grid("❯ 1. A", cursorCol: 2)) == .hint("1. A"))
     }
 
     /// The refusal names which unreadable it was. attrition's two lost

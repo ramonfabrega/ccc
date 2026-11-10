@@ -13,8 +13,9 @@ proved it. Convention and bound: `docs/DESIGN.md` §9.
   *current* state — stale through a long tool call, and for minutes after
   a clear. ("item 27 — the gate read the wrong field")
 - `status` is *something live is attached*, `tempo` is *the turn is
-  generating*. "May I type into this pane" reads `tempo`. ("item 27 — the
-  gate read the wrong field")
+  generating*. `blocked` is a dialog (`status: waiting`, `waitingFor`) or
+  a turn that ended on an ask (neither): only the second may be typed
+  into. ("item 27 — the arm that waited on its own ask")
 - `inFlight.kinds` discriminates — a shell never counts as a monitor —
   and `drainableMonitors: 0` never means no monitors. ("what a clear does
   to background work")
@@ -55,10 +56,10 @@ behind `ssh`.
   is how we learned about it, exactly as designed. Only the blocked row
   carries it. **The reason is per prompt kind (2026-09-02, v3's proof):**
   a permission prompt is `{state: "blocked", status: "waiting",
-  waitingFor: "permission prompt"}`, but eight sessions blocked on
-  `AskUserQuestion` came back `{state: "blocked", status: "idle"}` with
-  **no `waitingFor`** — so the transition detector keys on `state` with
-  `waitingFor` as detail, never as the trigger.
+  waitingFor: "permission prompt"}`; `AskUserQuestion` was `idle` with
+  **no `waitingFor`** then, and is `waiting` / `input needed` on 2.1.321
+  — so the transition detector keys on `state` with `waitingFor` as
+  detail, never as the trigger.
 - **`claude rm <id>`** deletes a background session and its worktree
   "when that is safe", and works on exited sessions (`stop` does not).
   The guard is the harness's: against a worktree with an untracked file
@@ -272,7 +273,7 @@ line's own shape is **not documented and not yet measured**.
   cliVersion, startedAt, attempt, cwd, dispatch{…launch{mode, sessionId,
   transcriptPath, fork, flagArgs[], restoresTranscript}…, cols, rows},
   decModes[], firedInteractiveMarks[], rvAuth, ptyAuth, replPid, …}}}`.
-- `~/.claude/jobs/<id>/state.json`: `state, detail, tempo (idle|active),
+- `~/.claude/jobs/<id>/state.json`: `state, detail, tempo (idle|active|blocked),
   inFlight{tasks, queued, kinds[], drainableMonitors}, fan[]{id, kind:
   shell|agent, label, startedAt}, tokens, output{result}, children[]{id,
   href, kind: pr|frame}, template (bg|claude|argent-driver), name,

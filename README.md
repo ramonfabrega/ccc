@@ -103,8 +103,10 @@ ccc spawn … [--replace|--allow-duplicate] [--no-space-check]
 ccc stop <ref> [--json]             # end a running session; its conversation and worktree are kept
                                     # (`ccc attach` resumes it). `ccc rm` is the one that deletes
 ccc clear <ref> [--then "<prompt>"] [--json]
-                                    # arm a /clear: when the row next goes idle, ccc types /clear into its
-                                    # pane, then --then's prompt. It arms rather than waits because the usual
+                                    # arm a /clear: when its turn next ends, ccc types /clear into its
+                                    # pane, then --then's prompt. A turn that ends on an ask still fires (the
+                                    # record quotes the ask); a dialog that is up is never typed into, and
+                                    # --status says which it is waiting on. It arms rather than waits because the usual
                                     # caller is the commander on its own ref, busy because of this call; any
                                     # session may clear another, and the caller is never checked.
                                     # Commit the bank first: the target's dirty worktree is refused, at arm and

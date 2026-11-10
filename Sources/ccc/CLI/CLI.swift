@@ -538,11 +538,15 @@ enum CLI {
         let armed = overlay.armedClears
         let recent = overlay.firedClears
         let stamp = ISO8601DateFormatter()
+        // What each armed one is waiting on, read live — an arm listed
+        // with an age and no reason is the line a seven-hour wait printed.
+        let outlooks = await ClaudeCLI.of(.local)?.clearOutlooks() ?? [:]
         if json {
             printJSON([
                 "armed": armed.map { entry -> [String: String] in
                     var row = ["ref": entry.id, "armedAt": stamp.string(from: entry.mark.clear?.armedAt ?? Date())]
                     if let then = entry.mark.clear?.then { row["then"] = then }
+                    if let waiting = outlooks[entry.id]?.waiting { row["waiting"] = waiting }
                     return row
                 },
                 "recent": recent.map { entry -> [String: String] in
@@ -559,9 +563,10 @@ enum CLI {
         for entry in armed {
             let clear = entry.mark.clear
             let then = clear?.then.map { " · then: \($0)" } ?? ""
-            print("\(entry.id)  armed \(SessionEvent.spell(Date().timeIntervalSince(clear?.armedAt ?? Date()))) ago\(then)")
+            let outlook = outlooks[entry.id].map { " · \($0.said)" } ?? ""
+            print("\(entry.id)  armed \(SessionEvent.spell(Date().timeIntervalSince(clear?.armedAt ?? Date()))) ago\(outlook)\(then)")
         }
-        for entry in recent.prefix(5) {
+        for entry in recent.prefix(8) {
             print("\(entry.id)  \(SessionEvent.spell(Date().timeIntervalSince(entry.record.at))) ago · \(entry.record.said)")
         }
         return 0
