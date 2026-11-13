@@ -140,8 +140,6 @@ mis-attributed both halves of a thread on 09-06. Proposed: a
 collision by the guard that exists. **The name grammar is the part only
 ccc can enforce.** A **role** is in no record — ccc cannot tell a lane
 from a successor seat; lore declined a caller-supplied word for now.
-**The ledger is unreleased** (0.1.41 lacks it): the cut that carries it
-owes lore the version, since edges before it come from transcripts.
 
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 

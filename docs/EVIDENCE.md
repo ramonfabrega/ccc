@@ -6168,3 +6168,27 @@ in a fresh worktree needs its folder trusted by hand), a fork, `--replace`,
 a remote host, and the New Session sheet's `via: "app"`; each is held by
 `SpawnLedgerTests` and none has been run against the harness. A `/clear`
 writes no line: it mints no job (`daemonShort`, name and bridge id hold).
+
+## Cut as v0.1.42 (2026-11-13)
+
+The spawn ledger, cut on Ramon's word the same day. Build 270, tag on
+`95e753f`, 5480391 bytes; `ota verify --feed ccc` → `ok: … version 270
+length 5480391`, the GitHub Release carries the same zip, and studio runs
+it (`scripts/install --dist`, `ccc 0.1.42 (270)`).
+
+On the released bytes, from this job, the answer sent to a file:
+
+```
+ccc spawns --path   → ~/Library/Application Support/ccc/spawns.jsonl   (did not exist)
+printf … | ccc spawn --name ccc-ledger-released --model haiku --effort low --no-rc --json - > spawn-released.json
+  ledger, its first line: "child":"f43ac899", "ts":"2026-11-13T23:34:21Z",
+    "parent":{"bridge":"session_01YYPb…","job":"b87b7169","session":"15a04072-…"}   (mode 0600, 434 bytes)
+ccc spawns --mine   → 2026-11-13T23:34:21Z  f43ac899  ccc-ledger-released  haiku  ← b87b7169
+ccc rm f43ac899     → removed
+```
+
+So every spawn through ccc from `2026-11-13T23:34:21Z` on has a line;
+edges before it are lore's transcript reading. That first line is a real
+one — this job did spawn that fixture — and it stays: the file is
+append-only. Still unrun against the harness, as before the cut: the
+worktree fields, a fork, `--replace`, a remote host, the sheet.
