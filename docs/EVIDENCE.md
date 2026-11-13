@@ -6078,3 +6078,48 @@ themselves, mid-run — and three rows launched with `--cwd` inside
 `.claude/worktrees/<x>` (steer, garita, ccc) name none. `ForgetGuard`
 keys on the field, not on how it got there, so both read correctly: the
 first kind is refused, the second is row-only.
+
+## Cut as v0.1.41 (2026-11-13)
+
+`v0.1.41`, build **266**, 5,445,388 bytes, notarized and published to both
+CDN keys; `ota verify --feed ccc` → `ok … version 266 length 5445388`,
+`gh release view v0.1.41` → `ccc-v0.1.41.zip`, and `scripts/install --dist`
+put the released bytes on studio (`ccc 0.1.41 (266)`). Master was
+fast-forwarded to the bump before the tag, so the tag, master and the
+branch all named `06c2057` at the cut. Three commits since `v0.1.40`: the
+ask-ended clear (2026-11-10, unreleased until now), the clear that landed
+on nothing with the waiting `stop`, and the bump.
+
+The first two attempts stopped at `notarytool submit` with `403 — A
+required agreement is missing or has expired`: an Apple Developer agreement
+was pending on the account. Nothing had been published either time. After
+it was accepted the notary service kept answering 403 for about four
+minutes (a read-only `notarytool history` probe every 45 s), then took the
+submission.
+
+**Read on the released bytes**, the installed app owning the pane — no
+private socket — on a haiku fixture in `~/cc-test` (`3f6f7910`):
+
+```
+ccc clear 3f6f7910                                    → cleared 3f6f7910
+ccc clear 3f6f7910 --then "Reply with exactly: released ok"
+  → cleared 3f6f7910 (it was already empty), then: Reply with exactly: released ok
+  pane: ❯ /clear · ❯ Reply with exactly: released ok · ⏺ released ok
+(a draft left in the box)
+ccc clear 3f6f7910 --then "Reply with exactly: third ok"
+  → the clear on 3f6f7910 did not fire: 3f6f7910 has unsent text in its prompt box ("half a thought I have
+    not sent"); typing would submit it with ours; its --then prompt was NOT typed
+  --status --json → "undelivered": "Reply with exactly: third ok"; the draft untouched
+ccc stats → notifications  authorized  posted 1 → 3  last "the clear on 3f6f7910 did not fire: … NOT typed"
+ccc stop 3f6f7910 (0.76 s) ; ccc forget 3f6f7910      → stopped 3f6f7910 ; removed 3f6f7910, exit 0
+```
+
+So the banner is **posted** by the released app — the count moved and
+`last` is the undelivered sentence (the other one of the two is the
+fixture's own turn ending). Whether it was *drawn* was not captured: no
+screenshot was taken of a banner that is on screen for seconds.
+
+Still unproved, as before the cut: the `unseen` branch that types anyway,
+the record for a prompt that fails after its clear landed, and the slow
+process exit `stop` now waits on. Nothing here is owed to air beyond the
+update itself: `clear` types into a pane on the Mac the session lives on.
