@@ -138,9 +138,10 @@ the roster label and lore's peer attribution, and a collision
 mis-attributed both halves of a thread on 09-06. Proposed: a
 `<repo>-<role>-<item>` default in `ccc spawn`, refused on a live
 collision by the guard that exists. **The name grammar is the part only
-ccc can enforce.** A **role** is still in no record — the ledger says a
-lane and a successor seat the same way, because ccc cannot tell them
-apart; a caller-supplied word is the honest road if lore wants one.
+ccc can enforce.** A **role** is in no record — ccc cannot tell a lane
+from a successor seat; lore declined a caller-supplied word for now.
+**The ledger is unreleased** (0.1.41 lacks it): the cut that carries it
+owes lore the version, since edges before it come from transcripts.
 
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 

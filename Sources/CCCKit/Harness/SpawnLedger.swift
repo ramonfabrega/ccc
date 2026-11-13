@@ -38,6 +38,11 @@ import Foundation
 /// far host in `host`: the far side ran a bare `claude --bg` and its ccc
 /// was never asked.
 ///
+/// **Append-only, and a reader depends on it.** lore keys a line on
+/// (`child`, `ts`), inserts it once and keeps it, so the file may be
+/// rotated or truncated and lose nothing over there — but a line is never
+/// rewritten in place, and nothing here has a verb that would.
+///
 /// A `/clear` is not in this file, because it mints nothing: the daemon
 /// id, the name and the bridge id all hold, and only the session uuid
 /// moves (`Clear.swift`). `kind` is a string so that a later record can
