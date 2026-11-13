@@ -542,6 +542,13 @@ other's half. Each links to the other for the thing the other owns.
   either Mac. Bridge and session ids are not accepted: the roster carries
   no bridge id, a session id moves at /clear, and every job attach can
   reach is still on the daemon's roster, so lore has its daemon id.
+- **Out: the spawn ledger** (2026-11-13). `ccc spawn` and the sheet append
+  one line per spawn to `~/Library/Application Support/ccc/spawns.jsonl`:
+  the child's daemon id and the calling session's ids, read from the
+  caller's environment. ccc owns and writes the file; lore reads it where
+  it is. It is the one fact about a spawn only ccc has — both ends at the
+  moment it happens — and the daemon records no parent. `ccc spawns` is
+  its read. Requested model, never served; no line for a /clear.
 
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 

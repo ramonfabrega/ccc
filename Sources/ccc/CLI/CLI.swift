@@ -131,6 +131,8 @@ enum CLI {
                 return try await stop(ref: ref, json: json)
             case "spawn", "new":
                 return try await spawn(rest, json: json)
+            case "spawns":
+                return spawns(rest, json: json)
             case "merge":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -1034,6 +1036,7 @@ enum CLI {
         // guard compares is the one the session will run in — which is not
         // `spec.cwd` when a worktree is about to be cut, so that case
         // reports no folder rather than the wrong one.
+        var replaced: String?
         if let rows, !allowDuplicate {
             let landing = (spec.worktree == nil && spec.base == nil) ? spec.cwd : nil
             if let held = SpawnGuard.nameHolder(for: spec, on: host.name, cwd: landing, rows: rows) {
@@ -1047,6 +1050,7 @@ enum CLI {
                     return 1
                 }
                 stderr("ccc: stopped \(held.ref) (\(held.name)) before respawning it")
+                replaced = held.ref.id
             }
         }
         // Item 19b: the disk the session would land on. Local only — the
@@ -1061,10 +1065,15 @@ enum CLI {
         }
         let result: SpawnResult
         do {
-            result = try await cli.spawn(spec)
+            result = try await cli.spawn(spec, replaced: replaced)
         } catch {
             stderr("ccc: \(error)")
             return 1
+        }
+        // The session exists; only its ledger line does not. Said on
+        // stderr so the answer on stdout stays the answer.
+        if let why = result.unledgered {
+            stderr("ccc: \(result.ref) is running but is not in the spawn ledger: \(why)")
         }
         if json {
             printJSON(result)
@@ -1073,6 +1082,73 @@ enum CLI {
         }
         guard attach else { return 0 }
         return try request(.attach(id: result.ref), json: json)
+    }
+
+    /// `ccc spawns`: the spawn ledger, read. `ccc spawn` writes a line per
+    /// session it dispatches (`SpawnLedger`) and this is the verb that
+    /// shows them — a file ccc writes and cannot show is half a twin. The
+    /// question it exists for is a commander's: `--mine` is "which lanes
+    /// do I have out", answered off a record instead of from memory.
+    static func spawns(_ args: [String], json: Bool) -> Int32 {
+        let flags = ["--mine", "--path", "--parent", "--last"]
+        if let unknown = args.first(where: { $0.hasPrefix("--") && !flags.contains($0) }) {
+            stderr("ccc: unknown flag '\(unknown)' for spawns")
+            return 2
+        }
+        let ledger = SpawnLedger()
+        if args.contains("--path") {
+            if json { printJSON(["path": ledger.path]) } else { print(ledger.path) }
+            return 0
+        }
+        var parent = stringFlag("--parent", args)
+        if args.contains("--parent"), parent == nil {
+            stderr("ccc: --parent needs a job, session or bridge id")
+            return 2
+        }
+        if args.contains("--mine") {
+            // The caller's own job id, the one that survives /clear; an
+            // interactive session has none and is matched on what it has.
+            guard let me = SpawnLedger.Caller.current else {
+                stderr("ccc: --mine asks for the calling session's spawns, and no session is calling (none of \(SpawnLedger.Caller.variables.joined(separator: ", ")) is set)")
+                return 2
+            }
+            parent = me.job ?? me.bridge ?? me.session
+        }
+        var last = 20
+        if args.contains("--last") {
+            guard let n = intFlag("--last", args), n >= 0 else {
+                stderr("ccc: --last needs a count (0 is every line)")
+                return 2
+            }
+            last = n
+        }
+        let reading = ledger.read()
+        var entries = reading.entries
+        if let parent { entries = entries.filter { $0.parent?.answers(to: parent) == true } }
+        let matched = entries.count
+        if last > 0 { entries = Array(entries.suffix(last)) }
+        if json {
+            printJSON(SpawnsAnswer(path: ledger.path, entries: entries, matched: matched, skipped: reading.skipped))
+            return 0
+        }
+        if reading.skipped > 0 {
+            stderr("ccc: \(reading.skipped) line\(reading.skipped == 1 ? "" : "s") of \(ledger.path) did not read and \(reading.skipped == 1 ? "was" : "were") skipped")
+        }
+        guard !entries.isEmpty else {
+            print(parent.map { "no spawns by \($0) in \(ledger.path)" } ?? "no spawns in \(ledger.path) (`ccc spawn` writes one line each)")
+            return 0
+        }
+        for entry in entries { print(entry.description) }
+        if matched > entries.count { print("… \(matched - entries.count) earlier (`--last 0` for all)") }
+        return 0
+    }
+
+    struct SpawnsAnswer: Encodable {
+        var path: String
+        var entries: [SpawnLedger.Entry]
+        /// How many lines matched before `--last` cut them.
+        var matched: Int
+        var skipped: Int
     }
 
     /// The notification center's twin (v3): the same poll, the same

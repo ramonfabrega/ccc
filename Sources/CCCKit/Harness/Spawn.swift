@@ -202,6 +202,12 @@ public struct SpawnResult: Codable, Sendable, Equatable {
     /// the base it was cut from and is measured against. Nil when the
     /// harness made the worktree, or there is none.
     public var worktree: MadeWorktree?
+    /// Why this spawn is **not** in the spawn ledger, when it is not
+    /// (`SpawnLedger`). The session exists either way — a ledger that
+    /// could not be written never costs the spawn — but a reader that
+    /// counts lanes off the file is owed the sentence. Absent when the
+    /// line was written.
+    public var unledgered: String?
 
     public struct MadeWorktree: Codable, Sendable, Equatable {
         public var path: String
@@ -298,8 +304,17 @@ extension ClaudeCLI {
     /// Code session — which is exactly how an agent spawns — would
     /// otherwise hand the new session `CLAUDE_CODE_CHILD_SESSION`, and a
     /// child session keeps no transcript, which is the model column gone.
-    public func spawn(_ request: SpawnRequest) async throws -> SpawnResult {
+    ///
+    /// Every spawn that succeeds is appended to the spawn ledger
+    /// (`SpawnLedger`) with who asked: `caller` is this process's own
+    /// environment unless the surface knows better — the sheet passes
+    /// `nil`, because a click is a person whatever shell launched the app.
+    /// `ledger: nil` writes nothing.
+    public func spawn(_ request: SpawnRequest, via: SpawnLedger.Surface = .cli,
+                      caller: SpawnLedger.Caller? = SpawnLedger.Caller.current, replaced: String? = nil,
+                      ledger: SpawnLedger? = SpawnLedger()) async throws -> SpawnResult {
         try prepareControlDirectory()
+        let asked = request
         var request = request
         let made = try prepareWorktree(&request)
         if let cwd = spawnCwd(request) {
@@ -319,8 +334,16 @@ extension ClaudeCLI {
         }
         let cwd = request.cwd.flatMap { $0.isEmpty ? nil : $0 }
             ?? (host.isLocal ? FileManager.default.currentDirectoryPath : host.home)
-        return SpawnResult(ref: SessionRef(host: host.name, id: parsed.id), draft: parsed.draft, cwd: cwd, said: said,
-                           from: request.isFork ? request.from : nil, worktree: made)
+        var answer = SpawnResult(ref: SessionRef(host: host.name, id: parsed.id), draft: parsed.draft, cwd: cwd, said: said,
+                                 from: request.isFork ? request.from : nil, worktree: made)
+        if let ledger {
+            do {
+                try ledger.append(.of(asked: asked, result: answer, via: via, caller: caller, replaced: replaced))
+            } catch {
+                answer.unledgered = "\(error)"
+            }
+        }
+        return answer
     }
 
     /// Item 18: when the request wants a worktree off something other

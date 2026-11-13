@@ -422,7 +422,9 @@ final class PaneController {
                 throw SpawnError(description: refusal)
             }
         }
-        let result = try await cli.spawn(request)
+        // A click is a person: the ledger's `parent` is null here whatever
+        // environment the app happened to be launched with.
+        let result = try await cli.spawn(request, via: .app, caller: nil)
         await poller.tick()
         return result
     }

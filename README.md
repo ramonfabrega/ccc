@@ -100,6 +100,11 @@ ccc spawn … [--replace|--allow-duplicate] [--no-space-check]
                                     # and lore all resolve to whichever started last. --replace stops that one
                                     # first, --allow-duplicate means it. A local spawn under the free-space
                                     # floor is refused too (CCC_SPAWN_FLOOR_GB, default 10; 0 turns it off)
+ccc spawns [--mine | --parent <id>] [--last <n>] [--json]
+                                    # the spawn ledger: one line per session `ccc spawn` or the sheet
+                                    # dispatched, with the calling session as `parent` (null when it was
+                                    # typed or clicked). --mine is "which workers do I have out". --path
+                                    # prints the file (~/Library/Application Support/ccc/spawns.jsonl)
 ccc stop <ref> [--json]             # end a running session; its conversation and worktree are kept
                                     # (`ccc attach` resumes it). `ccc rm` is the one that deletes
 ccc clear <ref> [--then "<prompt>"] [--json]

@@ -6123,3 +6123,48 @@ Still unproved, as before the cut: the `unseen` branch that types anyway,
 the record for a prompt that fails after its clear landed, and the slow
 process exit `stop` now waits on. Nothing here is owed to air beyond the
 update itself: `clear` types into a pane on the Mac the session lives on.
+
+## the spawn ledger — a parent as a field (2026-11-13)
+
+lore's ask, with Ramon's go-ahead: its `parent` was a grep of the
+spawner's transcript for a `ccc spawn --json` answer, and attrition's
+commander began writing that answer to a file and printing the id through
+python — lane-4199 to lane-4216 had no parent and `lore loop commander`
+priced zero lanes. `ccc spawn` now appends one line per spawn to
+`~/Library/Application Support/ccc/spawns.jsonl` (`CCC_SPAWN_LEDGER`),
+whatever happened to stdout (`SpawnLedger`).
+
+**What a session's shell carries**, read in this job after a /clear
+(2.1.321, job `b87b7169`), against its own `state.json`:
+
+```
+CLAUDE_JOB_DIR=~/.claude/jobs/b87b7169            basename = daemonShort; survives /clear
+CLAUDE_CODE_SESSION_ID=15a04072-…                 = state.json resumeSessionId (the live transcript),
+                                                  not sessionId (b87b7169-…, the job's first)
+CLAUDE_CODE_BRIDGE_SESSION_ID=session_01YYPb…     state.json spells it cse_01YYPb… — same tail
+```
+
+**Live**, the debug build on two haiku fixtures and a private ledger
+path, in lore's failing spelling (answer to a file, a bare id printed):
+
+```
+printf … | ccc spawn --name ccc-ledger-probe --model haiku --effort low --no-rc --json - > spawn-probe.json
+  transcript sees: a129aa13
+  ledger: {"agent":null,"base":null,"branch":null,"child":"a129aa13","cwd":"…/worktrees/v2","draft":false,
+           "effort":"low","from":null,"host":"local","kind":"spawn","model":"haiku","name":"ccc-ledger-probe",
+           "parent":{"bridge":"session_01YYPb…","job":"b87b7169","session":"15a04072-…"},"replaced":null,
+           "ts":"2026-11-13T23:06:14Z","v":1,"via":"cli","worktree":null}
+env -u CLAUDE_JOB_DIR -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_BRIDGE_SESSION_ID ccc spawn --name ccc-ledger-typed …
+  ledger: … "child":"e7e4b3e4","draft":true, … "parent":null …
+ccc spawns          → a129aa13  ccc-ledger-probe  haiku  ← b87b7169
+                      e7e4b3e4  ccc-ledger-typed  haiku  ← (typed)  draft
+ccc spawns --mine   → the first line only;  with no session in the environment: exit 2
+ccc rm a129aa13 ; ccc rm e7e4b3e4   → removed, both job directories gone
+```
+
+Both children's `state.json` carried the name and model the line names.
+**Not measured live:** the worktree fields (`branch`, `base` — a fixture
+in a fresh worktree needs its folder trusted by hand), a fork, `--replace`,
+a remote host, and the New Session sheet's `via: "app"`; each is held by
+`SpawnLedgerTests` and none has been run against the harness. A `/clear`
+writes no line: it mints no job (`daemonShort`, name and bridge id hold).

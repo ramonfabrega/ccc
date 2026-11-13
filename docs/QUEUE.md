@@ -127,21 +127,20 @@ both booleans structural. The 0.1.27 drain regression is its fixture.
 **Argue the ceremony first**: two call sites is a small blast radius, and
 the counter is that one of them already cost a release on the other Mac.
 
-### 29. A worker has no parent, and its name is three things at once
+### 29. A worker's name is three things at once
 
-From lore, 2026-09-07, at Ramon's ask and **gated on him**. In the
-2.1.260 job records `repo` comes from cwd, the item from the branch, the
-role from the opener — but the **parent is in no record**, living only in
-the spawner's transcript, so "which workers do I have out" is answerable
-only from memory. The name is at once the SendMessage address, the roster
-label and lore's peer attribution; a collision mis-attributed both halves
-of a thread on 09-06. Proposed: a `<repo>-<role>-<item>` default in `ccc
-spawn`, refused on a live collision by the guard that exists, and
-**parent + role in the per-worktree record** beside the base — the
-spawner's bridge id, which survives clears — so `ccc list --tree` and
-lore read one record instead of inferring. **Half of it is lore's** and already shipped — `lore jobs` carries
-`parent`, read off the spawner's transcript. **The name grammar is the
-part only ccc can enforce.**
+From lore, 2026-09-07, at Ramon's ask and **gated on him**. **The parent
+half left on 2026-11-13**: `ccc spawn` appends every spawn to a ledger
+with the calling session's ids (`docs/EVIDENCE.md` "the spawn ledger"),
+`ccc spawns --mine` is "which workers do I have out", and lore indexes
+the file. What stays is the name: it is at once the SendMessage address,
+the roster label and lore's peer attribution, and a collision
+mis-attributed both halves of a thread on 09-06. Proposed: a
+`<repo>-<role>-<item>` default in `ccc spawn`, refused on a live
+collision by the guard that exists. **The name grammar is the part only
+ccc can enforce.** A **role** is still in no record — the ledger says a
+lane and a successor seat the same way, because ccc cannot tell them
+apart; a caller-supplied word is the honest road if lore wants one.
 
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 
