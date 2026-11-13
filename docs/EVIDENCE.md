@@ -5968,3 +5968,113 @@ ccc: the clear armed on cdbaf4ba has waited 11m: a dialog is up (permission prom
 row (they carry `waitingFor`, so they wait, but no fixture produced one);
 and whether the daemon's reading of closing prose as `blocked` versus
 `done` is stable for the same words.
+
+## item 27 — the clear that landed on nothing (2026-11-13)
+
+Reported by steer, attrition's driver row. Not cut: the code is on
+`worktree-v2`, and nothing here is proved on released bytes.
+
+**What happened** (ccc 0.1.40 build 262, row `d388900a`): at 06:29:49Z the
+commander ran `ccc clear steer --then "<2.5 KB opener>"`. The row had been
+bare-cleared six hours earlier and had taken no turn since. The record read
+`typed /clear on d388900a; the screen never changed`, `fired: true`, and
+the opener was never typed. Both driver rows rested 6h45m until a person
+looked. The same line had appeared on 2026-11-04, on a row a person had
+just cleared by hand.
+
+**Reproduced** on an owned fixture (`7df5cb8d`, haiku, `~/cc-test`, harness
+2.1.321), a private headless pane on its own socket and overlay, HEAD
+`59224f3`:
+
+```
+ccc clear 7df5cb8d                                  → cleared 7df5cb8d            (uuid 7df5cb8d-… → 8a6759f0-…)
+ccc clear 7df5cb8d --then "Reply with exactly: after-clear ok"
+  … 15 s …                                          → typed /clear on 7df5cb8d; the screen never changed
+                                                      (uuid 8a6759f0-… → 9fe468c2-…; the prompt never typed)
+```
+
+**The landing had one signal and this clear cannot give it.** A cleared row
+shows the banner, `❯ /clear`, and an empty box; a second `/clear` repaints
+exactly that. `waitUntilChanged` wanted a grid that differs from the one
+before the keystrokes and holds for two reads, got neither in fifteen
+seconds, and returned before the `--then` branch. The clear *had* landed:
+the session uuid moved, as it does on every clear, turn or no turn.
+
+**What changed.**
+
+- `ClearLanding`: the screen moved and settled (`changed`), or settled
+  where it was under a uuid that moved (`alreadyEmpty`), or neither for
+  fifteen seconds (`unseen`). The uuid is read off the roster poll that is
+  already running. After `unseen` the prompt is still typed if `PromptBox`
+  reads the box as free — fifteen seconds with a free box is the guarantee
+  the wait was for — and the record says which of the three it was.
+- **An armed prompt that is not typed is never silent.** Every way an arm
+  with `--then` can end without typing it — dropped, refused on a dirty
+  tree, a draft in the box, the clear typed and the prompt not — now
+  records `fired: false`, ends its sentence `its --then prompt was NOT
+  typed`, and keeps the prompt whole as `undelivered` on the record.
+  `--status` prints it and its JSON carries it; `ccc clear <ref> --then`
+  with it is the re-arm. The app posts a banner for it and holds the
+  notice until clicked. `fired` now means everything the arm asked for was
+  typed.
+
+**Read on the dev build**, same fixture, same private pane:
+
+```
+(the row empty, as above)
+ccc clear 7df5cb8d --then "Reply with exactly: after-clear ok"
+  → +3 s: cleared 7df5cb8d (it was already empty), then: Reply with exactly: after-clear ok
+  pane: ❯ /clear · ❯ Reply with exactly: after-clear ok · ⏺ after-clear ok
+(the control: a transcript on screen)
+ccc clear 7df5cb8d --then "Reply with exactly: second ok"
+  → cleared 7df5cb8d, then: Reply with exactly: second ok          · ⏺ second ok
+(a draft left in the box)
+ccc clear 7df5cb8d --then "Reply with exactly: third ok"
+  → the clear on 7df5cb8d did not fire: 7df5cb8d has unsent text in its prompt box ("half a thought I have
+    not sent"); typing would submit it with ours; its --then prompt was NOT typed
+  --status --json: fired false, "undelivered": "Reply with exactly: third ok"; the draft untouched
+```
+
+And the sequence that stalled, back to back on a second fixture
+(`1ab3f900`): a bare `ccc clear`, then `ccc clear --then "Reply with
+exactly: raced ok"` two seconds after its record → `cleared 1ab3f900 (it
+was already empty), then: …`, and `⏺ raced ok` in the pane.
+
+**Not proved live:** the banner (the dev binary is not a bundle and has no
+notification center — it needs a cut); the `unseen` branch that types
+anyway (no fixture produced a clear whose uuid did not move); the record
+for a prompt that fails *after* its clear landed (the same `PromptBox`
+refusal, reached one step later). One model only — haiku — though the
+thing measured is the repaint and the roster's uuid, not the model.
+
+## stop — the answer and the process (2026-11-13)
+
+Same report: `ccc stop <ref>` answered `stopped` and `ccc forget <ref>`
+issued straight after refused with "still has a process (pid …)" on
+`1b2cdb50`; polling the roster for a few seconds first made it pass.
+
+**Not reproduced.** Five owned haiku fixtures in `~/cc-test` (idle; holding
+a background `sleep 600`; mid-turn; two more idle), `claude stop` then
+roster reads back to back: the first read after `stop` returned carried no
+`pid` and no `status` every time (≤ 0.3 s), and `forget` passed at once.
+The fixtures have a few kilobytes of context and no Remote Control; the
+row that showed it was a long-lived fable driver, and that difference is
+unexamined. Aside, same runs: the stopped row reads `state: done` when it
+was idle and `stopped` only when the stop interrupted a turn, and the
+background `sleep 600` outlived its stopped and forgotten session.
+
+**Changed anyway, by construction:** `ClaudeCLI.stop` reads the roster
+until the row has neither field, for at most ten seconds, and says so in
+`said` when the process outlived that. Where there is nothing to wait for
+it costs one roster read: `ccc stop` 0.64 s on 0.1.40 against 0.77 s on
+the dev build, each followed at once by a `forget` that passed. (One
+earlier dev run took 2.45 s; whether that was the wait catching a process
+or a slow `claude stop` was not isolated.)
+
+**`worktreePath` is not only `--worktree`.** Read off the live job files
+the same day: eight rows launched in a main checkout with no `--worktree`
+in `respawnFlags` name a `worktreePath` — sessions that entered a worktree
+themselves, mid-run — and three rows launched with `--cwd` inside
+`.claude/worktrees/<x>` (steer, garita, ccc) name none. `ForgetGuard`
+keys on the field, not on how it got there, so both read correctly: the
+first kind is refused, the second is row-only.

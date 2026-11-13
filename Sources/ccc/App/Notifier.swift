@@ -159,6 +159,27 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         return (notice.novel ? "posted: " : "updated: ") + notice.headline
     }
 
+    /// An armed clear ended with its `--then` prompt untyped (2026-11-13).
+    /// The roster cannot show this — the row is `done` and idle, like every
+    /// row whose work is finished — and the session that armed it is gone,
+    /// so this is the one place it reaches a person. Its own request id:
+    /// the row's next turn banner must not replace it. Muted with its
+    /// host, like everything else here.
+    func clearUndelivered(_ record: ClearRecord, ref: SessionRef) {
+        reloadMutesIfMoved()
+        lastEvent = record.said
+        guard Self.isAvailable, !muted.contains(ref.host) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = ClearRecord.undeliveredTitle(poller.state.rows.first { $0.ref == ref }?.session.name ?? ref.id)
+        content.body = record.said
+        content.sound = .default
+        content.threadIdentifier = ref.description
+        content.userInfo = ["host": ref.host, "id": ref.id]
+        let request = UNNotificationRequest(identifier: "clear:\(ref.description)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+        posted += 1
+    }
+
     private static func describe(_ status: UNAuthorizationStatus) -> String {
         switch status {
         case .authorized: return "authorized"

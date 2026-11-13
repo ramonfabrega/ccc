@@ -480,6 +480,98 @@ import Testing
         }
     }
 
+    // MARK: the landing, and the prompt that did not get typed
+
+    /// **attrition's stall, 2026-11-13.** `ccc clear steer --then "<opener>"`
+    /// on a row that had been bare-cleared and had taken no turn since:
+    /// the pane already showed `❯ /clear` over an empty box, the second
+    /// `/clear` repainted exactly that, and "the screen changed" — the
+    /// only landing signal there was — never came. The record read "the
+    /// screen never changed", the opener was dropped, and both driver rows
+    /// rested 6h45m. Reproduced on an owned fixture, where the roster's
+    /// session uuid moved on that clear as on every other.
+    @Test func aClearOnAnEmptySessionLandsByItsUuid() {
+        let before = grid("❯\u{00A0}", cursorCol: 2)
+        var menu = before
+        menu.lines[0] = "/clear  Start a new session".padding(toLength: 40, withPad: " ", startingAt: 0)
+        // Not settled: one read is never a landing, whatever it shows.
+        #expect(ClearLanding.read(before: before, previous: nil, now: before, uuidBefore: "a", uuidNow: "b") == nil)
+        #expect(ClearLanding.read(before: before, previous: before, now: menu, uuidBefore: "a", uuidNow: "b") == nil)
+        // The ordinary clear: the screen moved and held.
+        #expect(ClearLanding.read(before: before, previous: menu, now: menu, uuidBefore: "a", uuidNow: "a") == .changed)
+        // The one that stalled: the same screen, a new session.
+        #expect(ClearLanding.read(before: before, previous: before, now: before, uuidBefore: "a", uuidNow: "b") == .alreadyEmpty)
+        // The same screen and the same session is still a wait…
+        #expect(ClearLanding.read(before: before, previous: before, now: before, uuidBefore: "a", uuidNow: "a") == nil)
+        // …and a roster that names no uuid on either side proves nothing.
+        #expect(ClearLanding.read(before: before, previous: before, now: before, uuidBefore: nil, uuidNow: "b") == nil)
+        #expect(ClearLanding.read(before: before, previous: before, now: before, uuidBefore: "a", uuidNow: nil) == nil)
+    }
+
+    /// The record says how the clear was seen, so a reader can tell the
+    /// three apart — and the sentence a clear nobody saw land has always
+    /// left is still the one it leaves.
+    @Test func theRecordSaysHowTheClearLanded() {
+        #expect(ClearRecord.cleared("a1b2", then: "go", landing: .alreadyEmpty)
+                == "cleared a1b2 (it was already empty), then: go")
+        #expect(ClearRecord.cleared("a1b2", then: nil, landing: .alreadyEmpty) == "cleared a1b2 (it was already empty)")
+        #expect(ClearRecord.cleared("a1b2", then: nil, landing: .unseen) == "typed /clear on a1b2; the screen never changed")
+        #expect(ClearRecord.cleared("a1b2", then: "go", landing: .unseen)
+                == "typed /clear on a1b2; the screen never changed and its box was free, then: go")
+    }
+
+    /// An arm that carried a prompt and ended without typing it keeps the
+    /// prompt and says so; one that carried none is the sentence alone.
+    @Test func aPromptThatWasNotTypedIsKeptAndSaid() throws {
+        let dropped = ClearRecord.failed("dropped the clear armed on a1b2: its session is gone", then: "start the pass")
+        #expect(!dropped.fired)
+        #expect(dropped.undelivered == "start the pass")
+        #expect(dropped.said == "dropped the clear armed on a1b2: its session is gone; its --then prompt was NOT typed")
+        let bare = ClearRecord.failed("refused the clear on a1b2: dirty", then: nil)
+        #expect(!bare.fired && bare.undelivered == nil && bare.said == "refused the clear on a1b2: dirty")
+        #expect(ClearRecord.undeliveredTitle("steer") == "⚠︎ steer · prompt not typed")
+
+        // It rides the file, and a record written before the field
+        // existed still decodes.
+        try withTempSync { dir in
+            let path = dir.appending(path: "roster.json").path
+            var overlay = RosterOverlay()
+            overlay.record(dropped, id: "a1b2", sessionId: nil)
+            try overlay.save(path: path)
+            #expect(RosterOverlay.load(path: path).overlay.marks["a1b2"]?.fired?.undelivered == "start the pass")
+            let old = #"{"marks":{"a1b2":{"fired":{"at":"2026-11-13T06:29:49Z","said":"typed /clear on a1b2; the screen never changed","fired":true}}}}"#
+            try Data(old.utf8).write(to: URL(filePath: path))
+            let loaded = RosterOverlay.load(path: path)
+            #expect(loaded.issue == nil)
+            #expect(loaded.overlay.marks["a1b2"]?.fired?.undelivered == nil)
+        }
+    }
+
+    /// `--status` is where the session that comes after finds it: the
+    /// sentence, and the prompt whole, in the text and in the JSON.
+    @Test func statusCarriesTheUndeliveredPrompt() async throws {
+        try await withTemp { dir in
+            let path = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            var overlay = RosterOverlay()
+            overlay.record(.failed("the clear on a1b2 did not fire: a1b2 has unsent text in its prompt box", then: "start the pass"),
+                           id: "a1b2", sessionId: nil)
+            try overlay.save(path: path)
+            let status = try await cli.clear(id: "probe", action: .status, overlayPath: path, serving: serving)
+            #expect(!status.armed)
+            #expect(status.undelivered == "start the pass")
+            #expect(status.said.hasSuffix("; its --then prompt was NOT typed; undelivered: start the pass"), "\(status.said)")
+            let json = String(decoding: try JSONEncoder().encode(status), as: UTF8.self)
+            #expect(json.contains(#""undelivered":"start the pass""#))
+
+            // A clear that typed everything leaves no such key.
+            overlay.record(ClearRecord(said: "cleared a1b2, then: start the pass", fired: true), id: "a1b2", sessionId: nil)
+            try overlay.save(path: path)
+            let after = try await cli.clear(id: "a1b2", action: .status, overlayPath: path, serving: serving)
+            #expect(after.undelivered == nil && !after.said.contains("undelivered"))
+        }
+    }
+
     // MARK: the prompt box
 
     private func grid(_ line: String, cursorCol: Int, rows: Int = 4) -> Grid {

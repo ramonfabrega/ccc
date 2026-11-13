@@ -12,7 +12,9 @@ import Foundation
 /// (`docs/EVIDENCE.md` "forget — what `claude rm` takes"): `claude rm`
 /// removes a worktree **only when the job file names one** —
 /// `worktreePath` in `~/.claude/jobs/<id>/state.json`, which the harness
-/// writes for a tree it cut itself (`--worktree`). Two sessions launched
+/// writes for a tree it cut itself: `--worktree` at launch, or a session
+/// that entered one mid-run (eight live rows on 2026-11-13 named one with
+/// no `--worktree` in their launch flags). Two sessions launched
 /// with `--cwd` into one clean, pushed worktree were each answered
 /// `removed <id>`, no `worktree:` line, and the tree and its branch
 /// outlived both; a third, spawned with `--worktree`, carried

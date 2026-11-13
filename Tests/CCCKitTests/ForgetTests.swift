@@ -32,6 +32,39 @@ import Testing
         #expect(ForgetGuard.refusal(Self.row(state: .stopped, pid: 1), harnessTree: nil, cutTree: nil) != nil)
     }
 
+    /// `ccc stop` answers when the process is off the roster, which is
+    /// what makes `ccc forget` straight after it not a race (attrition,
+    /// 2026-11-13: forget refused "still has a process" on a row `stop`
+    /// had just answered for). The wait is over the same two fields the
+    /// refusal above reads.
+    @Test func stopWaitsForTheProcessToLeaveTheRoster() async {
+        final class Reads: @unchecked Sendable { var n = 0 }
+        let reads = Reads()
+        let gone = await ClaudeCLI.awaitExit(of: "98d6e15e", patience: .seconds(5), every: .milliseconds(5)) {
+            reads.n += 1
+            return [Self.row(state: .stopped, pid: reads.n < 3 ? 4242 : nil)]
+        }
+        #expect(gone == nil)
+        #expect(reads.n == 3)
+
+        // Gone on the first read costs one read; so does a row the roster
+        // has already dropped, and a roster that does not answer.
+        for roster in [[Self.row(state: .done)], [], nil] as [[Session]?] {
+            let reads = Reads()
+            #expect(await ClaudeCLI.awaitExit(of: "98d6e15e", patience: .seconds(5), every: .milliseconds(5)) {
+                reads.n += 1
+                return roster
+            } == nil)
+            #expect(reads.n == 1)
+        }
+
+        // A process that outlives the patience is handed back, to be named.
+        let lingering = await ClaudeCLI.awaitExit(of: "commander-old-2", patience: .milliseconds(30), every: .milliseconds(5)) {
+            [Self.row(state: .done, status: .busy, pid: 4242)]
+        }
+        #expect(lingering?.pid == 4242)
+    }
+
     @Test func aLiveStateIsRefused() {
         for state in [Session.State.working, .blocked] {
             let said = ForgetGuard.refusal(Self.row(state: state), harnessTree: nil, cutTree: nil)

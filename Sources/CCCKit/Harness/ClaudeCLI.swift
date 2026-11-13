@@ -300,12 +300,49 @@ public struct ClaudeCLI: Sendable {
         public var said: String
     }
 
-    public func stop(id: String) async throws -> StopResult {
+    /// **`stopped` means the process is gone, so the verb waits for that**
+    /// (2026-11-13). `claude stop` answers when the daemon has taken the
+    /// request, and attrition's hand-over met a row that still carried its
+    /// pid afterwards: `ccc forget` issued straight after refused with
+    /// "still has a process", and polling the roster for a few seconds
+    /// first made it pass. A verb whose answer is true a few seconds later
+    /// makes every caller write that poll, so the poll is here: the roster
+    /// is read until the row has no process, for at most `patience`. On
+    /// three owned fixtures the first read already showed none (idle, a
+    /// background shell held, mid-turn: ≤ 0.3 s) — the wait costs one
+    /// roster read where there is nothing to wait for, and the slow exit
+    /// itself is **unreproduced** here (docs/EVIDENCE.md).
+    public func stop(id: String, patience: Duration = .seconds(10)) async throws -> StopResult {
         try prepareControlDirectory()
         let result = try await run(stopArgv(id: id), accepting: [0, 1], program: "claude")
-        let said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
+        var said = (String(decoding: result.stdout, as: UTF8.self) + result.stderr)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return StopResult(stopped: result.status == 0, said: said)
+        guard result.status == 0 else { return StopResult(stopped: false, said: said) }
+        let lingering = await Self.awaitExit(of: id, patience: patience) {
+            (try? await self.agentsJSON()).map { RosterDecoder.decode($0).sessions }
+        }
+        if let lingering {
+            let pid = lingering.pid.map { " (pid \($0))" } ?? ""
+            let note = "its process\(pid) was still on the roster \(SessionEvent.spell(Double(patience.components.seconds))) later — `ccc forget` refuses until it is gone"
+            said = said.isEmpty ? note : said + "; " + note
+        }
+        return StopResult(stopped: true, said: said)
+    }
+
+    /// Read the roster until the row has no process, and return the row
+    /// when it still has one after `patience` — nil is "gone", and also
+    /// "the roster stopped answering", which is not this verb's to report.
+    /// A process is the pair `ForgetGuard` reads: `pid` or `status`.
+    static func awaitExit(of id: String, patience: Duration, every interval: Duration = .milliseconds(250),
+                          roster: () async -> [Session]?) async -> Session? {
+        let clock = ContinuousClock()
+        let deadline = clock.now + patience
+        while true {
+            guard let row = await roster()?.sessionIfAny(matching: id),
+                  row.pid != nil || row.status != nil else { return nil }
+            guard clock.now + interval < deadline else { return row }
+            try? await Task.sleep(for: interval)
+        }
     }
 
     /// Delete a session, and the worktree **ccc** cut for it (item 24).

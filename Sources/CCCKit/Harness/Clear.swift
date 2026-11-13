@@ -224,9 +224,13 @@ extension ClaudeCLI {
         /// moved 3h ago". Absent when it is about to fire, about to be
         /// dropped, or the roster could not be read.
         public var waiting: String?
+        /// `--status` only: the `--then` prompt the last clear on the row
+        /// carried and never typed, whole — `ccc clear <ref> --then` with
+        /// it is the re-arm. Absent when the last clear typed all it had.
+        public var undelivered: String?
 
         public init(ref: String, armed: Bool, then: String? = nil, cancelled: Bool = false, said: String,
-                    armedAt: String? = nil, last: String? = nil, waiting: String? = nil) {
+                    armedAt: String? = nil, last: String? = nil, waiting: String? = nil, undelivered: String? = nil) {
             self.ref = ref
             self.armed = armed
             self.then = then
@@ -235,6 +239,7 @@ extension ClaudeCLI {
             self.armedAt = armedAt
             self.last = last
             self.waiting = waiting
+            self.undelivered = undelivered
         }
     }
 
@@ -341,9 +346,14 @@ extension ClaudeCLI {
             let mark = overlay.marks[key]
             let stamp = ISO8601DateFormatter()
             let last = mark?.fired.map { "\(SessionEvent.spell(Date().timeIntervalSince($0.at))) ago · \($0.said)" }
-            let tail = last.map { "; last: \($0)" } ?? ""
+            // The prompt the last clear left untyped, in full: the reader
+            // here is usually another session, and these words are what
+            // it needs to arm again.
+            let undelivered = mark?.fired?.undelivered
+            let tail = (last.map { "; last: \($0)" } ?? "") + (undelivered.map { "; undelivered: \($0)" } ?? "")
             guard let pending = mark?.clear else {
-                return ClearOutcome(ref: key, armed: false, said: "no clear is armed on \(key)\(tail)", last: last)
+                return ClearOutcome(ref: key, armed: false, said: "no clear is armed on \(key)\(tail)", last: last,
+                                    undelivered: undelivered)
             }
             let then = pending.then.map { ", then: \($0)" } ?? ""
             // What it is waiting on, read off the row the way the firing
@@ -353,7 +363,8 @@ extension ClaudeCLI {
                                           rosterRead: sessions != nil, job: job(key), serving: serving())
             return ClearOutcome(ref: key, armed: true, then: pending.then,
                                 said: "a clear is armed on \(key) (\(SessionEvent.spell(Date().timeIntervalSince(pending.armedAt))) ago); \(outlook.said)\(then)\(tail)",
-                                armedAt: stamp.string(from: pending.armedAt), last: last, waiting: outlook.waiting)
+                                armedAt: stamp.string(from: pending.armedAt), last: last, waiting: outlook.waiting,
+                                undelivered: undelivered)
         }
 
         if cancel {

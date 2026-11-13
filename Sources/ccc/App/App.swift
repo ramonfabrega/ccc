@@ -68,6 +68,13 @@ enum App {
         controller.notificationStats = { [weak notifier] in notifier?.stats() }
         // `ccc hook` → the same notifier, for what the roster cannot show.
         controller.hookSink = { [weak notifier] event in notifier?.receive(event) ?? "notifier gone" }
+        // An armed clear whose prompt went untyped: a banner, and a notice
+        // that stays until it is clicked. Nothing else on screen will say
+        // the row is waiting for a pass that is not coming.
+        controller.onClearUndelivered = { [weak notifier, weak window] record, ref in
+            notifier?.clearUndelivered(record, ref: ref)
+            window?.showNotice(record.said, kind: .problem)
+        }
         installStatusItem()
         window.showWindow(nil)
         NSApp.activate()

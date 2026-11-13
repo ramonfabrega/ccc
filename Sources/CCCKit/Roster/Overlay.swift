@@ -77,25 +77,96 @@ public struct SessionMark: Codable, Sendable, Equatable {
 public struct ClearRecord: Codable, Sendable, Equatable {
     public var at: Date
     public var said: String
+    /// True only when **everything the arm asked for was typed**: the
+    /// `/clear`, and the `--then` prompt when it carried one.
     public var fired: Bool
+    /// The `--then` prompt the arm carried and nothing typed (2026-11-13).
+    /// An arm with a prompt is a promise that the row's next pass starts;
+    /// every way it can end without typing — the clear went and the prompt
+    /// did not, a draft in the box, a dirty tree, a session that is gone —
+    /// used to leave a sentence about the *clear* and drop the prompt, and
+    /// the row then rests idle looking like any other finished row.
+    /// attrition's steer row sat 6h45m that way. The words are kept here
+    /// because the session that armed them usually no longer exists to be
+    /// asked: `ccc clear <ref> --then "<this>"` is the re-arm.
+    public var undelivered: String?
 
-    public init(at: Date = Date(), said: String, fired: Bool) {
+    public init(at: Date = Date(), said: String, fired: Bool, undelivered: String? = nil) {
         self.at = at
         self.said = said
         self.fired = fired
+        self.undelivered = undelivered
     }
 
     /// The sentence a clear that typed leaves behind. When the row had
     /// ended its turn on an ask, the ask is quoted: the clear went over a
     /// question, and the record is the one place that still says which.
-    public static func cleared(_ ref: String, then: String?, over ask: String? = nil) -> String {
-        var said = "cleared \(ref)"
+    /// How the clear was seen to land is said too when it was not the
+    /// ordinary way (`ClearLanding`).
+    public static func cleared(_ ref: String, then: String?, over ask: String? = nil,
+                               landing: ClearLanding = .changed) -> String {
+        var said: String
+        switch landing {
+        case .changed: said = "cleared \(ref)"
+        case .alreadyEmpty: said = "cleared \(ref) (it was already empty)"
+        case .unseen: said = "typed /clear on \(ref); the screen never changed"
+        }
         if let ask = ask?.split(whereSeparator: \.isNewline).first.map(String.init)?
             .trimmingCharacters(in: .whitespaces), !ask.isEmpty {
             said += " over its ask (“\(ask.count > 120 ? String(ask.prefix(120)) + "…" : ask)”)"
         }
-        if let then { said += ", then: \(then)" }
+        if let then { said += landing == .unseen ? " and its box was free, then: \(then)" : ", then: \(then)" }
         return said
+    }
+
+    /// A clear that did not do all it was armed to do: refused, dropped,
+    /// never typed, or typed with its prompt left behind. `said` is the
+    /// reason as the firing side gave it; when the arm carried a prompt
+    /// the sentence ends by saying it went untyped, and the prompt is kept.
+    public static func failed(_ said: String, then: String?, at: Date = Date()) -> ClearRecord {
+        guard let then else { return ClearRecord(at: at, said: said, fired: false) }
+        return ClearRecord(at: at, said: said + "; its --then prompt was NOT typed", fired: false, undelivered: then)
+    }
+
+    /// The banner's title for a record that carries an undelivered prompt:
+    /// the row's name and the one fact, short enough for the ~36 characters
+    /// a banner title gets.
+    public static func undeliveredTitle(_ row: String) -> String { "⚠︎ \(row) · prompt not typed" }
+}
+
+/// What the pane saw after it typed `/clear`, which is how it knows the
+/// prompt that follows will not be typed into a box the clear is about to
+/// submit.
+///
+/// The first version had one signal — the screen moved off what it showed
+/// and settled — and a `/clear` on a session with nothing to clear moves
+/// nothing: measured 2026-11-13 on an owned fixture (haiku, harness
+/// 2.1.321), a row already showing `❯ /clear` over an empty box repaints
+/// to exactly that, so the wait ran its fifteen seconds, read "never
+/// changed", and returned before the prompt (`docs/EVIDENCE.md` "item 27 —
+/// the clear that landed on nothing"). The clear *had* landed: the roster's
+/// session uuid moved on that clear as it does on every one. So the uuid is
+/// the second signal, and the one that does not depend on there having
+/// been anything to look at.
+public enum ClearLanding: String, Sendable, Equatable {
+    /// The screen moved and settled: a transcript went.
+    case changed
+    /// The screen settled exactly as it was and the row's session uuid
+    /// moved: the clear landed on a session with nothing to clear.
+    case alreadyEmpty
+    /// Neither, for the whole wait. Whether to type after it is the
+    /// prompt box's call, not this one's.
+    case unseen
+
+    /// One look at the pane, or nil for "keep waiting". Settled first in
+    /// both cases — two reads a quarter second apart agree — because a
+    /// uuid that has moved says the clear ran, not that the repaint did.
+    public static func read(before: Grid, previous: Grid?, now: Grid,
+                            uuidBefore: String?, uuidNow: String?) -> ClearLanding? {
+        guard let previous, previous == now else { return nil }
+        if now != before { return .changed }
+        if let uuidBefore, let uuidNow, uuidBefore != uuidNow { return .alreadyEmpty }
+        return nil
     }
 }
 

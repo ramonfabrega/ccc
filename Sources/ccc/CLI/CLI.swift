@@ -550,8 +550,10 @@ enum CLI {
                     return row
                 },
                 "recent": recent.map { entry -> [String: String] in
-                    ["ref": entry.id, "at": stamp.string(from: entry.record.at),
-                     "fired": entry.record.fired ? "true" : "false", "said": entry.record.said]
+                    var row = ["ref": entry.id, "at": stamp.string(from: entry.record.at),
+                               "fired": entry.record.fired ? "true" : "false", "said": entry.record.said]
+                    if let undelivered = entry.record.undelivered { row["undelivered"] = undelivered }
+                    return row
                 },
             ])
             return 0

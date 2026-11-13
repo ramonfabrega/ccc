@@ -120,6 +120,10 @@ final class PaneController {
     /// What the last armed clear did, for the window's notice and stats.
     private(set) var lastClear: String?
     var onClearFired: ((String) -> Void)?
+    /// An arm's `--then` prompt ended untyped. The window's notice is not
+    /// enough for this one — whoever armed it is gone and nobody is
+    /// looking at the window — so the app posts a banner.
+    var onClearUndelivered: ((ClearRecord, SessionRef) -> Void)?
 
     /// The last attach and how it ended, for the wake-up reattach: a remote
     /// pane whose ssh died across a sleep comes back on its own.
@@ -606,8 +610,8 @@ final class PaneController {
                 noteWaiting(id, mark: mark, why: reading.why)
             case .gone:
                 guard disarm(id, sessionId: mark.sessionId) else { continue }
-                lastClear = "dropped the clear armed on \(id): \(reading.why)"
-                report(id, sessionId: mark.sessionId, said: lastClear!, fired: false)
+                report(id, sessionId: mark.sessionId,
+                       .failed("dropped the clear armed on \(id): \(reading.why)", then: mark.clear?.then))
             case .now:
                 // The bank again, at the moment it matters: the tree may
                 // have been clean when the clear was armed and dirty now.
@@ -620,23 +624,22 @@ final class PaneController {
                     Task.detached(priority: .userInitiated) { ClearGuard.refusal(cwd: path) }
                 }
                 if let reason = await refusal?.value {
-                    disarm(id, sessionId: mark.sessionId)
-                    lastClear = "refused the clear on \(id): \(reason)"
-                    report(id, sessionId: mark.sessionId, said: lastClear!, fired: false)
+                    guard disarm(id, sessionId: mark.sessionId) else { continue }
+                    report(id, sessionId: mark.sessionId,
+                           .failed("refused the clear on \(id): \(reason)", then: mark.clear?.then))
                     continue
                 }
                 guard let pending = mark.clear, disarm(id, sessionId: mark.sessionId) else { continue }
-                var fired = true
                 // A row that ended its turn asking is cleared over the
                 // ask, and the record quotes it — the pane will not.
                 let ask = row?.session.state == .blocked ? row?.job?.needs : nil
+                let record: ClearRecord
                 do {
-                    lastClear = try await performClear(ref, then: pending.then, over: ask)
+                    record = try await performClear(ref, then: pending.then, over: ask)
                 } catch {
-                    lastClear = "the clear on \(id) did not fire: \(error)"
-                    fired = false
+                    record = .failed("the clear on \(id) did not fire: \(error)", then: pending.then)
                 }
-                report(id, sessionId: mark.sessionId, said: lastClear!, fired: fired)
+                report(id, sessionId: mark.sessionId, record)
             }
         }
     }
@@ -649,14 +652,22 @@ final class PaneController {
     /// memory of arming at all, so `ccc clear` with no ref is the only
     /// place the answer can be. An arm that vanishes saying nothing is
     /// the shape that let a keying bug survive two probes.
-    private func report(_ id: String, sessionId: String?, said: String, fired: Bool) {
+    ///
+    /// A record that carries an undelivered prompt goes to `onClearUndelivered`
+    /// as well: that one is a banner in the app, because the row it names
+    /// is now idle with nothing coming and reads like every finished row.
+    private func report(_ id: String, sessionId: String?, _ record: ClearRecord) {
+        lastClear = record.said
         let path = overlayPath
         try? RosterOverlay.locked(path: path) {
             var overlay = RosterOverlay.load(path: path).overlay
-            overlay.record(ClearRecord(said: said, fired: fired), id: id, sessionId: sessionId)
+            overlay.record(record, id: id, sessionId: sessionId)
             try overlay.save(path: path)
         }
-        onClearFired?(said)
+        onClearFired?(record.said)
+        if record.undelivered != nil {
+            onClearUndelivered?(record, SessionRef(host: Host.localName, id: id))
+        }
     }
 
     /// An arm that has waited past the bound is written down, once, with
@@ -697,19 +708,45 @@ final class PaneController {
     /// sleep: the clear is watched for on the grid, because a prompt typed
     /// before it lands is a prompt typed into the box the clear is about
     /// to submit.
-    func performClear(_ ref: SessionRef, then: String?, over ask: String? = nil) async throws -> String {
+    ///
+    /// **A clear nobody saw land still gets its prompt** (2026-11-13). The
+    /// wait used to return before the prompt whenever the screen did not
+    /// change, and a `/clear` on a row with nothing to clear changes
+    /// nothing (`ClearLanding`). Fifteen seconds with a box that reads as
+    /// free is the same guarantee the wait was for — nothing is left for
+    /// the clear to submit — so the prompt is typed, through the same
+    /// `PromptBox` guard as everything else, and the record says which way
+    /// the clear was seen. What it throws is a clear that typed nothing;
+    /// a clear that typed and a prompt that did not is a *record*, with
+    /// the prompt kept.
+    func performClear(_ ref: SessionRef, then: String?, over ask: String? = nil) async throws -> ClearRecord {
         let wasOnScreen = session?.isRunning == true
         _ = try await switchTo(ref: ref)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
         if !wasOnScreen { await Self.waitUntilDrawn(session) }
         await Self.waitUntilReadable(session)
         let before = session.host.snapshot()
+        let uuid = sessionUuid(ref)
         try await Self.type("/clear", into: session, ref: ref)
-        let landed = await Self.waitUntilChanged(session, from: before)
-        guard landed else { return "typed /clear on \(ref); the screen never changed" }
-        guard let then else { return ClearRecord.cleared("\(ref)", then: nil, over: ask) }
-        try await Self.type(then, into: session, ref: ref)
-        return ClearRecord.cleared("\(ref)", then: then, over: ask)
+        let landing = await waitUntilLanded(session, ref: ref, from: before, uuid: uuid)
+        guard let then else {
+            return ClearRecord(said: ClearRecord.cleared("\(ref)", then: nil, over: ask, landing: landing), fired: true)
+        }
+        do {
+            guard session.isRunning else { throw AttachError.nothingAttached }
+            try await Self.type(then, into: session, ref: ref)
+        } catch {
+            return ClearRecord(said: ClearRecord.cleared("\(ref)", then: nil, over: ask, landing: landing)
+                                   + "; its --then prompt was NOT typed: \(error)",
+                               fired: false, undelivered: then)
+        }
+        return ClearRecord(said: ClearRecord.cleared("\(ref)", then: then, over: ask, landing: landing), fired: true)
+    }
+
+    /// The row's session uuid as the last poll read it — the one thing on
+    /// a row a clear changes (docs/EVIDENCE.md "item 27").
+    private func sessionUuid(_ ref: SessionRef) -> String? {
+        poller.state.rows.first { $0.ref == ref }?.session.sessionId
     }
 
     /// The box reads as *something* — empty, a hint, a draft — or ten
@@ -728,21 +765,27 @@ final class PaneController {
         }
     }
 
-    /// The screen moved off `from` and settled again — the clear landing.
-    /// Fifteen seconds, against the eight `waitUntilDrawn` allows: this one
-    /// waits on a round trip to the daemon, not a repaint.
-    private static func waitUntilChanged(_ session: AttachSession, from: Grid,
-                                         timeout: Duration = .seconds(15)) async -> Bool {
+    /// The clear landing, as `ClearLanding` reads it: the screen moved off
+    /// `from` and settled, or settled where it was under a session uuid
+    /// that moved. Fifteen seconds, against the eight `waitUntilDrawn`
+    /// allows: this one waits on a round trip to the daemon, not a
+    /// repaint — and the uuid arrives on the roster's poll, which keeps
+    /// running under these sleeps.
+    private func waitUntilLanded(_ session: AttachSession, ref: SessionRef, from: Grid, uuid: String?,
+                                 timeout: Duration = .seconds(15)) async -> ClearLanding {
         let clock = ContinuousClock()
         let deadline = clock.now + timeout
         var previous: Grid?
         while clock.now < deadline, session.isRunning {
             try? await Task.sleep(for: .milliseconds(250))
             let grid = session.host.snapshot()
-            if grid != from, let previous, previous == grid { return true }
+            if let landing = ClearLanding.read(before: from, previous: previous, now: grid,
+                                               uuidBefore: uuid, uuidNow: sessionUuid(ref)) {
+                return landing
+            }
             previous = grid
         }
-        return false
+        return .unseen
     }
 
     /// The TUI is up and has stopped changing — two reads a quarter second
