@@ -6339,3 +6339,44 @@ Studio is the control, never the measurement. On the released bytes:
 
 625 tests, 623 green; the two red are `RosterPollerTests`' ssh pair, which
 fail in any job (`ssh studio` → "Host key verification failed").
+
+## Cut as v0.1.43 (2026-11-13)
+
+The resident app, the sRGB layer and the faster switch, cut on Ramon's
+word — *"cut unless something could harm attrition live flows/lanes"* —
+after the typing paths got their old wait back. Build 274, tag on
+`14848e4`, 5506294 bytes; `ota verify --feed ccc` → `ok: … version 274
+length 5506294`, the GitHub Release carries the same zip, and studio runs
+it (`scripts/install --dist`, `ccc 0.1.43 (274)`). No clear was armed when
+the app restarted.
+
+Readings 1 and 2 of "What the cut owes", on the released bytes, studio:
+
+```
+ccc login        → launch at login is on            (`ccc stats`: login item     on)
+osascript quit   → ccc stats: no ccc is serving …/control.sock
+ccc clear e575e1d7 --then "Reply with exactly: woke ok"
+  stderr → ccc: no ccc was serving, so ccc.app was started (window closed) to fire it
+  stdout → armed a clear on e575e1d7; it fires when its turn ends, then: …      (exit 0)
+ccc clear        → e575e1d7  1s ago · cleared e575e1d7, then: Reply with exactly: woke ok   (8 s after the arm)
+ccc geometry     → "visible" : false                (a new pid, 84944; no window)
+ccc list --fresh → e575e1d7  done  idle  ccc-cut-b  ↳ replied "woke ok" as requested
+```
+
+And the control for reading 4 — the installed app, eight swaps between
+two local fixtures over the socket:
+
+```
+switch  369 287 287 287 341 371 323 318 ms     mean 323
+```
+
+against 806 before the change. Then `ccc window show` and `ccc attach
+1cea7345` put the window back where it had been; both fixtures removed.
+
+**Still air's**: reading 3 (a saturated cell, the same hex in ccc and
+iTerm on a P3 panel) and reading 4 (the `switch` mean over the real hop).
+
+**Owed next, at Ramon's ask**: the app reads ~300 MB around a pane
+being made and ~88 MB a few seconds later — 309.9 MB at uptime 10 s
+after the wake's attach, 315.5 at 43 s after the eight swaps, 88.5 at
+56 s. 0.1.42 does the same, so it is not this cut's; it is the next thing.
