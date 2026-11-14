@@ -109,7 +109,13 @@ public struct SessionDetail: Codable, Sendable, Equatable {
 
         var facts: [Fact] = []
         if let wt = row.worktree {
-            facts.append(Fact(label: "branch", value: "\(wt.branch) → \(wt.base)", note: wt.standing))
+            // Two lines, not one with a note. On the first released build
+            // (v0.1.48) the standing rode beside the branch and the pair
+            // overflowed the column, so the ellipsis took the middle —
+            // "…-replan-pdb…hed; worktree-replan-pdb has 6 unpushed" — which
+            // is exactly the "3 ahead" the line exists to say.
+            facts.append(Fact(label: "branch", value: "\(wt.branch) → \(wt.base)"))
+            facts.append(Fact(label: "stands", value: wt.standing))
         }
         facts.append(Fact(label: "folder", value: shortCwd(session.cwd), full: session.cwd))
         if showsHost { facts.append(Fact(label: "host", value: row.host)) }

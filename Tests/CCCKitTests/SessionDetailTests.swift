@@ -86,10 +86,11 @@ import Testing
         let job = JobInfo(detail: "running", remoteControl: false, permissionMode: "plan",
                           updatedAt: now.addingTimeInterval(-720))
         let full = detail(row(state: .working, host: "studio", worktree: wt, job: job), showsHost: true)
-        #expect(full.facts.map(\.label) == ["branch", "folder", "host", "started", "moved", "answer", "asks", "id"])
+        #expect(full.facts.map(\.label) == ["branch", "stands", "folder", "host", "started", "moved", "answer", "asks", "id"])
         let fact = { (label: String) in full.facts.first { $0.label == label } }
         #expect(fact("branch")?.value == "worktree-v2 → master")
-        #expect(fact("branch")?.note == "3 ahead, 1 behind (master moved), 2 unpushed")
+        #expect(fact("branch")?.note == nil)
+        #expect(fact("stands")?.value == "3 ahead, 1 behind (master moved), 2 unpushed")
         #expect(fact("folder")?.value == "~/code/a")
         #expect(fact("folder")?.full == "/Users/x/code/a")
         #expect(fact("moved")?.value == "12m ago")
