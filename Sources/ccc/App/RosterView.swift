@@ -194,11 +194,13 @@ struct RosterView: View {
     }
 
     private func rowView(_ row: SessionRow) -> some View {
-        // A worktree row shows its repository, not the worktree's path: the
-        // branch already names the worktree, and the row is 400 pt wide.
+        // A worktree row shows its repository, not the worktree's path —
+        // and the repository's name, not its path: the branch already
+        // names the worktree, and `~/code/fun/` is the same on every row.
         // The full path stays in the tooltip.
         RosterRow(row: row, showsHost: showsHost && group != .host,
-                  shortCwd: hosts.shortCwd(row.worktree?.repo ?? row.session.cwd, host: row.host),
+                  // Grouped by repository, the header has said it once.
+                  folder: group == .repo ? nil : row.folderName { hosts.shortCwd($0, host: row.host) },
                   stale: poller.state.host(row.host)?.isStale ?? false)
             .tag(row.ref)
             .contentShape(Rectangle())
@@ -478,7 +480,9 @@ enum Age {
 struct RosterRow: View {
     let row: SessionRow
     var showsHost: Bool = false
-    var shortCwd: String
+    /// The folder as the row prints it — the repository's own name, not
+    /// its path — or nil when the section header already says it.
+    var folder: String?
     /// The host stopped answering; this row is its last known state.
     var stale: Bool = false
 
@@ -509,79 +513,17 @@ struct RosterRow: View {
                     Spacer()
                     Text(row.model.map(shortModel) ?? "").font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 6) {
-                    Text(stateText).font(.caption).foregroundStyle(color).fixedSize()
-                    // Only when nothing better is going below it: the
-                    // roster's `waitingFor` is often the placeholder
-                    // "input needed", and printing that beside the actual
-                    // question is the redundancy this slice deletes.
-                    if let waiting = row.session.waitingFor, say == nil {
-                        Text(waiting).font(.caption).foregroundStyle(.orange).lineLimit(1)
-                    }
-                    if row.archived {
-                        Label("archived", systemImage: "archivebox").font(.caption).foregroundStyle(.tertiary).fixedSize()
-                    }
-                    // Remote Control (item 17): dispatched `--rc`, so this
-                    // one is answerable from the phone and not only from
-                    // this Mac. Drawn as the icon alone — the word "rc"
-                    // means nothing at a glance in a window, where the CLI
-                    // twin needs it because a terminal has no icons.
-                    //
-                    // It is not drawn when absent, and that asymmetry is
-                    // deliberate: "you can answer this from the couch" is
-                    // the payload, and "you cannot" is the ordinary case
-                    // that would put a mark on most rows to say nothing
-                    // (the v11 rule — every line carries payload or is not
-                    // drawn).
-                    if row.job?.remoteControl == true {
-                        Image(systemName: "iphone")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .help("Remote Control: dispatched --rc, so this session can be answered from the Claude app or claude.ai/code, not only here")
-                    }
-                    // Launched with a permission mode that asks: it will
-                    // stop at its first prompt. Same rule as the phone
-                    // badge — drawn only when it is the payload, which
-                    // now excludes `default` and no mode at all: a missing
-                    // flag never meant the harness default, and
-                    // `respawnFlags` writes a typed `auto` as `default` on
-                    // haiku, so neither is evidence of anything.
-                    if row.session.kind == .background, row.job?.asksForPermission == true {
-                        Image(systemName: "questionmark.bubble")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .help("Launched --permission-mode \(row.job?.permissionMode ?? "?"): permission prompts block it until answered here or in the Claude app; `ccc spawn` defaults to auto")
-                    }
-                    Spacer()
-                    // The worktree (v6): the branch, with what it holds over
-                    // master and — in orange, since it blocks a fast-forward
-                    // — what master holds over it. Beside the folder, which
-                    // the sort and the sheet still read.
-                    if let wt = row.worktree {
-                        HStack(spacing: 3) {
-                            Text("⎇ \(wt.branch)").foregroundStyle(.secondary)
-                            if wt.ahead > 0 { Text("↑\(wt.ahead)").foregroundStyle(.primary) }
-                            if wt.behind > 0 { Text("↓\(wt.behind)").foregroundStyle(.orange) }
-                            // ⇡ what origin does not have (slice 2): the
-                            // harness keeps such a worktree on delete.
-                            if let up = wt.unpushed, up > 0 { Text("⇡\(up)").foregroundStyle(.secondary) }
-                            // ⇣ what origin has that this branch does not
-                            // (slice 7): another Mac pushed to it. As of
-                            // the last fetch; the act is a terminal's.
-                            if let down = wt.unpulled, down > 0 { Text("⇣\(down)").foregroundStyle(.secondary) }
-                        }
-                        .font(.caption.monospaced())
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(wt.standing)
-                    }
-                    HStack(spacing: 3) {
-                        Text(shortCwd).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
-                        // Master itself unpushed: the other Mac cannot see
-                        // what was just fast-forwarded here.
-                        if let mark = row.worktree?.baseMark { Text(mark).foregroundStyle(.orange).help(row.worktree!.standing) }
-                    }
-                    .font(.caption.monospaced())
+                // Line two, at whatever width the roster is (2026-11-13).
+                // It used to be one fixed arrangement that the ellipsis
+                // then cut: at 370 pt the branch read `wor…t-4204` and the
+                // folder `…fun/attrition`. Now it is the widest of three
+                // arrangements that fits — the folder is the first thing
+                // to go, then the branch's arrows — and each is short
+                // enough that the ordinary width needs no ellipsis at all.
+                ViewThatFits(in: .horizontal) {
+                    meta(folder: true, arrows: true)
+                    meta(folder: false, arrows: true)
+                    meta(folder: false, arrows: false)
                 }
                 // What the session has to say for itself (v10 slice 2).
                 // The row used to name everything about a session except
@@ -603,10 +545,87 @@ struct RosterRow: View {
         }
         .padding(.vertical, 2)
         .opacity(stale ? 0.6 : (row.archived ? 0.7 : 1))
-        .help("\(row.ref) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
+        .help("\(row.ref) · \(row.stateText) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
     }
 
-    private var stateText: String { row.stateText }
+    /// Line two in one arrangement. What is **not** here is the change:
+    /// measured on the 13 rows of 2026-11-13, the state words repeated the
+    /// dot on 13 of 13, `worktree-` led 8 of 9 branches and was what the
+    /// ellipsis kept, 8 rows shared a folder path that differed only in
+    /// its last word, and the phone icon was on 9 — the rule `ccc list
+    /// --help` already states is that the row *without* Remote Control
+    /// carries the news.
+    @ViewBuilder private func meta(folder showsFolder: Bool, arrows: Bool) -> some View {
+        HStack(spacing: 6) {
+            // The state, only where the dot does not already say it: a
+            // green dot is working and an orange one is asking, but grey
+            // is done *and* stopped, and a draft has to say what it wants.
+            if let word = row.stateWord {
+                Text(word).font(.caption).foregroundStyle(color).fixedSize()
+            }
+            // Only when nothing better is going below it: the roster's
+            // `waitingFor` is often the placeholder "input needed", and
+            // printing that beside the actual question is a repeat.
+            if let waiting = row.session.waitingFor, say == nil {
+                Text(waiting).font(.caption).foregroundStyle(.orange).lineLimit(1)
+            }
+            if row.archived {
+                Label("archived", systemImage: "archivebox").font(.caption).foregroundStyle(.tertiary).fixedSize()
+            }
+            // Remote Control (item 17), inverted: `ccc spawn` defaults it
+            // on, so the mark is for the live session that can *only* be
+            // answered at the Mac it runs on.
+            if row.lacksRemoteControl {
+                Image(systemName: "iphone.slash")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .help("No Remote Control: dispatched --no-rc, so this session can only be answered on \(row.host == Host.localName ? "this Mac" : row.host), not from the Claude app")
+            }
+            // Launched with a permission mode that asks: it will stop at
+            // its first prompt. Drawn only when it is the payload, which
+            // excludes `default` and no mode at all: a missing flag never
+            // meant the harness default, and `respawnFlags` writes a typed
+            // `auto` as `default` on haiku, so neither is evidence.
+            if row.session.kind == .background, row.job?.asksForPermission == true {
+                Image(systemName: "questionmark.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .help("Launched --permission-mode \(row.job?.permissionMode ?? "?"): permission prompts block it until answered here or in the Claude app; `ccc spawn` defaults to auto")
+            }
+            // The worktree (v6): the branch — by the name its folder has,
+            // without the harness's `worktree-` — with what it holds over
+            // its base and, in orange since it blocks a fast-forward, what
+            // the base holds over it.
+            if let wt = row.worktree {
+                HStack(spacing: 3) {
+                    Text("⎇ \(wt.shortBranch)").foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.tail)
+                    if arrows {
+                        if wt.ahead > 0 { Text("↑\(wt.ahead)").foregroundStyle(.primary) }
+                        if wt.behind > 0 { Text("↓\(wt.behind)").foregroundStyle(.orange) }
+                        // ⇡ what origin does not have (slice 2): the
+                        // harness keeps such a worktree on delete.
+                        if let up = wt.unpushed, up > 0 { Text("⇡\(up)").foregroundStyle(.secondary) }
+                        // ⇣ what origin has that this branch does not
+                        // (slice 7): another Mac pushed to it.
+                        if let down = wt.unpulled, down > 0 { Text("⇣\(down)").foregroundStyle(.secondary) }
+                    }
+                }
+                .font(.caption.monospaced())
+                .help("\(wt.branch) → \(wt.base): \(wt.standing)")
+            }
+            Spacer(minLength: 8)
+            if showsFolder {
+                HStack(spacing: 3) {
+                    if let folder { Text(folder).foregroundStyle(.tertiary).lineLimit(1) }
+                    // The base itself unpushed or behind: the other Mac
+                    // cannot see what was just fast-forwarded here.
+                    if let mark = row.worktree?.baseMark { Text(mark).foregroundStyle(.orange).help(row.worktree!.standing) }
+                }
+                .font(.caption.monospaced())
+            }
+        }
+    }
 
     private var color: Color { Color(tone: row.tone) }
 

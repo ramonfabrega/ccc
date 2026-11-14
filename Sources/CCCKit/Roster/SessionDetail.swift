@@ -126,12 +126,11 @@ public struct SessionDetail: Codable, Sendable, Equatable {
             facts.append(Fact(label: "moved", value: Stamp.text(moved, now: now, calendar: calendar),
                               full: iso.string(from: moved)))
         }
+        if row.lacksRemoteControl {
+            facts.append(Fact(label: "answer", value: "only on \(row.host == Host.localName ? "this Mac" : row.host)",
+                              note: "dispatched without Remote Control"))
+        }
         if session.kind == .background, let job = row.job {
-            let live = session.state == .working || session.state == .blocked
-            if live, !job.remoteControl {
-                facts.append(Fact(label: "answer", value: "only on \(row.host == Host.localName ? "this Mac" : row.host)",
-                                  note: "dispatched without Remote Control"))
-            }
             if job.asksForPermission {
                 facts.append(Fact(label: "asks", value: "--permission-mode \(job.permissionMode ?? "?")",
                                   note: "permission prompts block it until answered"))
@@ -199,6 +198,42 @@ extension SessionRow {
         }
     }
 
+    /// The state as the roster row says it, which is only where the dot
+    /// does not: green is working and orange is asking, so those say
+    /// nothing; grey is both done and stopped, so those say which; a
+    /// draft says what it is waiting for. Measured 2026-11-13: the full
+    /// `stateText` repeated the dot's colour on 13 rows of 13.
+    public var stateWord: String? {
+        if draft { return stateText }
+        switch session.state {
+        case .working: return nil
+        // Asking, and the question is on the row. A blocked row with
+        // nothing to show for it still has to say so.
+        case .blocked: return say == nil && session.waitingFor == nil ? "blocked" : nil
+        case .done, .failed, .stopped: return session.state?.rawValue
+        case nil: return session.kind.rawValue
+        }
+    }
+
+    /// A live session that can only be answered at the Mac it runs on.
+    /// `ccc spawn` defaults Remote Control on, so this — its absence — is
+    /// the news, and the one definition the row's mark and the reading
+    /// pane's `answer` line both read.
+    public var lacksRemoteControl: Bool {
+        guard session.kind == .background, let job else { return false }
+        return (session.state == .working || session.state == .blocked) && !job.remoteControl
+    }
+
+    /// The folder in one word: the repository's own name (a worktree row
+    /// names its repository, not the worktree), or `~`. The path differs
+    /// from row to row only in this word — 8 of 13 rows shared the rest —
+    /// and the whole of it is the tooltip's.
+    public func folderName(shortCwd: (String) -> String = { $0 }) -> String {
+        let path = shortCwd(worktree?.repo ?? session.cwd)
+        let name = (path as NSString).lastPathComponent
+        return name.isEmpty ? path : name
+    }
+
     /// The row's second line: the harness's state and status, or — for a
     /// draft (v5), never prompted and waiting for you to start it — not the
     /// "blocked · idle" of a session with a question.
@@ -235,6 +270,14 @@ public enum Stamp {
 }
 
 extension WorktreeInfo {
+    /// The branch without the harness's `worktree-`, which is the name
+    /// its folder has. The prefix led 8 of 9 branches on the roster and
+    /// was the part a narrow row kept: `wor…t-4204`.
+    public var shortBranch: String {
+        let prefix = "worktree-"
+        return branch.hasPrefix(prefix) && branch.count > prefix.count ? String(branch.dropFirst(prefix.count)) : branch
+    }
+
     /// "3 ahead, 1 unpushed", "3 ahead, 2 behind (master moved)", "level
     /// with master; master has 2 unpushed" — the submenu's last line and
     /// the row's tooltip.

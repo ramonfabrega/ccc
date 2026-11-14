@@ -6761,3 +6761,31 @@ ccc stats   → window  attached 0s · reading 5s (100%) · 1 row read
 **Still owed**: the `window` line after a few days of real use — it is
 the rate that says whether the empty pane is worth a general view — and
 the page judged from the screen rather than from `peek`.
+
+## the roster row, counted before it was cut (2026-11-13)
+
+Ramon, with a screenshot of v0.1.48 at a 370 pt roster: *"feels a bit
+cluttered in text, and doesnt quite adapt to shorter widths"* — the
+branch read `wor…t-4204`, the folder `…fun/attrition`. What each piece
+of a row said, on the 13 rows of `ccc list --json` that minute:
+
+```
+state words (`working · busy`, `done · idle`, …)   repeat the dot's colour on 13 of 13
+`worktree-` leading the branch                      8 of 9 branches; it is what the ellipsis kept
+folder path                                         7 distinct among 13; 8 rows share one, differing in the last word
+phone icon (Remote Control on)                      9 of 13 — the 4 without are the news (`ccc list --help`)
+the sentence, over 60 characters                    7 of 13 (median 64, max 253)
+```
+
+So line two says a state only where the dot does not (`stateWord`), the
+branch drops the prefix (`shortBranch`), the folder is the repository's
+name (`folderName`), and the mark is for the live row *without* Remote
+Control (`lacksRemoteControl`). It is the widest of three arrangements
+that fits: the folder goes first, then the arrows. `ccc peek` on a
+private instance at `ccc window split 320 | 420 | 620`: no ellipsis on
+line two at any of them, and at 620 the sentences run on.
+
+**A prototype on the branch, in no cut**: Ramon has seen pictures, not
+said yes. It is also the row a full-width roster would need (his idea for
+the pane with nothing attached: the list, widened, instead of a second
+surface), which is not built. 656 tests, the same two red.

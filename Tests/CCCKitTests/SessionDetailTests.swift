@@ -152,6 +152,48 @@ import Testing
         #expect(row(state: .working, status: .busy).stateText == "working · busy")
     }
 
+    /// The roster row's second line (2026-11-13) says a state only where
+    /// the dot does not: the words repeated its colour on 13 rows of 13.
+    @Test func theRowSaysAStateOnlyWhereTheDotDoesNot() {
+        #expect(row(state: .working, status: .busy).stateWord == nil)
+        #expect(row(state: .blocked, job: JobInfo(needs: "Merge?")).stateWord == nil)
+        #expect(row(state: .blocked, waitingFor: "input needed").stateWord == nil)
+        // Asking, with nothing on the row to show for it: say so.
+        #expect(row(state: .blocked).stateWord == "blocked")
+        #expect(row(state: .done, status: .idle).stateWord == "done")
+        #expect(row(state: .stopped, pid: nil).stateWord == "stopped")
+        #expect(row(state: .failed).stateWord == "failed")
+        #expect(row(state: .blocked, draft: true).stateWord == "draft · send a prompt to start")
+        #expect(row(state: nil, kind: .interactive).stateWord == "interactive")
+    }
+
+    /// One definition for the row's mark and the pane's `answer` line.
+    @Test func lackingRemoteControlIsNewsOnlyOnALiveBackgroundSession() {
+        #expect(row(state: .working, job: JobInfo(detail: "x", remoteControl: false)).lacksRemoteControl)
+        #expect(row(state: .blocked, job: JobInfo(needs: "x", remoteControl: false)).lacksRemoteControl)
+        #expect(!row(state: .working, job: JobInfo(detail: "x", remoteControl: true)).lacksRemoteControl)
+        #expect(!row(state: .done, job: JobInfo(result: "x", remoteControl: false)).lacksRemoteControl)
+        // No job file read is "I don't know", not "no".
+        #expect(!row(state: .working).lacksRemoteControl)
+        #expect(!row(state: nil, kind: .interactive, job: JobInfo(detail: "x")).lacksRemoteControl)
+    }
+
+    /// The row's folder is one word and its branch drops the harness's
+    /// prefix: at 370 pt the old row read `wor…t-4204` and `…fun/attrition`.
+    @Test func theRowNamesItsFolderAndBranchInAWordEach() {
+        let short = { (path: String) in path.replacingOccurrences(of: "/Users/x", with: "~") }
+        #expect(row().folderName(shortCwd: short) == "a")
+        let wt = WorktreeInfo(branch: "worktree-att-4204", base: "master", ahead: 0, behind: 0, repo: "/Users/x/code/fun/attrition")
+        #expect(row(worktree: wt).folderName(shortCwd: short) == "attrition")
+        #expect(wt.shortBranch == "att-4204")
+        #expect(WorktreeInfo(branch: "recorder", base: "master", ahead: 0, behind: 0, repo: "/r").shortBranch == "recorder")
+        // A branch that is only the prefix is left alone rather than emptied.
+        #expect(WorktreeInfo(branch: "worktree-", base: "master", ahead: 0, behind: 0, repo: "/r").shortBranch == "worktree-")
+        var home = row()
+        home.session.cwd = "/Users/x"
+        #expect(home.folderName(shortCwd: short) == "~")
+    }
+
     /// lore's ladder, inherited so the two apps say a moment the same
     /// way: the relative form lives one hour and no longer.
     @Test func stampsFollowTheLadder() {
