@@ -6675,3 +6675,23 @@ after   draw  p50 10.0  p75 11.6  p90  13.8  p95  15.4  max  22.3   over 16 ms: 
 
 Not touched: the 4 ms pacing, and the shared ssh master — the numbers
 did not ask for either. 634 tests, the same two red.
+
+## Cut as v0.1.47 (2026-11-13)
+
+The cursor fix and the type-ahead, cut on Ramon's word — *"make the cut
+after … we triage this"*. Build 286, tag on `f5f040e`, 5528440 bytes;
+`ota verify --feed ccc` → `ok: … version 286 length 5528440`, the GitHub
+Release carries the same zip, and studio runs it (`ccc 0.1.47 (286)`).
+No clear was armed and nothing was attached when the app restarted.
+
+The probe that found it, on the released bytes — words with a quarter
+second between them, local attach, the app's own pane:
+
+```
+v0.1.46  draw  p50 7.1  p75 14.6  p90 277.2  p95 279.4  max 284.0   over 16 ms: 15 of 64
+v0.1.47  draw  p50 5.9  p75  6.2  p90   6.3  p95   6.3  max   6.8   over 16 ms:  0 of 64
+```
+
+**Air's to say**: whether typing now feels like the ssh terminal, and
+whether a letter typed straight after a double-click lands in the
+session — the type-ahead has only its tests behind it.
