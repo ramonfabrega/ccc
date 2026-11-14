@@ -6695,3 +6695,48 @@ v0.1.47  draw  p50 5.9  p75  6.2  p90   6.3  p95   6.3  max   6.8   over 16 ms: 
 **Air's to say**: whether typing now feels like the ssh terminal, and
 whether a letter typed straight after a double-click lands in the
 session — the type-ahead has only its tests behind it.
+
+## the reading pane (2026-11-13)
+
+Ramon: *"when no screen is attached … we have a big black screen. what
+can we use this for"*. `ccc peek` of the installed v0.1.47 with nothing
+attached: roster 420 pt, pane 860×768 pt holding one sentence, while the
+row cut `storefront-open-work-triage`'s result at "…the storefront Linear
+b…". Decision and rejected alternatives: `docs/DESIGN.md` §11.
+
+Driven on a private instance (`CCC_CONTROL_SOCKET`, `CCC_ROSTER_OVERLAY`,
+`CCC_RESIDENT=1`, the dev build) and one owned fixture — a haiku draft in
+`~/cc-test`, `--no-rc`, removed after. The installed app was not touched.
+
+```
+ccc show                          → lane-4223 (the top row, selected with no click)
+ccc show storefront… --select     → roster highlight and pane both move; the result reads whole
+ccc attach <fixture>              → the session mounts over the page; selection follows it
+ccc show den --select; ccc detach → the pane is back on den, the row the selection was moved to
+```
+
+The ground. A peek of an attached pane, judged by `ccc pixel --at`:
+
+```
+before  gutter 424,400  #000000   expected #15191F, off by 31
+after   gutter 424,400  #15191F   grid 700,400  #15191F   reading pane 700,500  #15191F
+```
+
+The clock, with the private window on screen for those seconds only:
+
+```
+hidden                 (no window line)
+4 s on screen          window  attached 0s · reading 4s (100%) · 3 rows read
++3 s attached          window  attached 3s · reading 4s (57%) · 3 rows read
+hidden again, +3 s     window  attached 3s · reading 5s (60%) · 4 rows read     (and the same 2 s later)
+```
+
+653 tests, the same two red (`RosterPollerTests`' pair that need a real
+`ssh studio`; from this job it answers "Host key verification failed").
+
+**Not proved here.** `ccc capture` was refused (Screen Recording is off
+for this CLI version), so the page and the gutter are judged from `peek`
+and never from the screen. The roster taking the keyboard when the pane
+empties has no twin that types into the roster, so ↑↓ and ⏎ with no
+click first are by reading the code. No session was blocked during the
+run, so the suggested reply has its tests and has not been seen drawn.

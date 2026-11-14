@@ -13,6 +13,16 @@ final class RosterFocus: ObservableObject {
         target = ref
         requests += 1
     }
+
+    /// Select a row and leave the keyboard where it is: `ccc show <ref>
+    /// --select`, which must not take the pane's keys from someone typing.
+    @Published private(set) var selects = 0
+    private(set) var selectTarget: SessionRef?
+
+    func select(_ ref: SessionRef) {
+        selectTarget = ref
+        selects += 1
+    }
 }
 
 /// The roster: what `claude agents` shows, plus the model column and our
@@ -153,6 +163,31 @@ struct RosterView: View {
                 if let target = focus.target { selection = target }
                 focused = true
             }
+            .onChange(of: focus.selects) { _, _ in
+                if let target = focus.selectTarget { selection = target }
+            }
+            // The reading pane shows the selected row whenever nothing is
+            // attached, so "nothing selected" would be the black pane
+            // again. The roster keeps a row selected for as long as the
+            // pane is empty — the one just left, else the top one, which
+            // under the activity sort is whoever is waiting on you — and
+            // takes the keyboard, since no pane is there to want it: ↑↓
+            // read down the roster and ⏎ attaches, with no click first.
+            .onChange(of: rowRefs, initial: true) { _, _ in keepSelection() }
+            .onChange(of: poller.attachedRef) { old, new in
+                if let new {
+                    // The roster follows the pane: a `ccc attach`, a banner's
+                    // click and a link all move it, and the highlighted row
+                    // is never some other session than the one on screen.
+                    selection = new
+                } else {
+                    // The pane just left, and its view took the keyboard
+                    // with it. A row the user had moved to stays theirs.
+                    if selection == nil { selection = old }
+                    keepSelection()
+                    focused = true
+                }
+            }
             footer
         }
         .frame(minWidth: 320)
@@ -176,6 +211,21 @@ struct RosterView: View {
             .simultaneousGesture(TapGesture(count: 1).onEnded { selection = row.ref; focused = true })
             .simultaneousGesture(TapGesture(count: 2).onEnded { attach(row.ref) })
             .contextMenu { menu(for: row) }
+    }
+
+    private var rowRefs: [SessionRef] { sections.flatMap { $0.rows.map(\.ref) } }
+
+    private func keepSelection() {
+        guard poller.attachedRef == nil else { return }
+        let refs = rowRefs
+        if let selection, refs.contains(selection) {
+            // Already on a row; the keyboard is only claimed when the
+            // selection is being made for the user.
+            return
+        }
+        guard let first = refs.first else { return }
+        selection = first
+        focused = true
     }
 
     private var selectedRow: SessionRow? {
@@ -299,30 +349,6 @@ struct RosterView: View {
     }
 
     private func standing(_ wt: WorktreeInfo) -> String { wt.standing }
-}
-
-extension WorktreeInfo {
-    /// "3 ahead, 1 unpushed", "3 ahead, 2 behind (master moved)", "level
-    /// with master; master has 2 unpushed" — the submenu's last line and
-    /// the row's tooltip.
-    var standing: String {
-        var parts: [String] = []
-        if ahead == 0 && behind == 0 {
-            parts.append("level with \(base)")
-        } else {
-            if ahead > 0 { parts.append("\(ahead) ahead") }
-            if behind > 0 { parts.append("\(behind) behind (\(base) moved)") }
-            if ahead == 0 { parts.append("nothing to merge") }
-        }
-        if let up = unpushed, up > 0 { parts.append("\(up) unpushed") }
-        if let down = unpulled, down > 0 { parts.append("\(down) unpulled") }
-        var text = parts.joined(separator: ", ")
-        var theirs: [String] = []
-        if let up = baseUnpushed, up > 0 { theirs.append("\(up) unpushed") }
-        if let down = baseUnpulled, down > 0 { theirs.append("\(down) unpulled") }
-        if !theirs.isEmpty { text += "; \(base) has " + theirs.joined(separator: ", ") }
-        return text
-    }
 }
 
 extension RosterView {
@@ -580,32 +606,27 @@ struct RosterRow: View {
         .help("\(row.ref) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
     }
 
-    private var stateText: String {
-        // A draft (v5): never prompted, waiting for you to start it — not
-        // the orange "blocked · idle" of a session with a question.
-        if row.draft { return "draft · send a prompt to start" }
-        let s = row.session
-        var text = s.state?.rawValue ?? s.kind.rawValue
-        if let status = s.status { text += " · \(status.rawValue)" }
-        return text
-    }
+    private var stateText: String { row.stateText }
 
-    private var color: Color {
-        if row.draft { return .indigo }
-        switch row.session.state {
-        case .blocked: return .orange
-        case .working: return row.session.status == .busy ? .green : .mint
-        case .failed: return .red
-        case .done: return row.session.pid != nil ? .secondary : Color.secondary.opacity(0.5)
-        case .stopped: return Color.secondary.opacity(0.5)
-        case nil: return row.session.pid != nil ? .blue : .secondary
-        }
-    }
+    private var color: Color { Color(tone: row.tone) }
 
     private func shortModel(_ m: String) -> String { m.replacingOccurrences(of: "claude-", with: "") }
 }
 
-extension Session {
-    /// Interactive rows have no short id and cannot be attached (experiment 1).
-    var isAttachable: Bool { kind == .background }
+extension Color {
+    /// The row's tone as a colour — one mapping for the roster's dot and
+    /// state line and the reading pane's header.
+    init(tone: SessionRow.Tone) {
+        switch tone {
+        case .draft: self = .indigo
+        case .waiting: self = .orange
+        case .busy: self = .green
+        case .working: self = .mint
+        case .failed: self = .red
+        case .rested: self = .secondary
+        case .gone: self = Color.secondary.opacity(0.5)
+        case .live: self = .blue
+        case .unknown: self = .secondary
+        }
+    }
 }

@@ -8,6 +8,7 @@ import Foundation
 ///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
+///   ccc show [<ref>] [--select]       one session in full — the reading pane's twin
 ///   ccc spawn [--host <name>] [--cwd <dir>] [--from <ref>] [<prompt>… | -]   `claude --bg` on a host (v5) — the New Session sheet's twin
 ///
 /// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
@@ -101,6 +102,20 @@ enum CLI {
                     return Headless.run(ref: ref, cols: grid.cols, rows: grid.rows)
                 }
                 return try request(.attach(id: ref), json: json)
+            case "show":
+                var ref: SessionRef?
+                if let text = rest.first(where: { !$0.hasPrefix("--") }) {
+                    guard let parsed = SessionRef.parse(text) else {
+                        stderr("ccc: '\(text)' is not a session ref (id, or host:id)")
+                        return 2
+                    }
+                    ref = parsed
+                }
+                if rest.contains("--select"), ref == nil {
+                    stderr("ccc: --select needs a <ref> to select")
+                    return 2
+                }
+                return try await show(ref: ref, select: rest.contains("--select"), json: json)
             case "lore":
                 guard let text = rest.first(where: { !$0.hasPrefix("--") }) else { return usage() }
                 guard let ref = SessionRef.parse(text) else {
@@ -472,6 +487,80 @@ enum CLI {
             if !archived, hidden > 0 { print("(\(hidden) archived; --archived shows them)") }
         }
         return state.issues.isEmpty ? 0 : 3
+    }
+
+    /// `ccc show [<ref>] [--select]`: one session in full — the reading
+    /// pane's twin, drawn from the same `SessionDetail`.
+    ///
+    /// With a ref it is a pure read of the roster and needs no app, like
+    /// `ccc list`. With none it asks the window what it has selected,
+    /// which is what the reading pane is showing; `--select` moves that
+    /// selection first, so a script can put a row in front of the person
+    /// at the screen — and so `ccc peek` can be pointed at any row.
+    static func show(ref: SessionRef?, select: Bool, json: Bool) async throws -> Int32 {
+        let loaded = HostConfig.load()
+        for issue in loaded.issues { stderr("ccc: \(issue)") }
+        var target = ref
+        if ref == nil || select {
+            let response: ControlResponse
+            do {
+                response = try ControlClient().send(.show(select: select ? ref : nil))
+            } catch {
+                stderr("ccc: no ccc window to ask (\(error)); `ccc show <ref>` reads the roster without one")
+                return 1
+            }
+            switch response {
+            case .shown(let shown):
+                guard let selected = shown.selected else {
+                    stderr("ccc: no row is selected in the window; `ccc show <ref>` names one")
+                    return 1
+                }
+                target = selected
+                // The selection is only on screen while the pane is empty;
+                // say so rather than let the answer read as "this is what
+                // the window shows".
+                if let attached = shown.attached {
+                    stderr("ccc: the pane is attached to \(attached), so the window shows that session and not this page (`ccc snapshot` reads it)")
+                }
+            case .error("malformed request"):
+                // What a server that predates the request answers. Said
+                // as what it is: "malformed" sends the reader to their
+                // own command line, which is fine.
+                stderr("ccc: the ccc on the socket is older than this command and has no `show`; restart it (`ccc show <ref>` works without it)")
+                return 1
+            case .error(let message):
+                stderr("ccc: \(message)")
+                return 1
+            default:
+                stderr("ccc: unexpected answer to `show`")
+                return 1
+            }
+        }
+        guard let target else { return usage() }
+        let state: RosterPoller.State
+        if let served = rosterFromApp(host: nil, fresh: false) {
+            state = served
+        } else {
+            let poller = RosterPoller(hosts: loaded.config)
+            await poller.tick()
+            state = poller.state
+        }
+        let resolved: SessionRef
+        do {
+            resolved = try state.resolve(target)
+        } catch {
+            stderr("ccc: \(error)")
+            return 1
+        }
+        guard let row = state.rows.first(where: { $0.ref == resolved }) else {
+            stderr("ccc: \(RefLookupError.noSuchSession(target.description))")
+            return 1
+        }
+        let detail = SessionDetail(row: row, showsHost: state.rows.contains { $0.host != Host.localName }) {
+            loaded.config.shortCwd($0, host: row.host)
+        }
+        if json { printJSON(detail) } else { print(detail.text) }
+        return 0
     }
 
     /// The app's slots over the socket, narrowed to `host` when asked.
@@ -2006,6 +2095,8 @@ enum CLI {
             }
         case .stats(let stats):
             if json { printJSON(stats) } else { printStats(stats) }
+        case .shown(let shown):
+            if json { printJSON(shown) } else { print(shown.selected?.description ?? "(nothing selected)") }
         case .geometry(let geometry):
             if json { printJSON(geometry) } else {
                 // The state first when it is not the ordinary one: a frame
@@ -2224,6 +2315,7 @@ enum CLI {
             let warn = s.ptyBytesIn > 0 && frames == 0 ? "  ⚠ bytes arrived but nothing was presented — the pane is black on screen" : ""
             print("pane    \(frames) frames presented  last \(ago)\(warn)")
         }
+        if let line = s.pane?.line { print(line) }
     }
 
     static func printJSON(_ value: some Encodable) {

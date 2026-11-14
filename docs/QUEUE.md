@@ -22,8 +22,8 @@ is `ccc spawn`'s default with `--no-rc` to opt out.
 
 **The frontier is item 25, and it is now code waiting on a live count.**
 
-Two **questions, not items**. `suggestedReply` is on the row and shown
-nowhere; using it means answering without attaching (see "Later"). And
+Two **questions, not items**. The reading pane's next slice is built only if
+`ccc stats`' `window` line says reading is a real share (`docs/DESIGN.md` §11). And
 **the CLI could be a different language** — already a thin client over the
 socket, and a Bun `ccc` on incur would get `--llms` and `--schema` free —
 but the price is Bun on every ssh host: argue it before a second host.

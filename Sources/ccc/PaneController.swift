@@ -66,6 +66,14 @@ final class PaneController {
     var loginStatus: (@MainActor () -> String)?
     /// The notifier's state, when there is one (the window face).
     var notificationStats: (@MainActor () -> NotificationStats?)?
+    /// The roster's selection, when there is a window: given a ref it
+    /// selects that row first (`ccc show <ref> --select`), and either way
+    /// answers with what is selected now. `nil` headless — there is no
+    /// roster to have a selection.
+    var selectionProvider: (@MainActor (SessionRef?) -> SessionRef?)?
+    /// On-screen time attached against time on the reading pane; the
+    /// window keeps it, since only the window knows it is on screen.
+    var paneTimeStats: (@MainActor () -> PaneTimeStats?)?
     /// The window face's notifier taking a hook event (v3, slice 2);
     /// answers with what it did. `nil` headless.
     var hookSink: (@MainActor (HookEvent) -> String)?
@@ -1237,7 +1245,27 @@ final class PaneController {
             stats.wake = wakeStats
             stats.loginItem = loginStatus?()
             stats.switches = switchStats
+            stats.pane = paneTimeStats?()
             return .stats(stats)
+        case .show(let select):
+            guard let selectionProvider else { return .error("no window (headless), so no roster selection") }
+            var target: SessionRef?
+            if let select {
+                // The same resolution every verb gets: a name, a bare id
+                // another host answers. A ref the roster lacks is refused
+                // rather than leaving the window on a row that is not it.
+                do {
+                    let resolved = try poller.state.resolve(select)
+                    guard poller.state.rows.contains(where: { $0.ref == resolved }) else {
+                        return .error(RefLookupError.noSuchSession(select.description).description)
+                    }
+                    target = resolved
+                } catch {
+                    return .error("\(error)")
+                }
+            }
+            let attached = session?.isRunning == true ? session?.ref : nil
+            return .shown(ShownInfo(selected: selectionProvider(target), attached: attached))
         case .reconnect(let host):
             if let host, poller.poller(for: host) == nil {
                 return .error(AttachError.unknownHost(host, known: hosts.hosts.map(\.name)).description)

@@ -19,7 +19,7 @@ import Testing
     /// literal did.
     static let dispatched = [
         "hosts", "list", "archive", "unarchive", "pin", "unpin", "watch", "hook",
-        "spawn", "new", "spawns", "attach", "lore", "detach", "stop", "rm", "forget",
+        "spawn", "new", "spawns", "attach", "show", "lore", "detach", "stop", "rm", "forget",
         "base", "merge", "update", "fetch", "pull", "ff", "push", "shell", "clear",
         "snapshot", "send", "select", "copy", "links", "focus", "resize",
         "peek", "capture", "pixel", "geometry", "theme", "window", "login",
@@ -66,6 +66,22 @@ import Testing
                         "`ccc \(verb.name)` describes a --json answer its synopsis does not offer")
             }
         }
+    }
+
+    /// `show` is the reading pane's twin; its help has to say the three
+    /// things a caller cannot guess: that a ref needs no app, that no ref
+    /// means the window's selection, and that --select moves it.
+    @Test func showSaysWhatEachFormReads() throws {
+        let show = try #require(CommandManifest.verb(named: "show"))
+        let text = CommandManifest.help(for: show)
+        #expect(text.contains("show [<ref>] [--select] [--json]"))
+        #expect(text.contains("needs no app"))
+        #expect(text.contains("selected"))
+        #expect(text.contains("SessionDetail"))
+        #expect(show.twin?.contains("reading pane") == true)
+        let stats = try #require(CommandManifest.verb(named: "stats"))
+        #expect(CommandManifest.help(for: stats).contains("reading pane"))
+        #expect(stats.json?.contains("readingSeconds") == true)
     }
 
     /// `--repo` and `ff`, read by a test on the day they land rather than a

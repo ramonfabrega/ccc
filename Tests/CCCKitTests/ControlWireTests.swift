@@ -37,6 +37,43 @@ import Testing
         #expect(paste == nil)
     }
 
+    /// `ccc show` with no ref sends no `select` at all, and that must read
+    /// as "just tell me", not as a decode failure; with one, the ref
+    /// crosses whole, host and all.
+    @Test func showCarriesAnOptionalRowToSelect() throws {
+        guard case .show(let none) = try JSONDecoder().decode(ControlRequest.self, from: Data(#"{"show":{}}"#.utf8)) else {
+            Issue.record("not a show")
+            return
+        }
+        #expect(none == nil)
+        let ref = SessionRef(host: "studio", id: "a1b2c3d4")
+        guard case .show(let some) = try roundTrip(.show(select: ref)) else {
+            Issue.record("not a show")
+            return
+        }
+        #expect(some == ref)
+        let answer = ControlResponse.shown(ShownInfo(selected: ref, attached: nil))
+        guard case .shown(let shown) = try JSONDecoder().decode(ControlResponse.self, from: JSONEncoder().encode(answer)) else {
+            Issue.record("not a shown")
+            return
+        }
+        #expect(shown == ShownInfo(selected: ref, attached: nil))
+    }
+
+    /// An app that predates the pane clock sends no `pane` key; `ccc
+    /// stats` from a newer command must still decode the rest.
+    @Test func statsWithoutThePaneClockStillDecode() throws {
+        var stats = StatsInfo(pid: 1, footprintBytes: 2, childPID: nil, childFootprintBytes: nil, lastPollMs: nil,
+                              meanPollMs: nil, pollCount: 0, ptyBytesIn: 0, ptyBytesPerSecond: 0, uptimeSeconds: 3)
+        stats.pane = PaneTimeStats(attachedSeconds: 10, readingSeconds: 5, rowsRead: 2)
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(stats)) as? [String: Any])
+        #expect((object["pane"] as? [String: Any])?["rowsRead"] as? Int == 2)
+        object["pane"] = nil
+        let older = try JSONDecoder().decode(StatsInfo.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(older.pane == nil)
+        #expect(older.uptimeSeconds == 3)
+    }
+
     @Test func reconnectCarriesAnOptionalHost() throws {
         guard case .reconnect(let host) = try roundTrip(.reconnect(host: "studio")) else {
             Issue.record("not a reconnect")

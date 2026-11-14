@@ -119,6 +119,11 @@ public enum ControlRequest: Codable, Sendable {
     /// command on PATH is a symlink, and `Bundle.main` for a symlinked
     /// executable is the symlink's folder, not the bundle.
     case login(on: Bool? = nil)
+    /// The roster's selection — what the reading pane is showing when
+    /// nothing is attached (`ccc show`). With `select`, that row is
+    /// selected first, the way a click on it would, without taking the
+    /// keyboard from the pane. The answer is `.shown`.
+    case show(select: SessionRef? = nil)
 }
 
 public enum ControlResponse: Codable, Sendable {
@@ -129,6 +134,7 @@ public enum ControlResponse: Codable, Sendable {
     case stats(StatsInfo)
     case peek(png: Data)
     case geometry(WindowGeometry)
+    case shown(ShownInfo)
     case ok(String)
     case error(String)
 }
@@ -454,6 +460,18 @@ extension JSONDecoder {
     }
 }
 
+/// What the window is showing, as `ccc show` asks it: the roster's
+/// selected row, and the session in the pane when there is one. The
+/// reading pane draws `selected` exactly while `attached` is nil.
+public struct ShownInfo: Codable, Sendable, Equatable {
+    public var selected: SessionRef?
+    public var attached: SessionRef?
+    public init(selected: SessionRef?, attached: SessionRef?) {
+        self.selected = selected
+        self.attached = attached
+    }
+}
+
 /// One URL on the pane's grid, as `ccc links` reports it. `row` and `col`
 /// are where the ⌘-click would have to land to open the same link.
 public struct LinkInfo: Codable, Sendable, Equatable {
@@ -630,6 +648,9 @@ public struct StatsInfo: Codable, Sendable {
     /// Each keystroke on the attached pane, in three parts. `nil` with
     /// nothing attached or from an older server.
     public var typing: TypingStats?
+    /// On-screen time with a session in the pane against time on the
+    /// reading pane (`PaneClock`). `nil` headless or from an older server.
+    public var pane: PaneTimeStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,

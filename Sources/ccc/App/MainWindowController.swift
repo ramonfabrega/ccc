@@ -10,6 +10,9 @@ import SwiftUI
 /// about, and the one condition about this window (another ccc holds the
 /// socket) is the pane's empty state. Nothing ever resizes the pane for a
 /// sentence: a pane resize is a PTY resize, and the TUI reflows.
+///
+/// With nothing attached the pane is the **reading pane** (`ReadingPane`):
+/// the roster's selected row in full, where one sentence used to be.
 @MainActor
 final class MainWindowController: NSWindowController {
     let controller: PaneController
@@ -19,10 +22,14 @@ final class MainWindowController: NSWindowController {
     private let paneSplit = NSSplitView()
     private let paneContainer = NSView()
     private let shellContainer = NSView()
-    private let placeholder = NSTextField(wrappingLabelWithString: "")
+    /// The pane with nothing attached: the reading pane, under whatever
+    /// session mounts over it. Built in `build()`, which has the poller.
+    private var placeholder = NSView()
+    private let reading = ReadingPaneModel()
     private let hud = NoticeHUD()
-    /// The pane's empty state carries the one condition about this window.
-    private var socketNote: String?
+    /// On-screen time attached against time on the reading pane, for
+    /// `ccc stats` — the rate the reading pane was built without.
+    private var clock = PaneClock()
 
     init(controller: PaneController) {
         self.controller = controller
@@ -66,6 +73,37 @@ final class MainWindowController: NSWindowController {
         controller.onShellEnded = { [weak self] in self?.unmountShell() }
         controller.defaultSize = gridSize()
         observeKeyWindow(window)
+        observeOcclusion(window)
+    }
+
+    /// Whether anyone can see the pane, for `PaneClock`: a window that is
+    /// closed, minimized or fully covered is showing nothing to nobody.
+    private func observeOcclusion(_ window: NSWindow) {
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
+                                               object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.noteVisibility() }
+        }
+        noteVisibility()
+    }
+
+    private func noteVisibility() {
+        guard let window else { return }
+        clock.set(visible: window.isVisible && window.occlusionState.contains(.visible))
+        clock.read(currentSelection)
+    }
+
+    /// `ccc stats`' pane line.
+    func paneTime() -> PaneTimeStats { clock.stats() }
+
+    /// The roster's selection, for `ccc show`: with a ref, that row is
+    /// selected first — the roster's highlight and the reading pane both
+    /// move — and the keyboard stays where it was.
+    func selection(selecting ref: SessionRef?) -> SessionRef? {
+        if let ref {
+            rosterFocus.select(ref)
+            currentSelection = ref
+        }
+        return currentSelection
     }
 
     /// DEC 1004 focus reporting (item 17 slice 2), from AppKit to the
@@ -117,8 +155,23 @@ final class MainWindowController: NSWindowController {
     /// Points between the pane's edges and the grid, the way every terminal
     /// leaves a gutter (Ghostty's `window-padding-x/y`): without it the
     /// first column touched the split divider and the cursor's left edge
-    /// was the window's. The container paints the gutter black.
+    /// was the window's. The container paints the gutter in the theme's
+    /// ground (`paneGround`).
     private static let paneInset = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+
+    /// What the pane's rectangle is painted before anything is in it: the
+    /// terminal theme's default background, in the Metal layer's own
+    /// colour space. It was black, from before the pane had a theme, and
+    /// the theme's ground is `#15191F` — so every attached session sat in
+    /// an 8-point black frame, and the reading pane would have been a
+    /// black page that turned slate on attach. One colour for the gutter,
+    /// the reading pane and the grid means an attach changes the content
+    /// and nothing else.
+    static let paneGround: NSColor = {
+        let ground = Theme.active.background
+        return NSColor(srgbRed: CGFloat(ground.r) / 255, green: CGFloat(ground.g) / 255,
+                       blue: CGFloat(ground.b) / 255, alpha: 1)
+    }()
 
     private func build() {
         guard let window, let content = window.contentView else { return }
@@ -193,24 +246,22 @@ final class MainWindowController: NSWindowController {
         root.distribution = .fill
 
         paneContainer.wantsLayer = true
-        paneContainer.layer?.backgroundColor = NSColor.black.cgColor
-        placeholder.textColor = .secondaryLabelColor
-        placeholder.alignment = .center
-        placeholder.translatesAutoresizingMaskIntoConstraints = false
-        refreshPlaceholder()
+        paneContainer.layer?.backgroundColor = Self.paneGround.cgColor
+        let readingPane = NSHostingView(rootView: ReadingPane(poller: controller.poller, hosts: controller.hosts,
+                                                              model: reading))
+        // The pane's size is the split view's to decide, never the prose's.
+        readingPane.sizingOptions = []
+        readingPane.frame = paneContainer.bounds
+        readingPane.autoresizingMask = [.width, .height]
+        placeholder = readingPane
         paneContainer.addSubview(placeholder)
-        NSLayoutConstraint.activate([
-            placeholder.centerXAnchor.constraint(equalTo: paneContainer.centerXAnchor),
-            placeholder.centerYAnchor.constraint(equalTo: paneContainer.centerYAnchor),
-            placeholder.widthAnchor.constraint(lessThanOrEqualTo: paneContainer.widthAnchor, multiplier: 0.7),
-        ])
         hud.install(in: paneContainer)
         // The session pane over the shell pane; the shell's box stays
         // hidden (collapsed by the split view) until a shell opens.
         paneSplit.isVertical = false
         paneSplit.dividerStyle = .thin
         shellContainer.wantsLayer = true
-        shellContainer.layer?.backgroundColor = NSColor.black.cgColor
+        shellContainer.layer?.backgroundColor = Self.paneGround.cgColor
         shellContainer.isHidden = true
         paneSplit.addArrangedSubview(paneContainer)
         paneSplit.addArrangedSubview(shellContainer)
@@ -249,16 +300,7 @@ final class MainWindowController: NSWindowController {
     /// command line talks to it, this window still attaches. Said where it
     /// is true — the pane's empty state — for as long as it is.
     func noteSocketHeld(_ message: String) {
-        socketNote = message
-        refreshPlaceholder()
-    }
-
-    private func refreshPlaceholder() {
-        var text = "Select a session and press ⏎ to attach"
-        if let socketNote {
-            text = "Another ccc holds the control socket — the command line talks to it; this window still attaches.\n(\(socketNote))\n\n" + text
-        }
-        placeholder.stringValue = text
+        reading.socketNote = message
     }
 
     // MARK: pane
@@ -284,6 +326,7 @@ final class MainWindowController: NSWindowController {
             old.removeFromSuperview()
         }
         placeholder.isHidden = true
+        clock.set(attached: true)
         place(session, in: paneContainer)
         hud.keepOnTop()
         window?.makeFirstResponder(view)
@@ -356,6 +399,8 @@ final class MainWindowController: NSWindowController {
     private func unmount() {
         for view in paneContainer.subviews where view !== placeholder && view !== hud { view.removeFromSuperview() }
         placeholder.isHidden = false
+        clock.set(attached: false)
+        clock.read(currentSelection)
         window?.title = BuildInfo.current.appTitle
     }
 
@@ -678,8 +723,14 @@ final class MainWindowController: NSWindowController {
         if !controller.closeShell() { showNotice("no shell pane is open", kind: .problem) }
     }
 
-    /// The roster's selection, for ⌘T when nothing is attached.
-    private var currentSelection: SessionRef?
+    /// The roster's selection: what the reading pane shows, and ⌘T's
+    /// target when nothing is attached.
+    private var currentSelection: SessionRef? {
+        didSet {
+            reading.selection = currentSelection
+            clock.read(currentSelection)
+        }
+    }
 
     // MARK: keyboard between the roster and the pane (v7 slice 1)
 

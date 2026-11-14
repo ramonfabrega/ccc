@@ -550,6 +550,48 @@ other's half. Each links to the other for the thing the other owns.
   moment it happens — and the daemon records no parent. `ccc spawns` is
   its read. Requested model, never served; no line for a /clear.
 
+## 11. With nothing attached, the pane reads the roster (2026-11-13)
+
+The pane is two thirds of the window and said one sentence whenever no
+session was in it, beside a roster cutting every line to fit 400 points.
+Now it is the **reading pane**: the selected row in full, the way a mail
+client reads down an inbox. ↑↓ read, ⏎ opens. `ccc show [<ref>]` is the
+twin and `SessionDetail` the one definition both draw — a pure function
+of the roster row, so nothing new is asked of the harness.
+
+- **The first thing on it is the thing to act on**: the question
+  (`needs`), the result (`output.result`), the live line — whole, at
+  reading size. `suggestedReply` is drawn under a question and nowhere
+  else. It is still not *sent* from here; that is reply ("Later").
+- **Facts are listed by payload, not by availability.** Branch and its
+  standing, folder, started, moved, id; a host only when there is more
+  than one; `answer` only when a live session lacks Remote Control;
+  `asks` only when the permission mode prompts. One line each, never
+  wrapped, the full value in the tooltip. Ramon's standing complaint
+  about other screens is "so much text it loses meaning" (relayed by
+  lore), and a pane with room for everything is how that happens.
+- **`detail` beside a `needs` or a `result` is not drawn.** It was, for
+  one build, and read as the same sentence twice.
+- **Times use lore's ladder** (`Stamp`): `now`, `12m ago`, `17:45`,
+  `yest`, `2 sep`. The relative form lives one hour.
+- **A row is always selected while the pane is empty** — the one just
+  left, else the top one — and the roster takes the keyboard. The
+  roster's selection follows an attach, so the highlighted row is never
+  a different session from the one on screen.
+- **The pane's ground is the theme's**, not black: gutter, reading pane
+  and grid are one colour, so an attach changes the content and nothing
+  else. The gutter was black from before the pane had a theme.
+
+Rejected: **live thumbnails of every session** — each is a viewer on a
+shared PTY where the last resize wins (§4c), so the grid would reflow
+for everyone, phone included. **A usage or limits board** — lore's
+(§10). **Attach on select** — a selection must stay free; an attach
+resizes a session someone else may be watching.
+
+Open, and measured rather than argued: whether the pane is empty often
+enough to build further into (the transcript's last message, the spawn
+sheet inline). `ccc stats`' `window` line is the rate.
+
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 
 - "The daemon's surface is stable." It is `proto: 1`, undocumented past

@@ -41,6 +41,8 @@ enum App {
         controller.peekProvider = { [weak window] in window?.peek() }
         controller.geometryProvider = { [weak window] in window?.geometry() }
         controller.windowAction = { [weak window] action in window?.windowAction(action) ?? false }
+        controller.selectionProvider = { [weak window] ref in window?.selection(selecting: ref) }
+        controller.paneTimeStats = { [weak window] in window?.paneTime() }
         // `ccc hosts add|remove` from a shell edits hosts.json; the running
         // app picks it up on the next tick and says so, so a new Mac never
         // needs a relaunch to appear in the roster.
