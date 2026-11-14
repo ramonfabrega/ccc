@@ -265,14 +265,17 @@ extension ClaudeCLI {
         case notBackground(String)
         case dirty(String)
         case noRemoteCCC(String)
-        case nothingToFireIt(String)
+        /// The socket, and — when the CLI tried to start the app — why
+        /// that did not work.
+        case nothingToFireIt(String, String?)
         public var description: String {
             switch self {
             case .notBackground(let id): return "\(id) is an interactive session; ccc has no pane on it to type into"
             case .dirty(let reason): return reason
             case .noRemoteCCC(let host): return "a clear is armed where the session lives, and \(host) has no ccc for it (`ccc hosts add \(host)` finds one)"
-            case .nothingToFireIt(let path):
-                return "nothing would fire it: no ccc is serving \(path) — open ccc.app or run `ccc attach <ref> --headless` there, then arm it again"
+            case .nothingToFireIt(let path, let wake):
+                let tried = wake.map { " (\($0))" } ?? ""
+                return "nothing would fire it: no ccc is serving \(path)\(tried) — open ccc.app or run `ccc attach <ref> --headless` there, then arm it again"
             }
         }
     }
@@ -301,13 +304,20 @@ extension ClaudeCLI {
     /// fires it is over there).
     public func clear(id: String, then: String? = nil, cancel: Bool = false,
                       overlayPath: String = RosterOverlay.defaultPath,
-                      serving: @Sendable () -> Bool = { ControlClient().isReachable() }) async throws -> ClearOutcome {
-        try await clear(id: id, then: then, action: cancel ? .cancel : .arm, overlayPath: overlayPath, serving: serving)
+                      serving: @Sendable () -> Bool = { ControlClient().isReachable() },
+                      wake: (@Sendable () async -> AppWake.Refusal?)? = nil) async throws -> ClearOutcome {
+        try await clear(id: id, then: then, action: cancel ? .cancel : .arm, overlayPath: overlayPath,
+                        serving: serving, wake: wake)
     }
 
+    /// `wake` is what an arm does when nothing is serving: bring a ccc up
+    /// and answer `nil`, or say why it could not. It defaults to **none**
+    /// — the library never starts an app on its own; the CLI passes
+    /// `AppWake.wake` and a test passes a closure.
     public func clear(id: String, then: String? = nil, action: ClearAction,
                       overlayPath: String = RosterOverlay.defaultPath,
                       serving: @Sendable () -> Bool = { ControlClient().isReachable() },
+                      wake: (@Sendable () async -> AppWake.Refusal?)? = nil,
                       job: @Sendable (String) -> JobInfo? = { JobProbe().info(forJob: $0) }) async throws -> ClearOutcome {
         let cancel = action == .cancel
         guard host.isLocal else {
@@ -395,8 +405,17 @@ extension ClaudeCLI {
         // both of which serve the control socket. When neither is up the
         // mark would sit in the file until it was pruned, and the caller
         // (a session arming a clear on itself) would never learn that.
-        // `armed: true` has to mean it can fire.
-        guard serving() else { throw ClearError.nothingToFireIt(ControlSocket.defaultPath) }
+        // `armed: true` has to mean it can fire. So when nothing is up
+        // the arm starts the app rather than report its absence to a
+        // caller that cannot open one (`AppWake`), and refuses only when
+        // that did not work — with the reason, which is the part a
+        // session can act on.
+        if !serving() {
+            guard let wake else { throw ClearError.nothingToFireIt(ControlSocket.defaultPath, nil) }
+            if let refusal = await wake() {
+                throw ClearError.nothingToFireIt(ControlSocket.defaultPath, "\(refusal)")
+            }
+        }
         if let reason = ClearGuard.refusal(cwd: row.cwd) { throw ClearError.dirty(reason) }
 
         let pending = PendingClear(then: then)

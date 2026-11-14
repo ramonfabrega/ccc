@@ -15,6 +15,34 @@ import Testing
 
     private let left = NamedKey("left")!
 
+    /// `DrawnWatch`: drawn and still for `needed` reads in a row. A wake
+    /// line never settles however still it is, a change restarts the
+    /// count, and one matching pair is the default the typing paths use.
+    @Test func aDrawnGridSettlesAfterItsReadsAndAWakeLineNeverDoes() {
+        let waking = grid(["Waking session a1b2…", "", "", ""], cursor: (0, 1))
+        let half = grid(["╭────╮", "│ hi │", "", ""], cursor: (0, 2))
+        let full = grid(["╭────╮", "│ hi │", "╰────╯", "❯ "], cursor: (2, 3))
+
+        // Read into an array first: `#expect` cannot hold a mutating call.
+        var one = DrawnWatch()
+        let single = [waking, waking, full, full].map { one.settled($0) }
+        // A wake line is still and is not a screen; the first read of a
+        // drawn grid has nothing to match; the second settles.
+        #expect(single == [false, false, false, true])
+
+        var two = DrawnWatch(needed: 2)
+        let double = [half, half, full, full, full].map { two.settled($0) }
+        // One match is not enough, and a change restarts the count.
+        #expect(double == [false, false, false, false, true])
+    }
+
+    @Test func aSwitchIsTimedAsARunningMean() {
+        var stats = SwitchStats()
+        stats.record(400)
+        stats.record(300)
+        #expect(stats == SwitchStats(count: 2, lastMs: 300, meanMs: 350))
+    }
+
     @Test func emptyPromptIsTheGesture() {
         // What 2.1.259 actually draws: the glyph, then U+00A0.
         let g = grid(["──────── polish ─", "❯\u{00A0}", "────────"], cursor: (2, 1))

@@ -360,6 +360,17 @@ enum CLI {
                 let words = rest.filter { !$0.hasPrefix("--") }
                 guard let action = WindowAction(words.joined(separator: " ")) else { return usage() }
                 return try request(.window(action: action.text), json: json)
+            case "login":
+                // `ccc login` reads, `ccc login on|off` sets — the app
+                // menu's Launch at Login, over the socket because the
+                // registration is the app's.
+                let words = rest.filter { !$0.hasPrefix("--") }
+                switch words.first {
+                case nil: return try request(.login(), json: json)
+                case "on": return try request(.login(on: true), json: json)
+                case "off": return try request(.login(on: false), json: json)
+                default: return usage()
+                }
             case "focus":
                 // `ccc focus` reads, `ccc focus in|out` asserts. The verb
                 // exists because the state it drives is invisible here and
@@ -519,7 +530,15 @@ enum CLI {
         }
         let outcome: ClaudeCLI.ClearOutcome
         do {
-            outcome = try await cli.clear(id: ref.id, then: then, action: action)
+            // Local arms wake the app when nothing is serving; a remote
+            // arm is this same verb on the far side, which wakes its own.
+            outcome = try await cli.clear(id: ref.id, then: then, action: action, wake: {
+                let refusal = await AppWake.wake()
+                if refusal == nil {
+                    FileHandle.standardError.write(Data("ccc: no ccc was serving, so ccc.app was started (window closed) to fire it\n".utf8))
+                }
+                return refusal
+            })
         } catch {
             stderr("ccc: \(error)")
             return 1
@@ -2150,6 +2169,7 @@ enum CLI {
                 print("hook events    \(hooks)\(dropped)\(last)")
             }
         }
+        if let login = s.loginItem { print("login item     \(login)") }
         if let f = s.fetch {
             // The launch-and-wake fetch (v6 slice 7), measured: a timer
             // has to earn its place against these numbers.
@@ -2176,6 +2196,11 @@ enum CLI {
             let gave = w.gaveUp > 0 ? "  gave up \(w.gaveUp)" : ""
             let last = w.last.map { "  last \"\($0)\"" } ?? ""
             print("wake    \(w.wakes) wakes\(withPane)  reattach attempts \(w.attempts)\(gave)\(last)\(quiet)")
+        }
+        if let sw = s.switches, sw.count > 0 {
+            // Click to mounted. The harness's own attach draws in ~250 ms;
+            // what is above that is ours.
+            print("switch  last \(ms(sw.lastMs))  mean \(ms(sw.meanMs))  n=\(sw.count)")
         }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames

@@ -42,6 +42,28 @@ import Foundation
 /// same. So `isUndrawn` takes the press as well: nothing typed at an
 /// unpainted TUI means anything, and the roster is where ← was going
 /// anyway.
+/// "The TUI is up and has stopped changing", as a run of reads: the grid
+/// is drawn (`LeaveGesture.isUndrawn` inverted) and `needed` reads in a
+/// row found it identical to the one before. The caller owns the clock;
+/// this owns the decision, so the decision is a test.
+public struct DrawnWatch {
+    public let needed: Int
+    private var previous: Grid?
+    private var unchanged = 0
+
+    public init(needed: Int = 1) { self.needed = max(1, needed) }
+
+    public mutating func settled(_ grid: Grid) -> Bool {
+        defer { previous = grid }
+        guard !LeaveGesture.isUndrawn(grid), previous == grid else {
+            unchanged = 0
+            return false
+        }
+        unchanged += 1
+        return unchanged >= needed
+    }
+}
+
 public enum LeaveGesture {
     /// The prompt glyphs the harness draws at column 0 of the input row.
     public static let prompts: Set<Character> = ["❯", ">", "!", "#"]

@@ -60,6 +60,10 @@ final class PaneController {
     var geometryProvider: (@MainActor () -> WindowGeometry?)?
     /// show / hide / close, when there is a window. Returns false if unknown.
     var windowAction: (@MainActor (String) -> Bool)?
+    /// Launch at login, read (`nil`) or set; answers with the sentence.
+    /// `nil` headless — the login item is the app's.
+    var loginItem: (@MainActor (Bool?) -> String)?
+    var loginStatus: (@MainActor () -> String)?
     /// The notifier's state, when there is one (the window face).
     var notificationStats: (@MainActor () -> NotificationStats?)?
     /// The window face's notifier taking a hook event (v3, slice 2);
@@ -134,6 +138,8 @@ final class PaneController {
     /// `wakes` with no `attempts` and no `gaveUp` says the guard never
     /// fired — a different bug from the one the window bounds.
     private(set) var wakeStats = WakeStats()
+    /// Click to mounted, per swap (`SwitchStats`).
+    private(set) var switchStats = SwitchStats()
     private var attemptsThisWake = 0
     /// The window face remembers what it was attached to across a relaunch
     /// (Sparkle's, or the user's) in UserDefaults; the headless face never
@@ -366,12 +372,24 @@ final class PaneController {
         // *showing*, read back through the seam rather than re-estimated.
         // A pane that paints at one size and is resized on mount reflows
         // the TUI in the exact frame the change is meant to be invisible.
+        let clock = ContinuousClock()
+        let clicked = clock.now
         let showing = outgoing.host.snapshot()
         let incoming = try viewer(for: ref,
                                   cols: cols ?? showing.cols, rows: rows ?? showing.rows)
         swapGeneration += 1
         let mine = swapGeneration
-        await Self.waitUntilDrawn(incoming)
+        // Read finely here, and only here. The default grain — a quarter
+        // second, two reads — is right for the callers that *type*, where
+        // an early answer puts bytes in the attach client. A swap only
+        // mounts, and an early mount costs nothing but showing the last
+        // few cells arrive; a late one is the whole wait, on every switch.
+        // Measured 2026-11-13: `claude attach` is drawn ~250 ms after
+        // exec and this returned at 540–810 (docs/EVIDENCE.md "the
+        // switch second").
+        let local = hosts.hosts.first { $0.name == ref.host }?.isLocal ?? false
+        await Self.waitUntilDrawn(incoming, grain: Self.swapGrain,
+                                  needed: local ? Self.swapReads : Self.swapReadsRemote)
         // A newer click during the wait wins: this viewer goes away
         // without ever having been seen, and the pane never moved.
         guard mine == swapGeneration else {
@@ -391,12 +409,24 @@ final class PaneController {
         outgoing.onLeaveGesture = nil
         let previous = outgoing.ref
         install(incoming)
+        let took = clock.now - clicked
+        switchStats.record(Double(took.components.seconds) * 1000 + Double(took.components.attoseconds) / 1e15)
         // Ctrl+Z, the harness's own detach, which keeps the session and
         // its draft. After the mount, so nothing waits on it to see the
         // new pane.
         await outgoing.detach()
         return "attached \(ref) (left \(previous))"
     }
+
+    /// The swap's read of "drawn": every 25 ms, and unchanged across two
+    /// reads in a row — 50 ms of stillness on a drawn grid.
+    static let swapGrain: Duration = .milliseconds(25)
+    static let swapReads = 2
+    /// Over a hop, twice the stillness: a paint split across a stalled
+    /// packet is the one way a swap could mount a screen with no prompt
+    /// row yet, and that is the ← hole (`swap`, point 2) for as long as
+    /// it lasts. Unmeasured over a real link — air's to say.
+    static let swapReadsRemote = 4
 
     /// Bumped by every swap, so a wait that finishes after a newer click
     /// knows it has been superseded.
@@ -803,15 +833,14 @@ final class PaneController {
     /// was delay typing; not harmless now that `swap` mounts on it — the
     /// swap would land on the wake message, which is the blank pane over
     /// again with a word on it.
-    private static func waitUntilDrawn(_ session: AttachSession, timeout: Duration = .seconds(8)) async {
+    private static func waitUntilDrawn(_ session: AttachSession, timeout: Duration = .seconds(8),
+                                       grain: Duration = .milliseconds(250), needed: Int = 1) async {
         let clock = ContinuousClock()
         let deadline = clock.now + timeout
-        var previous: Grid?
+        var watch = DrawnWatch(needed: needed)
         while clock.now < deadline, session.isRunning {
-            try? await Task.sleep(for: .milliseconds(250))
-            let grid = session.host.snapshot()
-            if !LeaveGesture.isUndrawn(grid), let previous, previous == grid { return }
-            previous = grid
+            try? await Task.sleep(for: grain)
+            if watch.settled(session.host.snapshot()) { return }
         }
     }
 
@@ -1152,6 +1181,9 @@ final class PaneController {
         case .window(let action):
             guard let windowAction else { return .error("no window (headless)") }
             return windowAction(action) ? .ok("window \(action)") : .error("unknown window action '\(action)' (\(WindowAction.usage))")
+        case .login(let on):
+            guard let loginItem else { return .error("the login item is ccc.app's, and this is a headless ccc") }
+            return .ok(loginItem(on))
         case .focus(let focused):
             // A read says what the window last reported; a write asserts
             // it and says whether the child was actually told. "not
@@ -1192,6 +1224,8 @@ final class PaneController {
             fetch.lastSecondsAgo = lastFetchAt.map { Date().timeIntervalSince($0) }
             stats.fetch = fetch
             stats.wake = wakeStats
+            stats.loginItem = loginStatus?()
+            stats.switches = switchStats
             return .stats(stats)
         case .reconnect(let host):
             if let host, poller.poller(for: host) == nil {

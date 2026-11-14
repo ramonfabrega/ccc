@@ -32,7 +32,7 @@ Below the frontier: **item 6 is air's** and happens the next time the lid
 closes overnight. Items 5 and 16 are leftovers with no forcing function;
 item 33 is an afternoon that knows its own ceiling. Item 4's measurement
 from air is still owed (`docs/EVIDENCE.md` "item 4 — the far side answers
-from the app").
+from the app"), and so are four readings from the next cut ("What the cut owes").
 
 ### 5. Small leftovers
 
@@ -140,6 +140,8 @@ mis-attributed both halves of a thread on 09-06. Proposed: a
 collision by the guard that exists. **The name grammar is the part only
 ccc can enforce.** A **role** is in no record — ccc cannot tell a lane
 from a successor seat; lore declined a caller-supplied word for now.
+**A worktree name is not a ref either**: `ccc update att-3960` answers "no
+session" where `lane-3960` works (attrition, 11-06) — a fourth name.
 
 ### 30. `Git.run` costs two threads and blocks on a semaphore
 

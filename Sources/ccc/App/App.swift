@@ -76,9 +76,20 @@ enum App {
             window?.showNotice(record.said, kind: .problem)
         }
         installStatusItem()
-        window.showWindow(nil)
-        NSApp.activate()
-        offerCommandLineTool()
+        // Launch at login, registered once (`LoginItem`); its twin is
+        // `ccc login`, and the app menu's item is the same call.
+        controller.loginItem = { on in on.map { LoginItem.set($0) } ?? "launch at login is \(LoginItem.status)" }
+        controller.loginStatus = { LoginItem.status }
+        if let said = LoginItem.offerOnce() { window.showNotice(said) }
+        // A wake from the CLI (`AppWake`) is nobody asking to look: the
+        // app comes up resident — status item, socket, poller — and the
+        // window waits for a click.
+        let resident = ProcessInfo.processInfo.environment[AppWake.residentKey] != nil
+        if !resident {
+            window.showWindow(nil)
+            NSApp.activate()
+            offerCommandLineTool()
+        }
         // A relaunch — Sparkle's, or ⌘Q and back — lands on the session the
         // window was in, the way the agents view keeps its focus. After the
         // first poll, so a session that ended meanwhile is not attached to.
@@ -89,7 +100,10 @@ enum App {
         for url in launchURLs { window.open(url) }
         Task { @MainActor [weak controller] in
             await controller?.poller.tick()
-            if launchURLs.isEmpty { controller?.reattachAfterRelaunch() }
+            // Not on a resident wake: reattaching is a second viewer on a
+            // session the user may be watching elsewhere, and the shared
+            // PTY is last-resize-wins.
+            if launchURLs.isEmpty, !resident { controller?.reattachAfterRelaunch() }
             // The launch fetch (v6 slice 7): every local worktree row's
             // repository, once, so the ⇣ marks are as of now rather than
             // as of whenever a shell last fetched. Measured in `ccc stats`.
@@ -220,6 +234,9 @@ enum App {
         // place for one item. The other way in is the New Session sheet's
         // host row — the moment it is actually wanted (queue item 3).
         appMenu.addItem(withTitle: "Add Mac…", action: #selector(MainWindowController.addHostAction(_:)), keyEquivalent: "")
+        let login = appMenu.addItem(withTitle: Self.loginMenuTitle, action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
+        login.target = self
+        appMenu.delegate = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide ccc", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit ccc", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -328,6 +345,12 @@ enum App {
     }
 
     static let muteMenuTitle = "Mute Notifications From"
+    static let loginMenuTitle = "Launch at Login"
+
+    /// The twin of `ccc login on|off`.
+    @objc private func toggleLoginItem(_ sender: NSMenuItem) {
+        window?.showNotice(LoginItem.set(!LoginItem.isOn))
+    }
 
     /// The twin of `ccc hosts mute|unmute <name>`: flips the mark in
     /// hosts.json. The notifier re-reads the file on its next tick.
@@ -364,6 +387,9 @@ extension AppDelegate: NSMenuDelegate {
         let sort = defaults.string(forKey: RosterPrefs.sortKey) ?? RosterSort.activity.rawValue
         for item in menu.items {
             if item.title == "Show Archived" { item.state = defaults.bool(forKey: RosterPrefs.archivedKey) ? .on : .off }
+            // Read from the system each time the menu opens: System
+            // Settings and `ccc login` can both have changed it.
+            if item.title == AppDelegate.loginMenuTitle { item.state = LoginItem.isOn ? .on : .off; continue }
             if item.title == AppDelegate.muteMenuTitle, let sub = item.submenu {
                 // Rebuilt from the file each time: one row per host, a
                 // checkmark on the muted ones (`ccc hosts list` says the same).

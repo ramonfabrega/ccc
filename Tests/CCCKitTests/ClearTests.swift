@@ -163,6 +163,57 @@ import Testing
         }
     }
 
+    /// The tempo words are one list: the clear window knows each of them,
+    /// says so when it meets one it does not, and `ccc list --help` prints
+    /// the same list for whoever keys on the field.
+    @Test func everyKnownTempoIsKnownToTheWindowAndPrinted() throws {
+        let row = Session(id: "a1b2", cwd: "/x", kind: .background, startedAt: Date(), state: .working, status: .idle)
+        #expect(JobInfo.knownTempos == ["idle", "active", "blocked"])
+        for word in JobInfo.knownTempos {
+            #expect(!ClearWindow.read(row, job: JobInfo(tempo: word)).why.contains("does not know"), "\(word)")
+        }
+        let unknown = ClearWindow.read(row, job: JobInfo(tempo: "napping"))
+        #expect(unknown == .init(.wait, "its job file reads tempo `napping`, a word this build does not know"))
+        let help = try #require(CommandManifest.verb(named: "list")).about.joined(separator: " ")
+        #expect(help.contains("idle | active | blocked"))
+        #expect(help.contains("treat every other word"))
+    }
+
+    /// With nothing serving, an arm that is given a way to start a ccc
+    /// uses it and arms; one whose wake fails refuses with the reason, and
+    /// still arms nothing.
+    @Test func anArmWakesACCCWhenNothingIsServing() async throws {
+        try await withTemp { dir in
+            let overlay = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            let woke = try await cli.clear(id: "probe", then: "carry on", overlayPath: overlay,
+                                           serving: { false }, wake: { nil })
+            #expect(woke.armed)
+            #expect(RosterOverlay.load(path: overlay).overlay.armedClears.map(\.id) == ["a1b2"])
+            _ = try await cli.clear(id: "probe", cancel: true, overlayPath: overlay, serving: { false })
+
+            var said = ""
+            do {
+                _ = try await cli.clear(id: "probe", overlayPath: overlay, serving: { false },
+                                        wake: { .openFailed("LSOpenURLsWithRole() failed with error -610") })
+            } catch { said = "\(error)" }
+            #expect(said.contains("nothing would fire it"))
+            #expect(said.contains("starting ccc.app failed: LSOpenURLsWithRole() failed with error -610"), "\(said)")
+            #expect(RosterOverlay.load(path: overlay).overlay.armedClears.isEmpty)
+        }
+    }
+
+    /// A ccc already serving is never woken.
+    @Test func anArmDoesNotWakeWhatIsAlreadyServing() async throws {
+        try await withTemp { dir in
+            let overlay = dir.appending(path: "roster.json").path
+            let cli = try stub(dir, cwd: dir.path)
+            let outcome = try await cli.clear(id: "probe", overlayPath: overlay, serving: { true },
+                                              wake: { .openFailed("the wake ran, and must not have") })
+            #expect(outcome.armed)
+        }
+    }
+
     /// The mark carries the uuid the row had when it was armed, and a
     /// clear mints a new one — so a pending clear never applies to the
     /// session on the other side of a clear.

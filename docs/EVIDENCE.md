@@ -6192,3 +6192,129 @@ edges before it are lore's transcript reading. That first line is a real
 one — this job did spawn that fixture — and it stays: the file is
 append-only. Still unrun against the harness, as before the cut: the
 worktree fields, a fork, `--replace`, a remote host, the sheet.
+
+## the resident app, the sRGB layer, the switch second (2026-11-13)
+
+Ramon, opening the session: he still reaches sessions through `ssh studio`
+and the agents view, because the window does not feel equal — *"colors
+seem slightly off … it also feels slower"* — and asked whether a full
+redo (GPUI) was the answer. It was not: each complaint had a cause in
+code, and lore's index added a fourth nobody had filed.
+
+**Asked of lore, answered the same hour.** Three frictions outside the
+queue, all attrition's: `ccc clear --then` refused whenever no ccc.app was
+serving (10-15, 11-12 — the steer row started a headless pane as a
+background task to get its handover through); a waiter that broke on the
+tempo word `active` the first release that carried it (11-08); `ccc update
+att-3960` answering "no session" for a worktree name (11-06, 11-07 —
+folded into QUEUE item 29). And one negative: transcripts cannot tell an
+agents-view entry from a ccc one, so there is no usage rate to read.
+
+### The app was not running because nothing starts it
+
+"Menubar-resident, launch at login" has been a locked decision since
+09-02. `grep -rn SMAppService Sources` at `245974b`: no matches. The
+login item was never built, so the app ran only while someone had opened
+it. Two halves now:
+
+- **`LoginItem`** registers `SMAppService.mainApp` once, on the first
+  launch of a build that knows how; after that the setting is the user's.
+  Twins: ccc ▸ Launch at Login, `ccc login [on|off]`, a `login item` line
+  in `ccc stats`. It crosses the socket because the command on PATH is a
+  symlink and `Bundle.main` for one is not the bundle.
+- **`AppWake`**: an arm that finds nothing serving runs `open -g --env
+  CCC_RESIDENT=1 <bundle>`, waits up to 15 s for the socket, and arms. The
+  app reads `CCC_RESIDENT` as "nobody asked to look": no window, no
+  activation, no reattach. A private `CCC_CONTROL_SOCKET` and a binary in
+  no bundle wake nothing and say why; a failed `open` carries its first
+  line into the refusal.
+
+Proved by tests only (`AppWakeTests`, `ClearTests.anArmWakesACCC…`):
+the live case needs the installed bundle with the app down, which is the
+cut's to show.
+
+### The colour check probed the one colour that cannot move
+
+"8b: there is no colour-management residual" compared `#15191F` in ccc
+and iTerm and found them bit-identical. Two things were wrong with the
+probe. Computed with CoreGraphics, sRGB → Display P3:
+
+```
+background  #15191F -> #16191E     claude orange #D97757 -> #CC7C5E
+ansi green  #00C200 -> #57BF38     ansi red      #B43C2A -> #A64532
+ansi blue   #2744C7 -> #2E43C0     fg            #DCDCDC -> #DCDCDC
+```
+
+A near-neutral dark value moves one unit between any two spaces that
+share a white point and a curve; a saturated one moves thirteen. And
+studio's screen answers `NSScreen.main.colorSpace` with `sRGB
+IEC61966-2.1` today, where the conversion is the identity for every
+colour — so on studio the unmanaged layer and a managed one cannot
+differ, whatever is probed. The check could not have failed.
+
+`MetalPaneView` now sets `colorspace` to sRGB on its layer
+(`RenderTests.thePaneDeclaresItsBytesSRGB`). On a P3 panel that is the
+difference between showing `#D97757`'s bytes as P3 — too strong — and
+showing the colour. **Unmeasured on any P3 panel**; that is air's.
+
+### The switch second was a quarter second of harness and a polling grain
+
+`claude attach` alone, under a PTY, exec → prompt glyph on the grid, two
+idle haiku fixtures alternating (`ccc-switch-a`, `ccc-switch-b`, 120×40):
+
+```
+first byte 209–296 ms · prompt 211–296 ms · settled 217–297 ms   (8 runs, no wake line)
+Ctrl+Z → process gone: 513–532 ms
+```
+
+So the harness draws in about 250 ms, and the 1022–1086 ms recorded for
+a swap (item 9) was that, plus `waitUntilDrawn`, plus a half-second
+detach the user never sees because the mount comes first. The wait was
+the cost: it slept 250 ms before its first read and needed two equal
+reads, so it could not return before 500 and usually returned near 800.
+
+`ccc stats` grew a `switch` line (`SwitchStats`: click to mounted), and
+a private headless ccc (`CCC_CONTROL_SOCKET`, `CCC_ROSTER_OVERLAY`) ran
+eight swaps per build:
+
+```
+before   810 804 802 1618 543 547 811 808 ms          median 806
+after    418 384 352  953 484 376 507 391 ms
+after    351 305 395  358 670 413 387 387 ms          median 389 of 16
+```
+
+The swap now reads every 25 ms and mounts on 50 ms of stillness on a
+drawn grid (100 ms for a remote ref: a paint split across a stalled
+packet is the one way to mount a screen with no prompt row, which is the
+← hole again). The callers that *type* keep the quarter second — an
+early answer there puts bytes in the attach client. `DrawnWatch` is the
+decision as a type, with its test. One swap in eight still runs long
+(670, 953) and the position moves between runs; not chased.
+
+**Warm attaches were not built.** The floor is now the harness's own
+250 ms. Removing it means hidden viewers held open — 65 MB each, a
+resize vote on a shared PTY (item 15), and a focus report the harness
+reads to decide whether to push to a phone. That is a design, and it
+wants the air reading first.
+
+### The tempo words are one list
+
+`job.tempo` in `ccc list --json` is the daemon's word passed through.
+`JobInfo.knownTempos` is now the one definition: `ClearWindow` knows
+each, `ccc list --help` prints them and says to treat every other word
+as not idle (`ClearTests.everyKnownTempoIsKnownToTheWindowAndPrinted`).
+
+### What the cut owes
+
+Studio is the control, never the measurement. On the released bytes:
+
+1. Studio, app quit: `ccc clear <fixture> --then hi` arms, stderr says
+   ccc.app was started, no window appears, the clear fires.
+2. Either Mac: `ccc login` reads `launch at login is on` after first launch.
+3. Air: ccc and iTerm side by side on one session, one `screencapture`,
+   `ccc pixel` on a saturated cell in each — the same hex.
+4. Air: `ccc stats` after a dozen switches to studio sessions — the
+   `switch` line's mean, which is the first number for the real hop.
+
+625 tests, 623 green; the two red are `RosterPollerTests`' ssh pair, which
+fail in any job (`ssh studio` → "Host key verification failed").

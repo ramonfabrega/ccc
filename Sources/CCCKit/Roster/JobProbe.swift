@@ -101,10 +101,17 @@ public struct JobInfo: Codable, Sendable, Equatable {
     /// not that one. `ClearWindow` does; `blocked` still comes from the
     /// roster, which is the right source for "a question is up".
     ///
-    /// Values seen: `idle`, `active`, `blocked`. Kept as the string the
-    /// file carries rather than an enum — a word this build has not met
-    /// must read as "not idle" and never as a decode failure.
+    /// Values seen: `knownTempos`. Kept as the string the file carries
+    /// rather than an enum — a word this build has not met must read as
+    /// "not idle" and never as a decode failure.
     public var tempo: String?
+    /// Every tempo word this build has met. The word is the daemon's and
+    /// `ccc list --json` passes it through, which makes it a contract for
+    /// whoever keys on it: attrition's waiter met `active` for the first
+    /// time in v0.1.40 and broke quietly (2026-11-08). So the list is one
+    /// definition — `ClearWindow` reads it, `ccc list --help` prints it —
+    /// and a test holds the two together.
+    public static let knownTempos = ["idle", "active", "blocked"]
     // `children` — the job's pull requests and published artifacts — is
     // **not read**. It was, for a day: v11 slice 3 dropped the PR half of
     // the banner's receipt line and slice 4 dropped the rest, because the

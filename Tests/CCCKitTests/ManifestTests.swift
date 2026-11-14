@@ -22,7 +22,7 @@ import Testing
         "spawn", "new", "spawns", "attach", "lore", "detach", "stop", "rm", "forget",
         "base", "merge", "update", "fetch", "pull", "ff", "push", "shell", "clear",
         "snapshot", "send", "select", "copy", "links", "focus", "resize",
-        "peek", "capture", "pixel", "geometry", "theme", "window",
+        "peek", "capture", "pixel", "geometry", "theme", "window", "login",
         "stats", "replay", "bench", "version", "install-cli",
     ]
 

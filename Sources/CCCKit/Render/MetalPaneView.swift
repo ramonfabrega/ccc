@@ -28,6 +28,13 @@ public final class MetalPaneView: NSView {
     public private(set) var renderer: MetalRenderer?
 
     private let metalLayer = CAMetalLayer()
+
+    /// What the pane's bytes are: sRGB, the space every `Theme` value and
+    /// every truecolor SGR is written in.
+    public static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+    /// What the on-screen layer declares, by name — `nil` is an unmanaged
+    /// layer. Public so the declaration is a test and not a comment.
+    public var layerColorSpaceName: String? { metalLayer.colorspace?.name as String? }
     private var frameToDraw: Frame?
     private var lastReportedGrid: (cols: Int, rows: Int)?
 
@@ -48,6 +55,12 @@ public final class MetalPaneView: NSView {
         renderer?.theme = theme
         metalLayer.device = renderer?.device ?? MTLCreateSystemDefaultDevice()
         metalLayer.pixelFormat = .bgra8Unorm
+        // The theme's values are sRGB, and a layer that does not say so is
+        // not colour-matched: its bytes go to the panel as the panel's own.
+        // On an sRGB display that is the identity, which is why studio
+        // measured "no residual" (docs/EVIDENCE.md "8b") — and on a P3
+        // panel an orange `#D97757` is shown where `#CC7C5E` is meant.
+        metalLayer.colorspace = Self.colorSpace
         // We never read back from the drawable (snapshots go through their own
         // offscreen texture), so the driver may keep it write-only.
         metalLayer.framebufferOnly = true

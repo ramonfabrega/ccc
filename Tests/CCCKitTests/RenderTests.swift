@@ -408,6 +408,15 @@ struct RenderTests {
         #expect(image.height == Int(metrics.heightPixels) * 3)
     }
 
+    /// The on-screen layer says its bytes are sRGB. Without it the layer is
+    /// unmanaged and a wide-gamut panel shows every saturated colour too
+    /// strong — invisible on an sRGB display, where the conversion is the
+    /// identity, which is why studio's check could not see it.
+    @Test func thePaneDeclaresItsBytesSRGB() {
+        let view = MetalPaneView(frame: NSRect(x: 0, y: 0, width: 80, height: 40))
+        #expect(view.layerColorSpaceName == CGColorSpace.sRGB as String)
+    }
+
     /// `presentedFrames` is the black-pane oracle (CLAUDE.md), and it
     /// counted draw *calls*: a frame the renderer declined — nothing dirty,
     /// already on screen — still counted, so a window dragged by a pixel

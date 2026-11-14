@@ -113,6 +113,12 @@ public enum ControlRequest: Codable, Sendable {
     /// `screencapture` can be aimed at this one window and a cell can be
     /// turned into a pixel. Headless servers have no window and say so.
     case geometry
+    /// Launch at login, the app menu's twin (2026-11-13). `nil` reads; a
+    /// value sets it. It crosses the socket rather than running in the
+    /// CLI because the login item is the *app's* registration: the
+    /// command on PATH is a symlink, and `Bundle.main` for a symlinked
+    /// executable is the symlink's folder, not the bundle.
+    case login(on: Bool? = nil)
 }
 
 public enum ControlResponse: Codable, Sendable {
@@ -616,6 +622,11 @@ public struct StatsInfo: Codable, Sendable {
     /// The wake reattach's counters (item 6). `nil` headless or from an
     /// older server.
     public var wake: WakeStats?
+    /// Launch at login, as `ccc login` says it. `nil` headless or from an
+    /// older server.
+    public var loginItem: String?
+    /// The session switch, timed. `nil` from an older server.
+    public var switches: SwitchStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
@@ -685,6 +696,32 @@ public struct FetchStats: Codable, Sendable, Equatable {
 ///
 /// `wakes` without `withRemotePane` is neither — it is a Mac that woke with
 /// nothing attached, and it must not read as the first case.
+/// How long a session switch takes to *show* the new session: from the
+/// click (or `ccc attach`) to the incoming pane being mounted. Not to the
+/// verb's answer, which also waits out the outgoing pane's detach — about
+/// half a second the user never sees.
+///
+/// It exists because "ccc feels slower than the agents view" had no
+/// number (2026-11-13). The first one found the wait was ours:
+/// `claude attach` draws in ~250 ms and the pane mounted at 500–750.
+public struct SwitchStats: Codable, Sendable, Equatable {
+    public var count: Int
+    public var lastMs: Double?
+    public var meanMs: Double?
+
+    public init(count: Int = 0, lastMs: Double? = nil, meanMs: Double? = nil) {
+        self.count = count
+        self.lastMs = lastMs
+        self.meanMs = meanMs
+    }
+
+    public mutating func record(_ ms: Double) {
+        meanMs = ((meanMs ?? 0) * Double(count) + ms) / Double(count + 1)
+        count += 1
+        lastMs = ms
+    }
+}
+
 public struct WakeStats: Codable, Sendable, Equatable {
     /// `NSWorkspace.didWakeNotification`, and its `ccc hosts reconnect` twin.
     public var wakes: Int
@@ -723,7 +760,15 @@ public enum ControlSocket {
         if let override = ProcessInfo.processInfo.environment["CCC_CONTROL_SOCKET"], !override.isEmpty {
             return override
         }
-        return FileManager.default
+        return standardPath
+    }
+
+    /// The path with no override: the one ccc.app serves when it is
+    /// launched from the Finder, the Dock or a login item, none of which
+    /// carry a shell's environment. `AppWake` compares against it — an
+    /// app woken for a private socket would never answer on it.
+    public static var standardPath: String {
+        FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appending(path: "ccc/control.sock").path
     }
