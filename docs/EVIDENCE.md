@@ -6291,6 +6291,27 @@ early answer there puts bytes in the attach client. `DrawnWatch` is the
 decision as a type, with its test. One swap in eight still runs long
 (670, 953) and the position moves between runs; not chased.
 
+**The typing paths did not get the fine read.** Found before the cut,
+on Ramon's condition that nothing touch attrition's lanes: `ask` and
+`performClear` reach their session through the same `swap` when a pane
+is already on screen, so the swap's wait *is* their wait before typing,
+and the first version of this change had shortened it from a quarter
+second of stillness to 50 ms on the one path an armed clear takes to a
+lane. `switchTo(toType: true)` keeps the old wait for both. Proved live
+on a private headless ccc with a pane up on `ccc-cut-a`:
+
+```
+ccc clear e575e1d7 --then "Reply with exactly: swapped ok"
+  → armed a clear on e575e1d7; it fires when its turn ends, then: …
+ccc clear        → e575e1d7  0s ago · cleared e575e1d7, then: Reply with exactly: swapped ok   (4 s after the arm)
+ccc stats        → switch  last 531 ms  mean 531 ms  n=1        (the quarter-second wait, as meant)
+ccc list --fresh → e575e1d7  done  idle  ccc-cut-b  ↳ swapped ok
+```
+
+Seen on the way, and not this change's: a headless ccc reads ~300 MB for
+its first few seconds and 58 MB after, on 0.1.42's released binary as
+much as on this build (300.6 → 284.5 → 58.4 MB at 1, 3, 7 s).
+
 **Warm attaches were not built.** The floor is now the harness's own
 250 ms. Removing it means hidden viewers held open — 65 MB each, a
 resize vote on a shared PTY (item 15), and a focus report the harness

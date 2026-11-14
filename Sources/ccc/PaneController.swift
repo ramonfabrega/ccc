@@ -330,14 +330,20 @@ final class PaneController {
     /// the CLI's `ccc attach <name>`, a `ccc://attach/<id>` link and the
     /// row's click all mean the same row. A bare id that only another host
     /// has attaches there.
-    func switchTo(ref named: SessionRef, cols: Int? = nil, rows: Int? = nil) async throws -> String {
+    ///
+    /// `toType` is for the callers that type into what they switched to
+    /// (`ask`, `performClear`): the swap then waits the way it always did,
+    /// a quarter second of stillness, because for them the swap's wait IS
+    /// the wait before typing. A click reads finely instead (`swapGrain`).
+    func switchTo(ref named: SessionRef, cols: Int? = nil, rows: Int? = nil,
+                  toType: Bool = false) async throws -> String {
         let ref = try poller.state.resolve(named)
         guard let outgoing = session, outgoing.isRunning else {
             try attach(ref: ref, cols: cols, rows: rows)
             return "attached \(ref)"
         }
         if outgoing.ref == ref { return "already attached to \(ref)" }
-        return try await swap(to: ref, from: outgoing, cols: cols, rows: rows)
+        return try await swap(to: ref, from: outgoing, cols: cols, rows: rows, toType: toType)
     }
 
     /// The overlapped switch (v8 slice 2). The old way — detach, then
@@ -367,7 +373,7 @@ final class PaneController {
     /// hole 2 across the whole overlap; `LeaveGesture.isUndrawn` closes
     /// what is left, which is the first attach, with no pane to overlap.
     private func swap(to ref: SessionRef, from outgoing: AttachSession,
-                      cols: Int?, rows: Int?) async throws -> String {
+                      cols: Int?, rows: Int?, toType: Bool = false) async throws -> String {
         // The incoming grid is built at the size the outgoing one is
         // *showing*, read back through the seam rather than re-estimated.
         // A pane that paints at one size and is resized on mount reflows
@@ -379,17 +385,22 @@ final class PaneController {
                                   cols: cols ?? showing.cols, rows: rows ?? showing.rows)
         swapGeneration += 1
         let mine = swapGeneration
-        // Read finely here, and only here. The default grain — a quarter
-        // second, two reads — is right for the callers that *type*, where
-        // an early answer puts bytes in the attach client. A swap only
-        // mounts, and an early mount costs nothing but showing the last
-        // few cells arrive; a late one is the whole wait, on every switch.
-        // Measured 2026-11-13: `claude attach` is drawn ~250 ms after
-        // exec and this returned at 540–810 (docs/EVIDENCE.md "the
-        // switch second").
-        let local = hosts.hosts.first { $0.name == ref.host }?.isLocal ?? false
-        await Self.waitUntilDrawn(incoming, grain: Self.swapGrain,
-                                  needed: local ? Self.swapReads : Self.swapReadsRemote)
+        // Read finely for a click, and only for a click. The default
+        // grain — a quarter second, two reads — stays for the callers
+        // that *type* (`toType`), where an early answer puts bytes in the
+        // attach client: an armed clear reaches a lane through this very
+        // line. A click only mounts, and an early mount costs nothing but
+        // showing the last few cells arrive; a late one is the whole
+        // wait, on every switch. Measured 2026-11-13: `claude attach` is
+        // drawn ~250 ms after exec and this returned at 540–810
+        // (docs/EVIDENCE.md "the switch second").
+        if toType {
+            await Self.waitUntilDrawn(incoming)
+        } else {
+            let local = hosts.hosts.first { $0.name == ref.host }?.isLocal ?? false
+            await Self.waitUntilDrawn(incoming, grain: Self.swapGrain,
+                                      needed: local ? Self.swapReads : Self.swapReadsRemote)
+        }
         // A newer click during the wait wins: this viewer goes away
         // without ever having been seen, and the pane never moved.
         guard mine == swapGeneration else {
@@ -563,7 +574,7 @@ final class PaneController {
         // becomes the pane (`swap`), so the only wait left here is the
         // first attach — the one with no pane to overlap with.
         let wasOnScreen = session?.isRunning == true
-        _ = try await switchTo(ref: ref)
+        _ = try await switchTo(ref: ref, toType: true)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
         if !wasOnScreen { await Self.waitUntilDrawn(session) }
         try await Self.type(prompt, into: session, ref: ref)
@@ -753,7 +764,7 @@ final class PaneController {
     /// the prompt kept.
     func performClear(_ ref: SessionRef, then: String?, over ask: String? = nil) async throws -> ClearRecord {
         let wasOnScreen = session?.isRunning == true
-        _ = try await switchTo(ref: ref)
+        _ = try await switchTo(ref: ref, toType: true)
         guard let session, session.isRunning else { throw AttachError.nothingAttached }
         if !wasOnScreen { await Self.waitUntilDrawn(session) }
         await Self.waitUntilReadable(session)

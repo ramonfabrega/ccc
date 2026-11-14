@@ -80,7 +80,13 @@ enum App {
         // `ccc login`, and the app menu's item is the same call.
         controller.loginItem = { on in on.map { LoginItem.set($0) } ?? "launch at login is \(LoginItem.status)" }
         controller.loginStatus = { LoginItem.status }
-        if let said = LoginItem.offerOnce() { window.showNotice(said) }
+        // Off the launch path: the registration is an XPC call, and a
+        // slow one must not stand between a launch and the socket an
+        // armed clear is waiting on.
+        DispatchQueue.global(qos: .utility).async { [weak window] in
+            guard let said = LoginItem.offerOnce() else { return }
+            DispatchQueue.main.async { window?.showNotice(said) }
+        }
         // A wake from the CLI (`AppWake`) is nobody asking to look: the
         // app comes up resident — status item, socket, poller — and the
         // window waits for a click.

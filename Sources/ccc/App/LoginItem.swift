@@ -12,7 +12,7 @@ import ServiceManagement
 /// Settings › General › Login Items. It registers **once**, the first
 /// launch of a build that knows how, and after that the setting is the
 /// user's — a removal in System Settings is not undone at the next launch.
-@MainActor enum LoginItem {
+enum LoginItem {
     /// Set once the first registration has been attempted, so a later
     /// "off" — from the menu, `ccc login off`, or System Settings — holds.
     static let offeredKey = "loginItem.offered"
