@@ -6836,3 +6836,24 @@ and nothing on stderr — no constraint the layout could not satisfy.
 fade and the notice's place over the wide roster have never been seen —
 by me. A shell with no session leaves the pane's top half bare ground.
 656 tests, the same two red.
+
+## Cut as v0.1.50 (2026-11-13)
+
+The roster as the whole window, cut on Ramon's word — *"work on expanded
+then cut"*. Build 296, tag on `eebe94e`, 5603172 bytes; `ota verify
+--feed ccc` → `ok: … version 296 length 5603172`, the GitHub Release
+carries the same zip, and studio runs it (`ccc 0.1.50 (296)`). No clear
+was armed and nothing was attached when the app restarted.
+
+On the released bytes, Ramon's own window (1147×1410), five seconds
+after the relaunch:
+
+```
+ccc geometry   → roster 1146pt wide   pane (nothing attached)
+ccc stats      → window  attached 0s · reading 4s (100%) · 1 row read
+ccc show       → clutch  blocked · idle   (the top row: the one asking)
+```
+
+**Ramon's to say**: how the arrival reads when a session is opened, and
+whether a notice lands somewhere sensible over the wide roster — neither
+has been seen on a screen.
