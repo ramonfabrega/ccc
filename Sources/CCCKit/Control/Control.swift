@@ -119,8 +119,7 @@ public enum ControlRequest: Codable, Sendable {
     /// command on PATH is a symlink, and `Bundle.main` for a symlinked
     /// executable is the symlink's folder, not the bundle.
     case login(on: Bool? = nil)
-    /// The roster's selection — what the reading pane is showing when
-    /// nothing is attached (`ccc show`). With `select`, that row is
+    /// The roster's selection (`ccc show`). With `select`, that row is
     /// selected first, the way a click on it would, without taking the
     /// keyboard from the pane. The answer is `.shown`.
     case show(select: SessionRef? = nil)
@@ -462,7 +461,7 @@ extension JSONDecoder {
 
 /// What the window is showing, as `ccc show` asks it: the roster's
 /// selected row, and the session in the pane when there is one. The
-/// reading pane draws `selected` exactly while `attached` is nil.
+/// roster is the whole window exactly while `attached` is nil.
 public struct ShownInfo: Codable, Sendable, Equatable {
     public var selected: SessionRef?
     public var attached: SessionRef?
@@ -649,7 +648,7 @@ public struct StatsInfo: Codable, Sendable {
     /// nothing attached or from an older server.
     public var typing: TypingStats?
     /// On-screen time with a session in the pane against time on the
-    /// reading pane (`PaneClock`). `nil` headless or from an older server.
+    /// full-width roster (`PaneClock`). `nil` headless or from an older server.
     public var pane: PaneTimeStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,

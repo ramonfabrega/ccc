@@ -71,7 +71,7 @@ final class PaneController {
     /// answers with what is selected now. `nil` headless — there is no
     /// roster to have a selection.
     var selectionProvider: (@MainActor (SessionRef?) -> SessionRef?)?
-    /// On-screen time attached against time on the reading pane; the
+    /// On-screen time attached against time with no pane up; the
     /// window keeps it, since only the window knows it is on screen.
     var paneTimeStats: (@MainActor () -> PaneTimeStats?)?
     /// The window face's notifier taking a hook event (v3, slice 2);

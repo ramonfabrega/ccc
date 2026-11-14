@@ -550,47 +550,52 @@ other's half. Each links to the other for the thing the other owns.
   moment it happens — and the daemon records no parent. `ccc spawns` is
   its read. Requested model, never served; no line for a /clear.
 
-## 11. With nothing attached, the pane reads the roster (2026-11-13)
+## 11. With nothing attached, the roster is the whole window (2026-11-13)
 
 The pane is two thirds of the window and said one sentence whenever no
 session was in it, beside a roster cutting every line to fit 400 points.
-Now it is the **reading pane**: the selected row in full, the way a mail
-client reads down an inbox. ↑↓ read, ⏎ opens. `ccc show [<ref>]` is the
-twin and `SessionDetail` the one definition both draw — a pure function
-of the roster row, so nothing new is asked of the harness.
+Now **there is no pane until a session or a shell mounts**: the roster
+fills the window, each row keeps the left `sidebarWidth` it has as a
+sidebar, and the sentence the sidebar cuts sits beside it — three lines
+of it, with the daemon's suggested reply under a question.
 
-- **The first thing on it is the thing to act on**: the question
-  (`needs`), the result (`output.result`), the live line — whole, at
-  reading size. `suggestedReply` is drawn under a question and nowhere
-  else. It is still not *sent* from here; that is reply ("Later").
-- **Facts are listed by payload, not by availability.** Branch and its
-  standing, folder, started, moved, id; a host only when there is more
-  than one; `answer` only when a live session lacks Remote Control;
-  `asks` only when the permission mode prompts. One line each, never
-  wrapped, the full value in the tooltip. Ramon's standing complaint
-  about other screens is "so much text it loses meaning" (relayed by
-  lore), and a pane with room for everything is how that happens.
-- **`detail` beside a `needs` or a `result` is not drawn.** It was, for
-  one build, and read as the same sentence twice.
-- **Times use lore's ladder** (`Stamp`): `now`, `12m ago`, `17:45`,
-  `yest`, `2 sep`. The relative form lives one hour.
-- **A row is always selected while the pane is empty** — the one just
-  left, else the top one — and the roster takes the keyboard. The
-  roster's selection follows an attach, so the highlighted row is never
-  a different session from the one on screen.
-- **The pane's ground is the theme's**, not black: gutter, reading pane
-  and grid are one colour, so an attach changes the content and nothing
-  else. The gutter was black from before the pane had a theme.
+It took two tries. v0.1.48 and v0.1.49 drew a **reading pane** there, a
+page about the selected row. Ramon, on seeing it: *"im not sure what
+reading pane shows or from where"* — it was a second surface repeating
+the first, a wider roster row, and his own picture was the better one:
+*"basically extended sidebar… we see the list, with the detailed view
+for each, and focusing in seamlessly transitions"*. `SessionDetail`
+stays as what `ccc show [<ref>]` prints.
+
+- **Nothing on the left moves on attach.** A row's identity (dot, name,
+  model, line two) is `sidebarWidth` wide in both layouts and rows are
+  the same height: wide, the sentence leaves line three for the room
+  beside the row and line three keeps its height. Measured by diffing
+  two peeks — every differing band was a line three.
+- **The pane is collapsed, never resized.** It takes its place at the
+  remembered divider before anything mounts, and an attach sizes its PTY
+  from the rectangle the pane *will* have, so a session starts at its
+  final size. The arrival is a fade and a few points of travel on the
+  layer; animating the divider would be a PTY resize per frame.
+- **The row says each thing once** (`docs/EVIDENCE.md` "the roster row,
+  counted before it was cut"): a state only where the dot does not, the
+  branch and folder in a word each, a mark for the live session without
+  Remote Control. Line two is the widest of three arrangements that fits.
+- **A row is always selected while there is no pane**, and the roster has
+  the keyboard; the selection follows an attach.
+- **A notice floats over the roster's far side** while there is no pane
+  to float over, and in the pane when there is. The socket-held
+  condition moved to the roster's footer; the footer also carries the
+  roster's keys, which were written nowhere on screen.
+- **The pane's ground is the theme's**, not black: gutter and grid are
+  one colour.
 
 Rejected: **live thumbnails of every session** — each is a viewer on a
-shared PTY where the last resize wins (§4c), so the grid would reflow
-for everyone, phone included. **A usage or limits board** — lore's
-(§10). **Attach on select** — a selection must stay free; an attach
-resizes a session someone else may be watching.
-
-Open, and measured rather than argued: whether the pane is empty often
-enough to build further into (the transcript's last message, the spawn
-sheet inline). `ccc stats`' `window` line is the rate.
+shared PTY where the last resize wins (§4c). **A usage or limits board**
+— lore's (§10); whether the wide roster carries any of lore's numbers is
+the open question, and `ccc stats`' `window` line (time with no pane
+against time attached) is the rate it waits on. **Attach on select** — an
+attach resizes a session someone else may be watching.
 
 ## 5. Negations held (claims the plan assumes; go in holding the opposite)
 

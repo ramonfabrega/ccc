@@ -25,6 +25,26 @@ final class RosterFocus: ObservableObject {
     }
 }
 
+/// How much of the window the roster has (2026-11-13). With a session in
+/// the pane it is the sidebar it always was. With nothing attached there
+/// is no pane, and the roster is the whole window: the same rows, the
+/// same left `sidebarWidth` of each, and to the right of that the
+/// sentence the sidebar cuts at sixty characters, in full.
+///
+/// The window owns this — only it knows whether a pane is on screen — and
+/// the roster draws to it.
+@MainActor
+final class RosterLayout: ObservableObject {
+    /// No pane: the roster fills the window.
+    @Published var expanded = false
+    /// The roster's width when a pane is beside it, which is also where a
+    /// row's identity ends when it is not: an attach must not move it.
+    @Published var sidebarWidth: CGFloat = 420
+    /// The one condition about this window — another ccc holds the
+    /// control socket. It was the pane's empty state while there was one.
+    @Published var socketNote: String?
+}
+
 /// The roster: what `claude agents` shows, plus the model column and our
 /// marks (v4). Grouped and sorted by the View menu's choices (`RosterGroup`,
 /// `RosterSort`, persisted in UserDefaults — `ccc list --group/--sort` are
@@ -40,6 +60,8 @@ struct RosterView: View {
     /// The window's request for the keyboard (v7 slice 1): ← on an empty
     /// prompt in the pane lands here, selecting the attached row.
     @ObservedObject var focus: RosterFocus
+    /// Sidebar, or the whole window (`RosterLayout`).
+    @ObservedObject var layout: RosterLayout
     let attach: (SessionRef) -> Void
     /// → on the list, or ⏎ on the attached row: the pane takes the
     /// keyboard back.
@@ -166,10 +188,9 @@ struct RosterView: View {
             .onChange(of: focus.selects) { _, _ in
                 if let target = focus.selectTarget { selection = target }
             }
-            // The reading pane shows the selected row whenever nothing is
-            // attached, so "nothing selected" would be the black pane
-            // again. The roster keeps a row selected for as long as the
-            // pane is empty — the one just left, else the top one, which
+            // With nothing attached the roster is the whole window and
+            // the keyboard has nowhere else to be, so a row is always
+            // selected: the one just left, else the top one, which
             // under the activity sort is whoever is waiting on you — and
             // takes the keyboard, since no pane is there to want it: ↑↓
             // read down the roster and ⏎ attaches, with no click first.
@@ -201,7 +222,11 @@ struct RosterView: View {
         RosterRow(row: row, showsHost: showsHost && group != .host,
                   // Grouped by repository, the header has said it once.
                   folder: group == .repo ? nil : row.folderName { hosts.shortCwd($0, host: row.host) },
-                  stale: poller.state.host(row.host)?.isStale ?? false)
+                  stale: poller.state.host(row.host)?.isStale ?? false,
+                  // The row's identity keeps the width it has as a sidebar,
+                  // less the list's own insets, so nothing in it moves when
+                  // the pane arrives.
+                  blockWidth: layout.expanded ? max(240, layout.sidebarWidth - Self.rowInsets) : nil)
             .tag(row.ref)
             .contentShape(Rectangle())
             // Simultaneous, never exclusive: a plain `onTapGesture(count: 2)`
@@ -214,6 +239,10 @@ struct RosterView: View {
             .simultaneousGesture(TapGesture(count: 2).onEnded { attach(row.ref) })
             .contextMenu { menu(for: row) }
     }
+
+    /// What an inset list keeps on either side of a row, in total —
+    /// measured off a 420 pt roster, whose row content is 388 pt wide.
+    static let rowInsets: CGFloat = 32
 
     private var rowRefs: [SessionRef] { sections.flatMap { $0.rows.map(\.ref) } }
 
@@ -408,6 +437,11 @@ extension RosterView {
         .padding(.horizontal, 12).padding(.vertical, 8)
     }
 
+    private static let keys: [(String, String)] = [
+        ("⏎", "attach"), ("t", "terminal"), ("l", "lore"), ("n", "new here"),
+        ("a", "archive"), ("p", "pin"), ("⌫", "delete"),
+    ]
+
     private var footer: some View {
         HStack(spacing: 8) {
             if let ms = poller.state.lastPollMs {
@@ -432,7 +466,27 @@ extension RosterView {
             if !notes.isEmpty {
                 Text("marks off").foregroundStyle(.orange).help(notes.joined(separator: "\n"))
             }
+            if let note = layout.socketNote {
+                Text("socket held").foregroundStyle(.orange)
+                    .help("Another ccc holds the control socket — the command line talks to it; this window still attaches. (\(note))")
+            }
             Spacer()
+            // The roster's keys, written down only where there is room:
+            // they were in the context menu and the source, and nowhere
+            // on screen.
+            if layout.expanded {
+                HStack(spacing: 14) {
+                    ForEach(Self.keys, id: \.0) { key, verb in
+                        HStack(spacing: 5) {
+                            Text(key).foregroundStyle(.primary)
+                            Text(verb)
+                        }
+                    }
+                }
+                .font(.caption2.monospaced())
+                .lineLimit(1)
+                Spacer()
+            }
             if let at = poller.state.lastPolledAt {
                 Text(at, style: .time)
             }
@@ -485,6 +539,10 @@ struct RosterRow: View {
     var folder: String?
     /// The host stopped answering; this row is its last known state.
     var stale: Bool = false
+    /// Set when the roster is the whole window: the width the row's
+    /// identity keeps — what it has as a sidebar — with the sentence
+    /// moved out of line three into the room beside it. Nil in a sidebar.
+    var blockWidth: CGFloat?
 
     /// The row's sentence, unless line two already carries it: the
     /// roster's own `waitingFor` is rendered up there, and saying the same
@@ -495,6 +553,57 @@ struct RosterRow: View {
     }
 
     var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            block.frame(width: blockWidth, alignment: .leading)
+            if blockWidth != nil {
+                // Beside the row, not under it — and laid over a spacer
+                // rather than in the stack, so the row is exactly as tall
+                // as its sidebar self and no row below it moves when the
+                // pane arrives and this goes back to line three.
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .topLeading) { wideSentence }
+                    .clipped()
+            }
+        }
+        .padding(.vertical, 2)
+        .opacity(stale ? 0.6 : (row.archived ? 0.7 : 1))
+        .help("\(row.ref) · \(row.stateText) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
+    }
+
+    /// The sentence with room: three lines of it where the sidebar has
+    /// one, and under a question the reply the daemon suggests — read from
+    /// the job file since v10 and drawn nowhere until 2026-11-13.
+    @ViewBuilder private var wideSentence: some View {
+        let reply = row.isWaiting ? row.job?.suggestedReply : nil
+        VStack(alignment: .leading, spacing: 2) {
+            if let said = say ?? (row.isWaiting ? row.session.waitingFor : nil), !said.isEmpty {
+                Text(said)
+                    .font(.system(size: 12))
+                    .foregroundStyle(row.isWaiting ? Color.orange : Color.primary.opacity(0.82))
+                    .lineLimit(reply == nil ? 3 : 2)
+                    .truncationMode(.tail)
+                    .help(said)
+            }
+            if let reply {
+                Text("↳ \(reply)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .textSelection(.enabled)
+                    .help("The reply the daemon suggests: \(reply)")
+            }
+        }
+        .frame(maxWidth: 780, alignment: .leading)
+        .padding(.leading, 28)
+        .padding(.trailing, 8)
+    }
+
+    /// The row as the sidebar has it: dot, name and model, line two, and
+    /// the sentence on line three — or, when the sentence is beside the
+    /// row, that line's height and nothing in it.
+    private var block: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8).padding(.top, 2)
                 .opacity(stale ? 0.35 : 1)
@@ -540,12 +649,13 @@ struct RosterRow: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .help(say)
+                        // Beside the row instead: keep the line, hide the
+                        // words, so the row's height does not change.
+                        .opacity(blockWidth == nil ? 1 : 0)
+                        .accessibilityHidden(blockWidth != nil)
                 }
             }
         }
-        .padding(.vertical, 2)
-        .opacity(stale ? 0.6 : (row.archived ? 0.7 : 1))
-        .help("\(row.ref) · \(row.stateText) · \(row.session.cwd)\(stale ? " · stale: \(row.host) is not answering" : "")")
     }
 
     /// Line two in one arrangement. What is **not** here is the change:
@@ -634,7 +744,7 @@ struct RosterRow: View {
 
 extension Color {
     /// The row's tone as a colour — one mapping for the roster's dot and
-    /// state line and the reading pane's header.
+    /// state line.
     init(tone: SessionRow.Tone) {
         switch tone {
         case .draft: self = .indigo

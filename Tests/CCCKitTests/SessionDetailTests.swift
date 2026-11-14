@@ -3,9 +3,8 @@ import Testing
 
 @testable import CCCKit
 
-/// The reading pane's content (`SessionDetail`): the row with the cuts
-/// taken out. One definition for the window and `ccc show`, so these read
-/// the type both draw rather than either rendering.
+/// `ccc show`'s content (`SessionDetail`): the row with the cuts taken
+/// out.
 @Suite struct SessionDetailTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private var utc: Calendar {
@@ -211,7 +210,7 @@ import Testing
     }
 }
 
-/// `PaneClock`: the rate the reading pane was built without — how much of
+/// `PaneClock`: the rate the empty pane was first built into without — how much of
 /// the window's time on screen the pane has no session in it.
 @Suite struct PaneClockTests {
     private let t0 = Date(timeIntervalSince1970: 1_000)

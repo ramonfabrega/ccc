@@ -1,29 +1,30 @@
 import Foundation
 
-/// **One session, in full** — what the reading pane draws and `ccc show`
-/// prints (2026-11-13).
+/// **One session, in full** — what `ccc show` prints (2026-11-13).
 ///
 /// The roster row is ~400 pt wide and every line of it is cut to fit: the
 /// daemon's sentence at about sixty characters where a finished result
-/// runs to 460, the branch squeezed to `w…-4222` beside a folder five rows
-/// share, the worktree's standing and the full path behind tooltips, and
-/// `suggestedReply` read from the job file and drawn nowhere. Meanwhile
-/// the pane to its right — two thirds of the window — said one sentence
-/// whenever nothing was attached. This is the row with the cuts taken
-/// out, for the space that had nothing in it.
+/// runs to 460, the worktree's standing and the full path behind
+/// tooltips, and `suggestedReply` read from the job file and drawn
+/// nowhere. This is the row with the cuts taken out.
 ///
-/// A pure function of the row, like `SessionRow.say`: the window and the
-/// command line build it from the same roster and so cannot disagree
-/// (CLAUDE.md, one definition, many surfaces). Nothing here reads a file
-/// or asks the harness anything the poll did not already answer.
+/// For two cuts (v0.1.48, v0.1.49) the window drew it too, as a "reading
+/// pane" beside the roster whenever nothing was attached. That was a
+/// second surface repeating the first, and it is gone: with nothing
+/// attached the roster itself is the whole window and each row's
+/// sentence sits beside it (`RosterLayout`). The command keeps the whole
+/// of it, because a terminal has no width to give a row.
+///
+/// A pure function of the row, like `SessionRow.say`. Nothing here reads
+/// a file or asks the harness anything the poll did not already answer.
 ///
 /// **What is left out is the design.** The first thing in it is the thing
 /// to act on — the question, the result — and the facts under it are only
 /// the ones that carry payload for *this* row: a host when there is more
 /// than one, Remote Control only when it is off on a live session (the
 /// news, per `ccc list --help`), a permission mode only when it will stop
-/// the session. A pane with room for everything is how a view becomes
-/// "so much text it loses meaning".
+/// the session. Room for everything is how a view becomes "so much text
+/// it loses meaning".
 public struct SessionDetail: Codable, Sendable, Equatable {
     /// A block of prose: what the session is asking, did, or is doing.
     public struct Passage: Codable, Sendable, Equatable {
@@ -166,7 +167,7 @@ public struct SessionDetail: Codable, Sendable, Equatable {
 
 extension SessionRow {
     /// What colour a row is, as a word: the dot, the state line, and the
-    /// reading pane's header all read this, so they cannot drift.
+    /// `ccc show --json` all read this, so they cannot drift.
     public enum Tone: String, Codable, Sendable {
         /// Never prompted.
         case draft
@@ -217,8 +218,8 @@ extension SessionRow {
 
     /// A live session that can only be answered at the Mac it runs on.
     /// `ccc spawn` defaults Remote Control on, so this — its absence — is
-    /// the news, and the one definition the row's mark and the reading
-    /// pane's `answer` line both read.
+    /// the news, and the one definition the row's mark and `ccc show`'s
+    /// `answer` line both read.
     public var lacksRemoteControl: Bool {
         guard session.kind == .background, let job else { return false }
         return (session.state == .working || session.state == .blocked) && !job.remoteControl

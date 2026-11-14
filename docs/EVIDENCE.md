@@ -6799,3 +6799,40 @@ Build 293, tag on `1f4d0b7`, 5632048 bytes; `ota verify --feed ccc` →
 `ok: … version 293 length 5632048`, the GitHub Release carries the same
 zip, and studio runs it (`ccc 0.1.49 (293)`). No clear was armed and
 nothing was attached when the app restarted.
+
+## the roster is the whole window (2026-11-13)
+
+Ramon, a cut after the reading pane: *"im not sure what reading pane
+shows or from where"*, then his own picture — *"if none focused, no
+sidebar… basically extended sidebar? we see the list, with the detailed
+view for each, and focusing in seamlessly transitions"*. Decision:
+`docs/DESIGN.md` §11. The reading pane view is deleted; `ccc show` keeps
+`SessionDetail`.
+
+Driven on a private instance (`CCC_CONTROL_SOCKET`, `CCC_ROSTER_OVERLAY`,
+`CCC_RESIDENT=1`, the dev build) and an owned haiku draft in `~/cc-test`,
+removed after. `ccc geometry` at each step, window 1280×800, divider
+remembered at 420:
+
+```
+nothing attached        roster 1279pt wide   pane (nothing attached)
+ccc attach <fixture>    roster 420pt wide    pane 843x755pt  93x47 cells     the child drew 93 x 47 — sized once
+ccc detach              roster 1279pt wide
+ccc shell <fixture>     roster 420pt wide    (the shell pane, no session over it)
+ccc shell --close       roster 1279pt wide
+```
+
+Nothing on the left moves. Two peeks, attached and not, diffed over the
+left 410 pt: thirteen differing bands, and every one is a row's line
+three (the sentence, which is beside the row when wide), the attached
+row's own mark, or the selection's edge. Lines one and two of every row
+are the same pixels in both.
+
+The same flow with the private window on screen for ten seconds: the
+same numbers, `window  attached 4s · reading 4s (49%) · 3 rows read`,
+and nothing on stderr — no constraint the layout could not satisfy.
+
+**Not proved here.** `ccc capture` is still refused, so the arrival's
+fade and the notice's place over the wide roster have never been seen —
+by me. A shell with no session leaves the pane's top half bare ground.
+656 tests, the same two red.

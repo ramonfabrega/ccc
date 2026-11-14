@@ -8,7 +8,7 @@ import Foundation
 ///   ccc archive|unarchive|pin|unpin <ref>   our marks on a session (v4) — the context menu's twin
 ///   ccc watch [--json]                one line per transition — the notification's twin
 ///   ccc attach <ref> [--headless]     attach; headless drives a PTY and serves the socket
-///   ccc show [<ref>] [--select]       one session in full — the reading pane's twin
+///   ccc show [<ref>] [--select]       one session in full — the selected row, uncut
 ///   ccc spawn [--host <name>] [--cwd <dir>] [--from <ref>] [<prompt>… | -]   `claude --bg` on a host (v5) — the New Session sheet's twin
 ///
 /// A `<ref>` is `id` (this Mac) or `host:id` (any host in `ccc hosts`).
@@ -494,7 +494,7 @@ enum CLI {
     ///
     /// With a ref it is a pure read of the roster and needs no app, like
     /// `ccc list`. With none it asks the window what it has selected,
-    /// which is what the reading pane is showing; `--select` moves that
+    /// the row a person at the screen is on; `--select` moves that
     /// selection first, so a script can put a row in front of the person
     /// at the screen — and so `ccc peek` can be pointed at any row.
     static func show(ref: SessionRef?, select: Bool, json: Bool) async throws -> Int32 {

@@ -210,10 +210,10 @@ public struct CommandManifest: Sendable {
                      "row are listed: a host when there is more than one, `answer` when a live session",
                      "was dispatched without Remote Control, `asks` when its permission mode prompts.",
                      "With a <ref> it reads the roster and needs no app. With none it is the row selected",
-                     "in the window — what the reading pane shows while nothing is attached. --select",
+                     "in the window's roster, which is the whole window while nothing is attached. --select",
                      "selects <ref> in the window first, without taking the keyboard from the pane."],
              json: "SessionDetail — ref, name, state, tone, model, passages [kind, title, text], facts [label, value, note, full], attachable",
-             twin: "selecting a row with nothing attached: the reading pane",
+             twin: "selecting a row; with nothing attached the roster is the whole window and shows each row's sentence beside it",
              exit: "1 when the ref is not in the roster, or when no <ref> was given and no window has a row selected",
              group: "roster"),
 
@@ -507,7 +507,7 @@ public struct CommandManifest: Sendable {
              about: ["memory, poll latency, PTY throughput, presented frames, the wake line.",
                      "Bytes in with zero presented frames is the black pane, stated as a number.",
                      "`window` is the time on screen with a session in the pane against the time on",
-                     "the reading pane, and how many rows were read there."],
+                     "the time with none — the roster at full width — and how many rows were read there."],
              json: "the stats object — memory, poll, pty, frames, wake { wakes, attempts, gaveUp }, pane { attachedSeconds, readingSeconds, rowsRead }",
              group: "build"),
 

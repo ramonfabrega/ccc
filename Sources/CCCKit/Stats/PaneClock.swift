@@ -1,9 +1,9 @@
 import Foundation
 
 /// How long the window's pane has shown a session, and how long it has
-/// shown the reading pane instead — `ccc stats`' `pane` line.
+/// had none — the roster at full width — `ccc stats`' `window` line.
 ///
-/// It exists because the reading pane was built on an impression ("when
+/// It exists because that space was built into on an impression ("when
 /// nothing is attached we have a big black screen") and an impression is
 /// not a rate: a click attaches and ← keeps the session mounted, so the
 /// pane is empty only after a launch, a detach, or a session ending.
@@ -13,7 +13,7 @@ import Foundation
 ///
 /// Only time the window is **on screen** counts. ccc is menubar-resident
 /// and a closed window has an empty pane all night that nobody is looking
-/// at; counted, it would say the reading pane is the whole product.
+/// at; counted, it would say the empty state is the whole product.
 ///
 /// Event-driven, not sampled: the three things that change the answer —
 /// the window showing, a session mounting, a session leaving — each call
@@ -35,14 +35,14 @@ public struct PaneClock: Sendable, Equatable {
         if let visible { self.visible = visible }
         if let attached {
             self.attached = attached
-            // Coming back to the reading pane on the row that was just
+            // Coming back to the full-width roster on the row that was just
             // left is a second look, and counts as one.
             if attached { lastRead = nil }
         }
         since = self.visible ? now : nil
     }
 
-    /// The reading pane is showing `ref`. Counted once per row per stay:
+    /// `ref` is the selected row with no pane up. Counted once per row per stay:
     /// the 2 s poll redraws the same row all day and that is one read.
     public mutating func read(_ ref: SessionRef?) {
         guard visible, !attached, let ref, ref != lastRead else { return }
@@ -69,9 +69,11 @@ public struct PaneClock: Sendable, Equatable {
 public struct PaneTimeStats: Codable, Sendable, Equatable {
     /// Window on screen with a session in the pane.
     public var attachedSeconds: Double
-    /// Window on screen with nothing attached: the reading pane.
+    /// Window on screen with nothing attached: the roster at full width.
+    /// The name is from the two cuts where that state was a "reading
+    /// pane", and it is the wire, so it stays.
     public var readingSeconds: Double
-    /// Distinct rows shown in the reading pane, one per stay on a row.
+    /// Distinct rows selected with no pane up, one per stay on a row.
     public var rowsRead: Int
 
     public init(attachedSeconds: Double, readingSeconds: Double, rowsRead: Int) {

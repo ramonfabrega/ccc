@@ -11,8 +11,12 @@ import SwiftUI
 /// socket) is the pane's empty state. Nothing ever resizes the pane for a
 /// sentence: a pane resize is a PTY resize, and the TUI reflows.
 ///
-/// With nothing attached the pane is the **reading pane** (`ReadingPane`):
-/// the roster's selected row in full, where one sentence used to be.
+/// With nothing attached **there is no pane** (2026-11-13): the roster is
+/// the whole window (`RosterLayout`), each row's sentence beside it in the
+/// room the pane would have had, and the pane arrives with the session.
+/// It was one sentence on black, then for two cuts a page about the
+/// selected row — a second surface repeating the first. The pane is
+/// collapsed, never resized: a session mounts into it at its final size.
 @MainActor
 final class MainWindowController: NSWindowController {
     let controller: PaneController
@@ -22,13 +26,19 @@ final class MainWindowController: NSWindowController {
     private let paneSplit = NSSplitView()
     private let paneContainer = NSView()
     private let shellContainer = NSView()
-    /// The pane with nothing attached: the reading pane, under whatever
-    /// session mounts over it. Built in `build()`, which has the poller.
-    private var placeholder = NSView()
-    private let reading = ReadingPaneModel()
+    /// Sidebar or whole window, as the roster draws it.
+    private let layout = RosterLayout()
     private let hud = NoticeHUD()
-    /// On-screen time attached against time on the reading pane, for
-    /// `ccc stats` — the rate the reading pane was built without.
+    /// Where a notice floats while there is no pane to float over: the
+    /// part of the window the pane would have, which takes no clicks of
+    /// its own. With a pane up the notice is in the pane, as it always was.
+    private let noticeArea = PassthroughView()
+    private var noticeLeading: NSLayoutConstraint?
+    /// A shell pane is up; with one, the pane stays whether or not a
+    /// session is in it.
+    private var shellMounted = false
+    /// On-screen time attached against time with no pane up, for `ccc
+    /// stats` — the rate that space was first built into without.
     private var clock = PaneClock()
 
     init(controller: PaneController) {
@@ -59,7 +69,7 @@ final class MainWindowController: NSWindowController {
         window.setFrameAutosaveName(Self.frameName)
         build()
         controller.makeHost = { [weak self] cols, rows in
-            let bounds = self?.paneContainer.bounds ?? CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows)
+            let bounds = self?.paneBounds ?? CGRect(x: 0, y: 0, width: 8 * cols, height: 17 * rows)
             return PaneController.makeDefaultHost(frame: bounds)
         }
         controller.onSessionStarted = { [weak self] session in self?.mount(session) }
@@ -74,6 +84,12 @@ final class MainWindowController: NSWindowController {
         controller.defaultSize = gridSize()
         observeKeyWindow(window)
         observeOcclusion(window)
+        // The sidebar's width is clamped to the window's, so a resize
+        // with no pane up can move where a row's identity ends.
+        NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window,
+                                               queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncLayout() }
+        }
     }
 
     /// Whether anyone can see the pane, for `PaneClock`: a window that is
@@ -96,8 +112,7 @@ final class MainWindowController: NSWindowController {
     func paneTime() -> PaneTimeStats { clock.stats() }
 
     /// The roster's selection, for `ccc show`: with a ref, that row is
-    /// selected first — the roster's highlight and the reading pane both
-    /// move — and the keyboard stays where it was.
+    /// selected first, and the keyboard stays where it was.
     func selection(selecting ref: SessionRef?) -> SessionRef? {
         if let ref {
             rosterFocus.select(ref)
@@ -163,10 +178,8 @@ final class MainWindowController: NSWindowController {
     /// terminal theme's default background, in the Metal layer's own
     /// colour space. It was black, from before the pane had a theme, and
     /// the theme's ground is `#15191F` — so every attached session sat in
-    /// an 8-point black frame, and the reading pane would have been a
-    /// black page that turned slate on attach. One colour for the gutter,
-    /// the reading pane and the grid means an attach changes the content
-    /// and nothing else.
+    /// an 8-point black frame. One colour for the gutter and the grid
+    /// means the pane is one rectangle, whatever is in it.
     static let paneGround: NSColor = {
         let ground = Theme.active.background
         return NSColor(srgbRed: CGFloat(ground.r) / 255, green: CGFloat(ground.g) / 255,
@@ -196,7 +209,7 @@ final class MainWindowController: NSWindowController {
 
         split.isVertical = true
         split.dividerStyle = .thin
-        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, hosts: controller.hosts, focus: rosterFocus, attach: { [weak self] ref in
+        let roster = NSHostingView(rootView: RosterView(poller: controller.poller, hosts: controller.hosts, focus: rosterFocus, layout: layout, attach: { [weak self] ref in
             self?.attach(ref)
         }, focusPane: { [weak self] in
             self?.focusPane()
@@ -247,15 +260,21 @@ final class MainWindowController: NSWindowController {
 
         paneContainer.wantsLayer = true
         paneContainer.layer?.backgroundColor = Self.paneGround.cgColor
-        let readingPane = NSHostingView(rootView: ReadingPane(poller: controller.poller, hosts: controller.hosts,
-                                                              model: reading))
-        // The pane's size is the split view's to decide, never the prose's.
-        readingPane.sizingOptions = []
-        readingPane.frame = paneContainer.bounds
-        readingPane.autoresizingMask = [.width, .height]
-        placeholder = readingPane
-        paneContainer.addSubview(placeholder)
-        hud.install(in: paneContainer)
+        // Nothing is attached at launch, so there is no pane yet: the
+        // notice floats over the roster's far side until one arrives.
+        noticeArea.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(noticeArea)
+        let leading = noticeArea.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Self.defaultRosterWidth)
+        noticeLeading = leading
+        NSLayoutConstraint.activate([
+            leading,
+            noticeArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            noticeArea.topAnchor.constraint(equalTo: below),
+            noticeArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ])
+        hud.install(in: noticeArea)
+        paneSplit.isHidden = true
+        layout.expanded = true
         // The session pane over the shell pane; the shell's box stays
         // hidden (collapsed by the split view) until a shell opens.
         paneSplit.isVertical = false
@@ -273,19 +292,100 @@ final class MainWindowController: NSWindowController {
         roster.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
         paneSplit.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
         split.delegate = self
-        let rosterWidth = Self.savedLength(Self.rosterWidthKey, default: Self.defaultRosterWidth)
+        // The divider is put back when a pane first arrives (`revealPane`);
+        // until then the remembered width is only where each row's
+        // identity ends, which needs the split's real width to clamp.
+        DispatchQueue.main.async { [weak self] in self?.syncLayout() }
+    }
+
+    // MARK: sidebar ⇄ whole window
+
+    /// The roster's width with a pane beside it: what the last drag left,
+    /// held inside what this window can give — the pane keeps its 400.
+    private var sidebarWidth: CGFloat {
+        let saved = Self.savedLength(Self.rosterWidthKey, default: Self.defaultRosterWidth)
+        let total = split.bounds.width
+        guard total > 0 else { return saved }
+        return max(320, min(saved, total - 400 - split.dividerThickness))
+    }
+
+    /// The pane's rectangle — the one it has, or with no pane up the one
+    /// it will get. An attach sizes its PTY from this *before* the pane is
+    /// on screen, and a session that started at a guess and was resized a
+    /// moment later would reflow in front of the user.
+    private var paneBounds: NSRect {
+        guard paneSplit.isHidden else { return paneContainer.bounds }
+        return NSRect(x: 0, y: 0, width: max(0, split.bounds.width - sidebarWidth - split.dividerThickness),
+                      height: split.bounds.height)
+    }
+
+    /// Tell the roster where a row's identity ends, and keep the notice
+    /// over the far side of it.
+    private func syncLayout() {
+        let width = sidebarWidth
+        if layout.sidebarWidth != width { layout.sidebarWidth = width }
+        noticeLeading?.constant = width
+    }
+
+    /// A session or a shell is about to mount: the pane takes its place
+    /// beside the roster, at the remembered divider, before anything is
+    /// put in it — so what mounts gets its final size once.
+    private func revealPane() {
+        guard paneSplit.isHidden else { return }
+        let width = sidebarWidth
+        paneSplit.isHidden = false
+        layout.expanded = false
+        split.layoutSubtreeIfNeeded()
         // Restoring is not choosing: `setPosition` runs through the same
-        // delegate hook a drag does (measured — the launch and the command
-        // both logged a `constrainSplitPosition`), so without the flag the
-        // first launch would write the default back as if it had been
-        // picked, and a later change to `defaultRosterWidth` would reach
-        // nobody.
+        // delegate hook a drag does, so without the flag every attach
+        // would write the clamped width back as if it had been picked.
+        restoringRosterWidth = true
+        split.setPosition(width, ofDividerAt: 0)
+        restoringRosterWidth = false
+        split.layoutSubtreeIfNeeded()
+        noticeArea.isHidden = true
+        hud.removeFromSuperview()
+        hud.install(in: paneContainer)
+        arrive(paneContainer)
+        arrive(shellContainer)
+    }
+
+    /// Nothing is in the pane any more: the roster takes the window back.
+    /// A turn of the run loop late, because a session that ends and one
+    /// that starts are often the same moment — the wake reattach replays
+    /// its argv from inside the exit — and the roster must not flash wide
+    /// between them.
+    private func collapseIfIdle() {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            restoringRosterWidth = true
-            split.setPosition(rosterWidth, ofDividerAt: 0)
-            restoringRosterWidth = false
+            guard let self, controller.poller.attachedRef == nil, !shellMounted, !paneSplit.isHidden else { return }
+            paneSplit.isHidden = true
+            syncLayout()
+            layout.expanded = true
+            split.layoutSubtreeIfNeeded()
+            noticeArea.isHidden = false
+            hud.removeFromSuperview()
+            hud.install(in: noticeArea)
+            controller.defaultSize = gridSize()
         }
+    }
+
+    /// The pane's arrival: a short fade and a few points of travel, on the
+    /// layer only. Its frame is final from the first instant — animating
+    /// the divider would be a PTY resize per frame.
+    private func arrive(_ view: NSView) {
+        guard !view.isHidden, let layer = view.layer,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        let slide = CABasicAnimation(keyPath: "transform.translation.x")
+        slide.fromValue = 18
+        slide.toValue = 0
+        let group = CAAnimationGroup()
+        group.animations = [fade, slide]
+        group.duration = 0.16
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(group, forKey: "arrive")
     }
 
     /// A sentence over the pane. An answer ("installed …", "archived a1b2")
@@ -297,17 +397,17 @@ final class MainWindowController: NSWindowController {
     }
 
     /// Another ccc (or a headless attach) holds the control socket: the
-    /// command line talks to it, this window still attaches. Said where it
-    /// is true — the pane's empty state — for as long as it is.
+    /// command line talks to it, this window still attaches. A condition,
+    /// so it sits with the roster's others, in the footer.
     func noteSocketHeld(_ message: String) {
-        reading.socketNote = message
+        layout.socketNote = message
     }
 
     // MARK: pane
 
     /// Cells that fit the pane at SwiftTerm's default font.
     private func gridSize() -> (cols: Int, rows: Int) {
-        let bounds = Self.paneFrame(in: paneContainer.bounds)
+        let bounds = Self.paneFrame(in: paneBounds)
         guard bounds.width > 0, bounds.height > 0 else { return (120, 40) }
         let cell = SwiftTermHost.estimatedCellSize()
         return (max(20, Int(bounds.width / cell.width)), max(5, Int(bounds.height / cell.height)))
@@ -321,11 +421,10 @@ final class MainWindowController: NSWindowController {
         // `unmount`'s. Both happen inside one layout pass, which is what
         // makes the change read as a swap rather than as a teardown and a
         // build: there is no frame in between showing neither.
-        for old in paneContainer.subviews
-        where old !== placeholder && old !== hud && old !== view {
+        revealPane()
+        for old in paneContainer.subviews where old !== hud && old !== view {
             old.removeFromSuperview()
         }
-        placeholder.isHidden = true
         clock.set(attached: true)
         place(session, in: paneContainer)
         hud.keepOnTop()
@@ -337,6 +436,8 @@ final class MainWindowController: NSWindowController {
     /// at the height the last drag left, and the keyboard.
     private func mountShell(_ shell: AttachSession) {
         guard let view = shell.host.view else { return }
+        shellMounted = true
+        revealPane()
         // Unhide, lay out, *then* place the divider: set before the split
         // has laid out it lands on the session's minimum and the shell
         // takes the rest (seen on the first open, 2026-09-02). The session
@@ -362,6 +463,8 @@ final class MainWindowController: NSWindowController {
         }
         for view in shellContainer.subviews { view.removeFromSuperview() }
         shellContainer.isHidden = true
+        shellMounted = false
+        collapseIfIdle()
         // The keyboard goes back to the session, if one is on screen.
         if let view = controller.session?.host.view, view.superview != nil { window?.makeFirstResponder(view) }
     }
@@ -397,11 +500,11 @@ final class MainWindowController: NSWindowController {
     }
 
     private func unmount() {
-        for view in paneContainer.subviews where view !== placeholder && view !== hud { view.removeFromSuperview() }
-        placeholder.isHidden = false
+        for view in paneContainer.subviews where view !== hud { view.removeFromSuperview() }
         clock.set(attached: false)
         clock.read(currentSelection)
         window?.title = BuildInfo.current.appTitle
+        collapseIfIdle()
     }
 
     func attach(_ ref: SessionRef) {
@@ -723,13 +826,10 @@ final class MainWindowController: NSWindowController {
         if !controller.closeShell() { showNotice("no shell pane is open", kind: .problem) }
     }
 
-    /// The roster's selection: what the reading pane shows, and ⌘T's
-    /// target when nothing is attached.
+    /// The roster's selection: `ccc show`'s answer, and ⌘T's target when
+    /// nothing is attached.
     private var currentSelection: SessionRef? {
-        didSet {
-            reading.selection = currentSelection
-            clock.read(currentSelection)
-        }
+        didSet { clock.read(currentSelection) }
     }
 
     // MARK: keyboard between the roster and the pane (v7 slice 1)
@@ -955,8 +1055,11 @@ final class MainWindowController: NSWindowController {
             window.setFrame(Self.frame(topLeft: x, y, size: NSSize(width: width, height: height)),
                             display: true, animate: false)
         case .split(let width):
-            split.setPosition(CGFloat(width), ofDividerAt: 0)
+            // With no pane up there is no divider to move; the width is
+            // remembered, and is where each row's identity now ends.
+            if !paneSplit.isHidden { split.setPosition(CGFloat(width), ofDividerAt: 0) }
             rememberRosterWidth(CGFloat(width))
+            syncLayout()
         }
         return true
     }
@@ -1086,5 +1189,14 @@ extension MainWindowController: NSSplitViewDelegate {
                    ofSubviewAt dividerIndex: Int) -> CGFloat {
         if splitView === split, dividerIndex == 0, !restoringRosterWidth { rememberRosterWidth(proposedPosition) }
         return proposedPosition
+    }
+}
+
+/// A view that is only somewhere to put things: a click that lands on it
+/// and not on one of its subviews goes to whatever is underneath.
+final class PassthroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
     }
 }

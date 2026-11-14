@@ -68,7 +68,7 @@ import Testing
         }
     }
 
-    /// `show` is the reading pane's twin; its help has to say the three
+    /// `show` is the selected row, uncut; its help has to say the three
     /// things a caller cannot guess: that a ref needs no app, that no ref
     /// means the window's selection, and that --select moves it.
     @Test func showSaysWhatEachFormReads() throws {
@@ -78,9 +78,9 @@ import Testing
         #expect(text.contains("needs no app"))
         #expect(text.contains("selected"))
         #expect(text.contains("SessionDetail"))
-        #expect(show.twin?.contains("reading pane") == true)
+        #expect(show.twin?.contains("the roster is the whole window") == true)
         let stats = try #require(CommandManifest.verb(named: "stats"))
-        #expect(CommandManifest.help(for: stats).contains("reading pane"))
+        #expect(CommandManifest.help(for: stats).contains("the roster at full width"))
         #expect(stats.json?.contains("readingSeconds") == true)
     }
 
