@@ -6619,3 +6619,59 @@ Also from the same message: the `ccc stats` Ramon pasted was studio's,
 read through his ssh session — pid 15468 is the app this job installed,
 `n=45` is this job's own probe with `key → handled n=0`, and the ping is
 studio to itself (0.2 ms). Air's block is still unread.
+
+## the cursor that waited for a letter (2026-11-13)
+
+Air's typing block, v0.1.46, a studio session over the tailnet, beside
+its ping:
+
+```
+  key → handled     0.9 / 5.7   ms  n=97
+  key → echo       10.7 / 96.7  ms  n=73        ping studio: 7.2–14.0 ms, avg 9.3
+  echo → drawn      9.5 / 51.1  ms  n=77
+```
+
+Two suspects gone in one read. The main thread is not late (0.9 ms).
+The shared ssh master is not the cost: the median echo is the ping plus
+the ~2.5 ms the harness takes locally, so a terminal's own connection
+would wait the same. What is left is ours, and it is in the tail: a
+median of 9.5 ms is unremarkable and a worst of 51 is three frames.
+
+Studio reproduced it once the probe typed like a person — words, a
+quarter second between them — instead of a metronome. Installed
+v0.1.46, local attach, `ccc stats --json`'s arrays:
+
+```
+draw  n=64  p50 7.1  p75 14.6  p90 277.2  p95 279.4  max 284.0   over 16 ms: 15
+```
+
+A quarter of the samples late, and the late ones as long as the pause
+between words. The per-frame log says why (dev build, temporary):
+
+```
+feed 42 bytes: "\e[?25l\e[H\r\e[16C\e[43Bn\e[47;1H\e[44;18H\e[?25h"     dirty=partial presented=true
+feed 20 bytes: "\e[?25l\e[44;19H\e[?25h"                                 dirty=none    presented=false
+   … 277 ms, the next word …
+feed 42 bytes: "\e[?25l\e[H\r\e[18C\e[43Bf…"                             dirty=partial presented=true
+```
+
+A space at the end of the line changes no cell, so the harness sends
+only the cursor: hide, move, show. libghostty-vt's dirty state is about
+cells — `render.h`: "Not dirty at all; rendering can be skipped" — and
+`MetalRenderer.shouldDraw` took it at its word. **The cursor did not
+move until the next letter changed a cell.** Every space, and by the
+same bytes every arrow through the prompt. That is the "less smooth":
+not latency, a cursor that hesitates at each word boundary.
+
+`shouldDraw` now compares what a frame draws outside its cells — the
+cursor, the two default colours — with what the last frame drew
+(`RenderTests.aCursorOnlyMoveIsPresented`). The same probe, dev build
+before and after:
+
+```
+before  draw  p50 12.9  p75 40.7  p90 298.6  p95 308.4  max 326.4   over 16 ms: 19 of 63
+after   draw  p50 10.0  p75 11.6  p90  13.8  p95  15.4  max  22.3   over 16 ms:  1 of 64
+```
+
+Not touched: the 4 ms pacing, and the shared ssh master — the numbers
+did not ask for either. 634 tests, the same two red.

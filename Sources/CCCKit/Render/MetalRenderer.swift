@@ -116,7 +116,7 @@ public final class MetalRenderer {
         frame: Frame, into drawable: any CAMetalDrawable, size: CGSize, metrics: CellMetrics
     ) {
         guard shouldDraw(frame) else { return }
-        encode(frame: frame, target: drawable.texture, metrics: metrics, present: drawable, wait: false)
+        encode(frame: frame, target: drawable.texture, metrics: metrics, present: drawable, wait: false, remember: true)
     }
 
     /// Draw into an offscreen texture. Used by `snapshotImage()` — and so by
@@ -126,14 +126,33 @@ public final class MetalRenderer {
         frame: Frame, to texture: any MTLTexture, metrics: CellMetrics, force: Bool = true
     ) {
         guard force || shouldDraw(frame) else { return }
-        encode(frame: frame, target: texture, metrics: metrics, present: nil, wait: true)
+        // A forced render is a snapshot — someone asking to look — and
+        // must not make the screen's own draw of that frame look done.
+        encode(frame: frame, target: texture, metrics: metrics, present: nil, wait: true, remember: !force)
     }
 
-    /// `nil` when nothing changed since the last encoded frame.
+    /// False when nothing changed since the last frame put on screen.
+    ///
+    /// The core's dirty state is about **cells**. A cursor that moves
+    /// without a cell changing leaves it clean — a space typed at the end
+    /// of a line, an arrow through the prompt: the harness sends
+    /// `CSI ?25l · CSI row;col H · CSI ?25h` and nothing else — and until
+    /// 2026-11-13 that frame was declined, so the cursor stayed where it
+    /// was until the next letter moved a cell. That was the hesitation at
+    /// every word boundary (docs/EVIDENCE.md "the cursor that waited for
+    /// a letter"). The cursor and the two default colours are what a
+    /// frame draws that no row's dirty bit covers, so they are compared
+    /// here.
     private func shouldDraw(_ frame: Frame) -> Bool {
-        if frame.dirty == .none && hasRendered { return false }
-        return true
+        guard hasRendered, frame.dirty == .none else { return true }
+        return frame.cursor != shown.cursor
+            || frame.background != shown.background || frame.foreground != shown.foreground
     }
+
+    /// What the last frame drawn *for its own sake* drew outside its
+    /// cells. A forced offscreen render does not record here: a snapshot
+    /// of a newer frame must not make the screen's own draw look done.
+    private var shown: (cursor: Frame.Cursor?, background: Frame.RGB?, foreground: Frame.RGB?) = (nil, nil, nil)
 
     public func makeOffscreenTexture(width: Int, height: Int) -> (any MTLTexture)? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
@@ -165,7 +184,7 @@ public final class MetalRenderer {
 
     private func encode(
         frame: Frame, target: any MTLTexture, metrics: CellMetrics,
-        present drawable: (any CAMetalDrawable)?, wait: Bool
+        present drawable: (any CAMetalDrawable)?, wait: Bool, remember: Bool
     ) {
         // Never stall more than one frame's worth waiting for a buffer set.
         guard inFlight.wait(timeout: .now() + .milliseconds(17)) == .success else {
@@ -261,6 +280,7 @@ public final class MetalRenderer {
 
         encodedFrames += 1
         hasRendered = true
+        if remember { shown = (frame.cursor, frame.background, frame.foreground) }
     }
 
     private func buffer(

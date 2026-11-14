@@ -443,6 +443,41 @@ struct RenderTests {
         #expect(view.presentedFrames == 2)
     }
 
+    /// A cursor that moved with no cell changing is still a frame: the
+    /// core calls it clean (its dirty state is about cells), and a space
+    /// typed at the end of a line is exactly that. Declined, the cursor
+    /// sat still until the next letter.
+    @Test(.enabled(if: hasMetalDevice))
+    func aCursorOnlyMoveIsPresented() throws {
+        let metrics = CellMetrics(scale: 2)
+        var frame = demoFrame()
+        let view = MetalPaneView(
+            frame: NSRect(x: 0, y: 0, width: metrics.width * 10, height: metrics.height * 3),
+            metrics: metrics
+        )
+        view.isOnScreen = { _ in true }
+        view.render(frame)
+        #expect(view.presentedFrames == 1)
+
+        frame.dirty = .none
+        frame.cursor?.x += 1
+        view.render(frame)
+        #expect(view.presentedFrames == 2, "the cursor moved; nothing else did")
+        view.render(frame)
+        #expect(view.presentedFrames == 2, "and the same clean frame again is declined")
+
+        frame.cursor?.visible = false
+        view.render(frame)
+        #expect(view.presentedFrames == 3, "hiding the cursor is a change too")
+
+        // An offscreen snapshot of a newer frame does not stand in for
+        // the screen's own draw of it.
+        frame.cursor?.visible = true
+        frame.cursor?.y += 1
+        view.render(frame)
+        #expect(view.presentedFrames == 4)
+    }
+
     /// A pane with no screen encodes nothing — a render pass brings the
     /// GPU driver's pool into the process, ~230 MB on studio, for a frame
     /// nobody can see — and what arrived meanwhile is drawn in full the
