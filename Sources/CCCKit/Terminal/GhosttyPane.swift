@@ -178,8 +178,16 @@ public final class GhosttyPane: TerminalHost {
 
     // MARK: input (called by the container view)
 
-    fileprivate func keyDown(_ event: NSEvent) {
-        if event.timestamp > 0 { onKeyHandled?(ProcessInfo.processInfo.systemUptime - event.timestamp) }
+    /// A key the window held back while this pane was on its way
+    /// (`TypeAhead`), delivered now: the same path as a live key, minus
+    /// the lateness — it was held on purpose, and timing it would put the
+    /// whole wait into `TypingStats.input`.
+    public func replay(_ event: NSEvent) { keyDown(event, replayed: true) }
+
+    fileprivate func keyDown(_ event: NSEvent, replayed: Bool = false) {
+        if !replayed, event.timestamp > 0 {
+            onKeyHandled?(ProcessInfo.processInfo.systemUptime - event.timestamp)
+        }
         // Typing takes the selection away, as it does in every terminal.
         // ⌘C and ⌘V never reach here — `performKeyEquivalent` answers them
         // first — so a copy cannot clear what it is about to copy.

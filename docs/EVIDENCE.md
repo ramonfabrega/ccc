@@ -6588,3 +6588,34 @@ typing  median / worst of the last 64
 studio session, beside `ping -c 5 studio`. `key → echo` far above the
 ping is the shared ssh master; `key → handled` or `echo → drawn` far
 above these is the pane.
+
+## the letters typed before the pane arrived (2026-11-13)
+
+Ramon: *"i double click a sesh to attach in.. if i type `t` as first
+letter it thinks its cmd t? opens terminal?"* Not ⌘T — the roster's own
+`t`. `RosterView` gives the selected row bare-letter keys (`t` shell,
+`a` archive, `p` pin, `n` new session, `l` lore, ⌫ delete), and a switch
+keeps the old session on screen until the new one has drawn, so from
+the double-click until the mount — ~320 ms locally (the `switch` line),
+a second or more over ssh — the roster still holds the keyboard. The
+first letters of whatever is typed next are read as commands. `t` was
+the lucky one: `a` would have archived the row.
+
+`TypeAhead`: while a click's switch is pending the window holds every
+key without ⌘ (a local event monitor, the only place ahead of the
+responder chain), and when the pane lands it takes the keyboard and the
+held keys in order (`GhosttyPane.replay`, which does not time them —
+they were late on purpose). A failed attach, or a different session on
+screen than the one clicked, drops them: typing into a session nobody
+picked is worse than losing a letter. A newer click supersedes an older
+one's keys.
+
+**Proved by tests only** (`TypeAheadTests`): this job has no way to
+press a key in a window. The first attach — nothing on screen yet — is
+unchanged: its pane mounts at once and has the keyboard from the start.
+633 tests, the same two red. Not in a release.
+
+Also from the same message: the `ccc stats` Ramon pasted was studio's,
+read through his ssh session — pid 15468 is the app this job installed,
+`n=45` is this job's own probe with `key → handled n=0`, and the ping is
+studio to itself (0.2 ms). Air's block is still unread.

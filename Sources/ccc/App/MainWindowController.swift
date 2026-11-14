@@ -367,6 +367,10 @@ final class MainWindowController: NSWindowController {
             return
         }
         controller.defaultSize = gridSize()
+        // A switch (something is already on screen) leaves the roster with
+        // the keyboard until the new pane lands; hold what is typed
+        // meanwhile and hand it to that pane (`TypeAhead`).
+        let ahead: Int? = controller.session?.isRunning == true ? beginTypeAhead() : nil
         Task { @MainActor in
             // The switch keeps the old session on screen until the new one
             // has painted (`PaneController.swap`), so a slow attach looks
@@ -387,9 +391,56 @@ final class MainWindowController: NSWindowController {
                 // wait's own notice goes when the wait does, and never
                 // takes something else's place with it.
                 hud.dismiss(ifShowing: waking)
+                if let ahead { endTypeAhead(ahead, landedOn: ref) }
             } catch {
                 notice.cancel()
+                if let ahead { endTypeAhead(ahead, landedOn: nil) }
                 showNotice("\(error)", kind: .problem)
+            }
+        }
+    }
+
+    // MARK: type-ahead across a switch
+
+    private var typeAhead = TypeAhead<NSEvent>()
+    private var keyMonitor: Any?
+
+    /// Open the hold, and install the monitor the first time it is needed.
+    /// A local monitor sees a key before the responder chain does, which
+    /// is the only place to stop the roster reading `t` as a command.
+    private func beginTypeAhead() -> Int {
+        if keyMonitor == nil {
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                // Local monitors run on the main thread; the event never
+                // leaves it.
+                nonisolated(unsafe) let event = event
+                let held = MainActor.assumeIsolated { () -> Bool in
+                    guard let self, self.typeAhead.isOpen, event.window === self.window,
+                          !event.modifierFlags.contains(.command) else { return false }
+                    self.typeAhead.hold(event)
+                    return true
+                }
+                return held ? nil : event
+            }
+        }
+        return typeAhead.begin()
+    }
+
+    /// The attach is over. When it landed and is still the latest click,
+    /// the pane takes the keyboard and the keys that were held, in order;
+    /// when it failed, or something else is on screen, they are dropped —
+    /// typing into a session the user did not pick is worse than losing
+    /// a letter.
+    private func endTypeAhead(_ token: Int, landedOn ref: SessionRef?) {
+        guard let held = typeAhead.end(token), let ref,
+              let session = controller.session, session.isRunning,
+              session.ref == ((try? controller.poller.state.resolve(ref)) ?? ref) else { return }
+        focusPane()
+        for event in held {
+            if let pane = session.host as? GhosttyPane {
+                pane.replay(event)
+            } else {
+                session.host.view?.keyDown(with: event)
             }
         }
     }
