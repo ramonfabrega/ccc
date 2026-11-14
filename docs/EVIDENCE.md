@@ -6444,3 +6444,62 @@ different one and its pool is unmeasured.
 `RenderTests.anUnmountedPanePresentsNothingAndDrawsOnMount`; the counting
 test stands in for a screen (`isOnScreen`) rather than order a window
 onto someone's display. 626 tests, the same two red.
+
+## Cut as v0.1.44 (2026-11-13)
+
+The pane that draws nothing unseen, cut on Ramon's word the same evening.
+Before it, the one path attrition's lanes depend on, on the dev build
+with its window ordered out: `ccc clear 421c20f5 --then "Reply with
+exactly: hidden ok"` → cleared four seconds later, answered, peak
+48.6 MB.
+
+Build 277, tag on `0e58405`, 5507048 bytes; `ota verify --feed ccc` →
+`ok: … version 277 length 5507048`, the GitHub Release carries the same
+zip, and studio runs it (`scripts/install --dist`, `ccc 0.1.44 (277)`).
+No clear was armed when the app restarted. On the released bytes:
+
+```
+visible, as relaunched          memory 65.6 MB · pane 4 frames presented
+osascript quit; ccc clear 421c20f5 --then "Reply with exactly: woke 44"
+  → ccc.app was started (window closed) · cleared 7 s later · ↳ woke 44
+the app that fired it           memory 48.0 MB · "visible" : false      (v0.1.43: 309.9 MB)
+two more swaps, still hidden    memory 49.0 MB                           (v0.1.43: 315.5 MB)
+```
+
+## ordered in is not uncovered (2026-11-13)
+
+Found by the same run, three lines further down, on the released bytes:
+
+```
+ccc window show    → pane 0 frames presented  last never  ⚠ bytes arrived but nothing was presented — the pane is black on screen
+```
+
+v0.1.44 skips a draw when the window is not `isVisible` and repaid it on
+`didChangeOcclusionStateNotification`. Those are different questions.
+`ccc window show` from a shell orders the window in **behind** the
+frontmost app (`NSApp.activate()` is cooperative — QUEUE item 5), so the
+window became visible to AppKit and stayed occluded: no notification, no
+draw. The probe that says so, on the installed app, a pane mounted while
+the window was hidden:
+
+```
+after window show            pane 0 frames presented  ⚠ …      "visible" : true
+after osascript … activate   pane 3 frames presented
+```
+
+A person does not see a black pane — uncovering the window is the
+notification — but the oracle was wrong for as long as it stayed
+covered: `ccc stats` raised the black-pane warning for a pane nobody
+could see, and a `ccc capture` would have shot it undrawn. The trigger
+is now the predicate's own property (`window.observe(\.isVisible)`).
+The dev build with its window at the installed window's exact frame
+(190 225 1280 800), the installed app frontmost over it:
+
+```
+hidden, pane mounted      (no pane line)   memory 47.3 MB
+after window show         pane 2 frames presented
+hide, swap, show again    pane 2 frames presented
+```
+
+**Not in a release**: v0.1.44 carries the occlusion trigger. 626 tests,
+the same two red.

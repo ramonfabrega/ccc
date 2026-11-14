@@ -172,21 +172,28 @@ public final class MetalPaneView: NSView {
     /// server that will not order a window in.
     var isOnScreen: (NSWindow?) -> Bool = { $0?.isVisible == true }
 
-    private var occlusionObserver: (any NSObjectProtocol)?
+    private var visibility: NSKeyValueObservation?
 
-    /// Mounted, or the window it is in came on screen: show what arrived
-    /// while there was nowhere to show it. The occlusion notification is
-    /// what AppKit posts when a window is ordered in or out.
+    /// Mounted, or the window it is in was ordered in: show what arrived
+    /// while there was nowhere to show it.
+    ///
+    /// The trigger is the predicate's own property, observed. v0.1.44
+    /// listened for the occlusion notification instead, and the two are
+    /// different questions: `ccc window show` from a shell orders the
+    /// window in *behind* the frontmost app, so it became visible to
+    /// AppKit and stayed occluded — no notification, no draw, and `ccc
+    /// stats` called a pane nobody could see black until something
+    /// uncovered it (docs/EVIDENCE.md "ordered in is not uncovered").
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
-        occlusionObserver = nil
-        guard let window else { return }
-        occlusionObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.drawCurrentFrame() }
+        visibility = window?.observe(\.isVisible, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.screenMayHaveChanged() }
         }
+        screenMayHaveChanged()
+    }
+
+    /// Something that decides `isOnScreen` moved; draw if a draw is owed.
+    func screenMayHaveChanged() {
         drawCurrentFrame()
     }
 

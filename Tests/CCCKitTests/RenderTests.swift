@@ -471,9 +471,10 @@ struct RenderTests {
         view.render(frame)
         #expect(view.presentedFrames == 0)
 
-        // The window comes on screen (stood in for), and AppKit says so.
+        // The window is ordered in (stood in for), and the view is told —
+        // the call the `isVisible` observation makes.
         view.isOnScreen = { $0 != nil }
-        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        view.screenMayHaveChanged()
         #expect(view.presentedFrames == 1, "coming on screen draws the frame that was owed")
         view.render(frame)
         #expect(view.presentedFrames == 1, "and a clean frame after it is declined again")
