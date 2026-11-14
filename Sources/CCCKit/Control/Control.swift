@@ -627,14 +627,18 @@ public struct StatsInfo: Codable, Sendable {
     public var loginItem: String?
     /// The session switch, timed. `nil` from an older server.
     public var switches: SwitchStats?
+    /// Each keystroke on the attached pane, in three parts. `nil` with
+    /// nothing attached or from an older server.
+    public var typing: TypingStats?
 
     public init(pid: Int32, footprintBytes: UInt64, childPID: Int32?, childFootprintBytes: UInt64?,
                 lastPollMs: Double?, meanPollMs: Double?, pollCount: Int, modelJoin: ModelJoinStats? = nil,
                 jobJoin: JobProbe.Counters? = nil, hosts: [HostPollStats]? = nil,
                 ptyBytesIn: UInt64, ptyBytesPerSecond: Double, uptimeSeconds: Double,
                 paneFramesPresented: Int? = nil, paneLastPresentedSecondsAgo: Double? = nil,
-                build: BuildInfo? = .current) {
+                build: BuildInfo? = .current, typing: TypingStats? = nil) {
         self.build = build
+        self.typing = typing
         self.modelJoin = modelJoin
         self.jobJoin = jobJoin
         self.hosts = hosts

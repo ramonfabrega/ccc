@@ -35,6 +35,12 @@ public final class GhosttyPane: TerminalHost {
     fileprivate private(set) var selecting = false
 
     public var onOutput: ((Data) -> Void)?
+    /// A real key event was handled this many seconds after it happened
+    /// (`TypingStats.input`). Not called for `ccc send`, which has no
+    /// event to be late for.
+    public var onKeyHandled: ((TimeInterval) -> Void)?
+    /// A frame was presented to the screen (`TypingStats.draw`).
+    public var onFramePresented: (() -> Void)?
     /// The grid changed because the view did (window resize); the owner
     /// mirrors it onto the PTY. Same contract as `SwiftTermHost`.
     public var onSizeChanged: ((Int, Int) -> Void)?
@@ -163,13 +169,17 @@ public final class GhosttyPane: TerminalHost {
             guard let self else { return }
             self.frameScheduled = false
             self.pendingFrame = false
-            if let frame = self.core.frame() { self.metalView.render(frame) }
+            guard let frame = self.core.frame() else { return }
+            let before = self.metalView.presentedFrames
+            self.metalView.render(frame)
+            if self.metalView.presentedFrames > before { self.onFramePresented?() }
         }
     }
 
     // MARK: input (called by the container view)
 
     fileprivate func keyDown(_ event: NSEvent) {
+        if event.timestamp > 0 { onKeyHandled?(ProcessInfo.processInfo.systemUptime - event.timestamp) }
         // Typing takes the selection away, as it does in every terminal.
         // ⌘C and ⌘V never reach here — `performKeyEquivalent` answers them
         // first — so a copy cannot clear what it is about to copy.

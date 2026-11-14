@@ -6525,3 +6525,44 @@ covered arrangement is the dev build's, under "ordered in is not
 uncovered". Air's three readings are still air's: a saturated cell
 against iTerm, the `switch` mean over the hop, and what a drawing pane
 reads for memory on its GPU.
+
+## typing, in three parts (2026-11-13)
+
+Ramon, on air with v0.1.45: colours better, switching good, and *"one
+thing i think feels slower/less responsive than ssh... typing?"* A sum,
+with parts that have different owners, so `ccc stats` grew a `typing`
+block (`TypingStats`, `TypingMeter`): the key event's own timestamp →
+our handler (`input`, the main thread); the bytes written → the first
+bytes back (`echo`, the hop and the harness); those bytes read → the
+frame presented (`draw`, the hop to the main actor, the parse, the 4 ms
+pacing in `GhosttyPane.scheduleFrame`, the encode).
+
+The control, studio, **local** attach, dev build's visible pane, forty
+single characters through `ccc send`, 120 ms apart:
+
+```
+typing  median / worst of the last 64
+  key → handled          -          n=0      (`ccc send` has no key event to be late for)
+  key → echo        3.4 / 101.7 ms  n=44
+  echo → drawn     10.3 / 15.7  ms  n=43     (debug build)
+```
+
+So locally the harness answers a key in ~3 ms and ccc takes ~10 more to
+show it (debug; the encode alone is 7.9 ms debug against 1.1 release).
+None of that is the complaint, which is air's and over the hop, and
+studio cannot stand in for it: this job cannot ssh (`Host key
+verification failed`), and `input` needs a real keyboard.
+
+What is known about the hop without measuring it: an attach rides the
+**same ssh master as the roster poll** (`ControlMaster=auto`, one
+`ControlPath` per host), and that master is opened by whichever ran
+first — at launch, the poll, without a tty. A terminal's `ssh studio` is
+its own connection, opened with one. The poll's payload is small
+(`ccc list --json` 13.6 KB, `claude agents --json --all` 3.8 KB, every
+2 s), so it is not the volume. Whether the shared master costs a
+keystroke anything is the first thing air's `key → echo` line says,
+against a ping.
+
+Not changed: the 4 ms pacing. Drawing the first chunk at once would
+show half of a two-chunk echo for a frame, and 4 ms is not what a person
+feels. 630 tests, the same two red.

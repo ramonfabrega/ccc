@@ -12,6 +12,8 @@ public final class AttachSession {
     public let host: TerminalHost
     private let pty: PTY
     private var throughput = Throughput()
+    /// Each keystroke in three parts (`TypingStats`).
+    private var typing = TypingMeter()
     public private(set) var exitStatus: Int32?
     public var onExit: ((Int32) -> Void)?
     /// The harness's ← gesture (`LeaveGesture`), taken before the key is
@@ -49,12 +51,25 @@ public final class AttachSession {
         pty = try PTY(argv: argv, cwd: options.cwd, extraEnvironment: scrubbed,
                       size: .init(cols: options.cols, rows: options.rows))
         host.resize(cols: options.cols, rows: options.rows)
-        host.onOutput = { [pty] data in pty.write(data) }
+        host.onOutput = { [pty, weak self] data in
+            self?.typing.wrote(bytes: data.count, at: ProcessInfo.processInfo.systemUptime)
+            pty.write(data)
+        }
         pty.onData = { [weak self] data in
+            // Stamped here, on the PTY's queue: the hop to the main actor
+            // below is part of what `draw` measures.
+            let at = ProcessInfo.processInfo.systemUptime
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.throughput.record(data.count)
+                self.typing.read(at: at)
                 self.host.feed(data)
+            }
+        }
+        if let pane = host as? GhosttyPane {
+            pane.onKeyHandled = { [weak self] lag in self?.typing.handled(lag: lag) }
+            pane.onFramePresented = { [weak self] in
+                self?.typing.presented(at: ProcessInfo.processInfo.systemUptime)
             }
         }
         pty.onExit = { [weak self] status in
@@ -86,7 +101,9 @@ public final class AttachSession {
     }
 
     public func send(text: String) {
-        pty.write(Data(text.utf8))
+        let bytes = Data(text.utf8)
+        typing.wrote(bytes: bytes.count, at: ProcessInfo.processInfo.systemUptime)
+        pty.write(bytes)
     }
 
     @discardableResult
@@ -164,7 +181,8 @@ public final class AttachSession {
             // when the *pane* attached.
             uptimeSeconds: ProcessStats.uptime(of: me) ?? 0,
             paneFramesPresented: host.presentation?.frames,
-            paneLastPresentedSecondsAgo: host.presentation?.lastAt.map { Date().timeIntervalSince($0) }
+            paneLastPresentedSecondsAgo: host.presentation?.lastAt.map { Date().timeIntervalSince($0) },
+            typing: typing.stats
         )
     }
 }

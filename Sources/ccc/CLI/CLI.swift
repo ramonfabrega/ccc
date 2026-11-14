@@ -2202,6 +2202,20 @@ enum CLI {
             // what is above that is ours.
             print("switch  last \(ms(sw.lastMs))  mean \(ms(sw.meanMs))  n=\(sw.count)")
         }
+        if let t = s.typing, t.echo.count + t.input.count + t.draw.count > 0 {
+            // A keystroke in three parts, median / worst of the last 64.
+            // The first and third are ccc's; the second is the hop and
+            // the harness, and is what any terminal over the same ssh
+            // would wait for too.
+            func part(_ l: Latency) -> String {
+                guard let median = l.medianMs, let worst = l.worstMs else { return "        -        " }
+                return String(format: "%6.1f / %-6.1f ms", median, worst)
+            }
+            print("typing  median / worst of the last \(Latency.window)")
+            print("  key → handled  \(part(t.input))  n=\(t.input.count)   ours: the main thread")
+            print("  key → echo     \(part(t.echo))  n=\(t.echo.count)   the hop and the harness")
+            print("  echo → drawn   \(part(t.draw))  n=\(t.draw.count)   ours: parse, pace, encode")
+        }
         print("pty in  \(s.ptyBytesIn) bytes  \(String(format: "%.0f", s.ptyBytesPerSecond)) B/s")
         // The number a black pane cannot hide behind: bytes in but no frames
         // presented means the human sees nothing while snapshots look fine.
