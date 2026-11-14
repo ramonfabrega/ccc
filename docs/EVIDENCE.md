@@ -6503,3 +6503,25 @@ hide, swap, show again    pane 2 frames presented
 
 **Not in a release**: v0.1.44 carries the occlusion trigger. 626 tests,
 the same two red.
+
+## Cut as v0.1.45 (2026-11-13)
+
+The `isVisible` trigger, cut on Ramon's word — *"cut so air can update
+and i can see it live"*. Build 279, tag on `f0a74ca`, 5507320 bytes;
+`ota verify --feed ccc` → `ok: … version 279 length 5507320`, the GitHub
+Release carries the same zip, and studio runs it (`ccc 0.1.45 (279)`).
+No clear was armed when the app restarted.
+
+The probe v0.1.44 failed, on the released bytes, Finder made frontmost
+first so the show was not ccc's own activation:
+
+```
+window hide · a pane mounted while hidden   (no pane line)
+after window show                           pane 2 frames presented      (v0.1.44: 0, and the warning)
+```
+
+Whether that window was fully covered this time was not measured; the
+covered arrangement is the dev build's, under "ordered in is not
+uncovered". Air's three readings are still air's: a saturated cell
+against iTerm, the `switch` mean over the hop, and what a drawing pane
+reads for memory on its GPU.
