@@ -6740,3 +6740,24 @@ and never from the screen. The roster taking the keyboard when the pane
 empties has no twin that types into the roster, so ↑↓ and ⏎ with no
 click first are by reading the code. No session was blocked during the
 run, so the suggested reply has its tests and has not been seen drawn.
+
+## Cut as v0.1.48 (2026-11-13)
+
+The reading pane, cut on Ramon's word — *"lets at least land this. cut
+it. since its better than blank"* — with what it becomes beside lore and
+a general view left open (`docs/DESIGN.md` §11). Build 289, tag on
+`ef87025`, 5629579 bytes; `ota verify --feed ccc` → `ok: … version 289
+length 5629579`, the GitHub Release carries the same zip, and studio runs
+it (`ccc 0.1.48 (289)`). No clear was armed and nothing was attached
+when the app restarted.
+
+On the released bytes, five seconds after the relaunch, with no click:
+
+```
+ccc show    → lane-4204  working · busy  opus-5-5   (the top row, selected by the roster)
+ccc stats   → window  attached 0s · reading 5s (100%) · 1 row read
+```
+
+**Still owed**: the `window` line after a few days of real use — it is
+the rate that says whether the empty pane is worth a general view — and
+the page judged from the screen rather than from `peek`.
