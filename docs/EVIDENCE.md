@@ -6566,3 +6566,25 @@ against a ping.
 Not changed: the 4 ms pacing. Drawing the first chunk at once would
 show half of a two-chunk echo for a frame, and 4 ms is not what a person
 feels. 630 tests, the same two red.
+
+## Cut as v0.1.46 (2026-11-13)
+
+The typing block, cut on Ramon's word so air can read it. Build 282, tag
+on `cc935b9`, 5523504 bytes; `ota verify --feed ccc` → `ok: … version
+282 length 5523504`, the GitHub Release carries the same zip, and studio
+runs it (`ccc 0.1.46 (282)`). No clear was armed and nothing was
+attached when the app restarted.
+
+The control on the released bytes — studio, local attach, the app's own
+visible pane, twenty characters through `ccc send`:
+
+```
+typing  median / worst of the last 64
+  key → echo        2.9 / 6.3  ms  n=24
+  echo → drawn      6.8 / 11.7 ms  n=24      (4 ms of it is the pacing)
+```
+
+**Air's to report**: the same block after a few typed sentences in a
+studio session, beside `ping -c 5 studio`. `key → echo` far above the
+ping is the shared ssh master; `key → handled` or `echo → drawn` far
+above these is the pane.
