@@ -43,8 +43,12 @@ public final class GhosttyPane: TerminalHost {
     public var onOpenLink: ((LinkScanner.Link) -> Void)?
     public var view: NSView? { container }
     public var metrics: CellMetrics { metalView.metrics }
+    /// `nil` while the pane has no screen — in no window, or in one that
+    /// is ordered out: it has nothing to have presented to, and "0 frames"
+    /// there would read as the black pane.
     public var presentation: (frames: Int, lastAt: Date?)? {
-        (metalView.presentedFrames, metalView.lastPresentedAt)
+        guard metalView.hasScreen else { return nil }
+        return (metalView.presentedFrames, metalView.lastPresentedAt)
     }
 
     public init(

@@ -120,14 +120,36 @@ public final class MetalPaneView: NSView {
         drawCurrentFrame()
     }
 
+    /// A frame arrived while the view was in no window and was not drawn;
+    /// the next draw that reaches a drawable is owed in full.
+    private var owesDraw = false
+
     private func drawCurrentFrame() {
-        guard let renderer, let frame = frameToDraw else { return }
+        guard let renderer, var frame = frameToDraw else { return }
+        // Not on a screen, no render pass. On an Apple GPU *any* render
+        // pass — an empty clear into a 64×64 texture will do — brings a
+        // driver pool into the process: ~230 MB on an M4 Max, 23 purgeable
+        // 8 MB regions, given back a few seconds after the last pass. It
+        // is not ours to shrink, only to not ask for, and it was being
+        // asked for where nothing could be seen: a headless attach, the
+        // incoming pane of every switch (it parses behind the outgoing
+        // one before it is mounted), a pane in a window that is ordered
+        // out (measured 2026-11-13, docs/EVIDENCE.md "the pool a render
+        // pass brings"). Snapshots do not come through here; they make
+        // their own pass, and pay for it, when someone asks to look.
+        guard isOnScreen(window) else {
+            owesDraw = true
+            return
+        }
         let size = drawableSize()
         guard size.width >= 1, size.height >= 1 else { return }
         if metalLayer.drawableSize != size { metalLayer.drawableSize = size }
         // One drawable per pass, and never a stall: if the pool is empty the
         // frame is dropped and the next call draws the same state.
         guard let drawable = metalLayer.nextDrawable() else { return }
+        // The renderer declines a clean frame because the last one is on
+        // screen. For a frame that was skipped above it is not.
+        if owesDraw { frame.dirty = .full }
         // Counted only when the renderer actually encoded and presented:
         // it declines a clean frame, a starved instance pool, a failed
         // buffer, and none of those reached the screen. This number is
@@ -139,8 +161,38 @@ public final class MetalPaneView: NSView {
         if renderer.encodedFrames > encoded {
             presentedFrames += 1
             lastPresentedAt = Date()
+            owesDraw = false
         }
     }
+
+    /// "Is there a screen this would reach": in a window, and the window
+    /// ordered in. Deliberately `isVisible` and not the occlusion state —
+    /// a window covered by another keeps drawing, so `ccc capture` of it
+    /// is never stale. A property so a test can stand in for a window
+    /// server that will not order a window in.
+    var isOnScreen: (NSWindow?) -> Bool = { $0?.isVisible == true }
+
+    private var occlusionObserver: (any NSObjectProtocol)?
+
+    /// Mounted, or the window it is in came on screen: show what arrived
+    /// while there was nowhere to show it. The occlusion notification is
+    /// what AppKit posts when a window is ordered in or out.
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = nil
+        guard let window else { return }
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.drawCurrentFrame() }
+        }
+        drawCurrentFrame()
+    }
+
+    /// Whether the layer has a screen to present to — what makes "0
+    /// frames presented" mean a black pane rather than a hidden one.
+    public var hasScreen: Bool { isOnScreen(window) }
 
     // MARK: - Geometry
 

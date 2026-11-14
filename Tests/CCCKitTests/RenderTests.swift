@@ -429,6 +429,9 @@ struct RenderTests {
             frame: NSRect(x: 0, y: 0, width: metrics.width * 10, height: metrics.height * 3),
             metrics: metrics
         )
+        // Presenting needs a screen; the test stands in for one rather
+        // than order a window onto whoever's display this runs on.
+        view.isOnScreen = { _ in true }
         view.render(frame)
         #expect(view.presentedFrames == 1)
         frame.dirty = .none
@@ -438,6 +441,42 @@ struct RenderTests {
         frame.dirty = .partial
         view.render(frame)
         #expect(view.presentedFrames == 2)
+    }
+
+    /// A pane with no screen encodes nothing — a render pass brings the
+    /// GPU driver's pool into the process, ~230 MB on studio, for a frame
+    /// nobody can see — and what arrived meanwhile is drawn in full the
+    /// moment it has one, even when the last frame was a clean one the
+    /// renderer would otherwise decline.
+    @Test(.enabled(if: hasMetalDevice))
+    func anUnmountedPanePresentsNothingAndDrawsOnMount() throws {
+        let metrics = CellMetrics(scale: 2)
+        var frame = demoFrame()
+        let view = MetalPaneView(
+            frame: NSRect(x: 0, y: 0, width: metrics.width * 10, height: metrics.height * 3),
+            metrics: metrics
+        )
+        view.render(frame)
+        frame.dirty = .none
+        view.render(frame)
+        #expect(view.presentedFrames == 0)
+        #expect(!view.hasScreen)
+        // The offscreen path is not the layer's and still works.
+        #expect(view.snapshotImage() != nil)
+
+        // In a window that is ordered out: still no screen, still nothing.
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.contentView?.addSubview(view)
+        view.render(frame)
+        #expect(view.presentedFrames == 0)
+
+        // The window comes on screen (stood in for), and AppKit says so.
+        view.isOnScreen = { $0 != nil }
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        #expect(view.presentedFrames == 1, "coming on screen draws the frame that was owed")
+        view.render(frame)
+        #expect(view.presentedFrames == 1, "and a clean frame after it is declined again")
     }
 
     /// Why the atlas may be written while frames are still on the GPU:

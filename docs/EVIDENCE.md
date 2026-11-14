@@ -6380,3 +6380,67 @@ iTerm on a P3 panel) and reading 4 (the `switch` mean over the real hop).
 being made and ~88 MB a few seconds later — 309.9 MB at uptime 10 s
 after the wake's attach, 315.5 at 43 s after the eight swaps, 88.5 at
 56 s. 0.1.42 does the same, so it is not this cut's; it is the next thing.
+
+## the pool a render pass brings (2026-11-13)
+
+Ramon, during the v0.1.43 cut: *"we definitely want to fix/look into the
+300 mb startup spike."* It was not startup, and it was not ours.
+
+**What it is.** `vmmap` on a headless ccc one second after its attach:
+
+```
+Physical footprint: 254.8M        (10 s later: 54.7M)
+owned unmapped (graphics)   188.0M  34 regions   → 4064K, 11 regions
+  23 × [ 8192K  8192K  0K  0K ] rw-/rw- SM=PRV PURGE=V
+```
+
+Twenty-three purgeable 8 MB regions. A first theory — a layer on no
+screen never gets its drawables back — fit the headless case and failed
+the next measurement: with the window shown, one presented frame took
+the app from 67 MB to 307. So the cost is the pass, not where it lands.
+A standalone Metal program settles whose it is (`Apple M4 Max`):
+
+```
+start 54.7 MB · 64×64 texture made 54.7 MB
+clear-only pass 1   287.1 MB        (1920×1360: 299.7 MB — the size does not matter)
++2.5 s idle          60.9 MB
+pass after idle     271.1 MB
+```
+
+An empty clear into a 64×64 texture brings ~230 MB into the process and
+the driver gives it back a few seconds after the last pass. It is the
+GPU driver's pool, per process, for any app that draws with Metal on
+this Mac. ccc cannot shrink it.
+
+**What ccc was doing wrong** was asking for it where nothing could be
+seen: `MetalPaneView.drawCurrentFrame` encoded a pass for every frame,
+window or not. So a headless attach paid it (the first seconds of every
+`ccc attach --headless`), the incoming pane of every switch paid it
+while it parsed behind the outgoing one, and a pane in a window that is
+ordered out paid it — which since v0.1.43 is every clear a resident app
+fires. Now a pane with no screen (no window, or `isVisible` false)
+encodes nothing, remembers that it owes a draw, and draws in full the
+moment it is mounted or its window is ordered in
+(`didChangeOcclusionStateNotification`). `isVisible` and not the
+occlusion state on purpose: a window covered by another keeps drawing,
+so `ccc capture` of it is never stale. `presentation` is `nil` without a
+screen, so `ccc stats` prints no pane line rather than the black-pane
+warning for a pane nobody could have seen.
+
+```
+headless, one attach (debug)        before  peak 254.8 MB · settled 54.7 MB
+                                    after   peak  33.3 MB · settled 33.3 MB
+app face, window ordered out        attach +1 s 66.4 MB · four swaps 67.5 MB · settled 67.5 MB   (no pane line)
+  (v0.1.43, same shape: 309.9 MB after the wake's attach, 315.5 after eight swaps)
+`ccc window show`, no new bytes     pane 1 frames presented            ← the owed draw
+four swaps, window visible          pane 2 frames presented each · memory 312 MB · 83.6 MB six seconds after
+```
+
+The last line is the part that stays: **a visible ccc that is drawing
+reads ~300 MB on studio and ~85 when it has been still for a few
+seconds**, and so would any Metal terminal here. Air's GPU is a
+different one and its pool is unmeasured.
+
+`RenderTests.anUnmountedPanePresentsNothingAndDrawsOnMount`; the counting
+test stands in for a screen (`isOnScreen`) rather than order a window
+onto someone's display. 626 tests, the same two red.
