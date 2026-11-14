@@ -6789,3 +6789,13 @@ line two at any of them, and at 620 the sentences run on.
 said yes. It is also the row a full-width roster would need (his idea for
 the pane with nothing attached: the list, widened, instead of a second
 surface), which is not built. 656 tests, the same two red.
+
+## Cut as v0.1.49 (2026-11-13)
+
+The roster row and the standing's own line, cut on Ramon's word after
+the pictures — *"sounds good. cut or just work on expanded then cut"* —
+alone, so the row is not held up by the window rework that follows it.
+Build 293, tag on `1f4d0b7`, 5632048 bytes; `ota verify --feed ccc` →
+`ok: … version 293 length 5632048`, the GitHub Release carries the same
+zip, and studio runs it (`ccc 0.1.49 (293)`). No clear was armed and
+nothing was attached when the app restarted.
